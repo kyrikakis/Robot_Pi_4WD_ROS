@@ -24,6 +24,11 @@ SHELL ["/bin/bash", "-c"]
 
 RUN mkdir -p /colcon_ws/src
 
+RUN cd /colcon_ws/src && \
+    git clone git@github.com:kyrikakis/pca9685_ros2_control.git && \
+    cd /colcon_ws && \
+    source /opt/ros/humble/setup.bash && colcon build --symlink-install  --event-handlers console_direct+
+
 RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc 
 RUN echo "source /colcon_ws/install/setup.bash" >> ~/.bashrc 
 ENTRYPOINT ["/ros_entrypoint.sh"]

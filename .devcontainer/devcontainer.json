@@ -6,6 +6,7 @@
     ],
     "remoteEnv": {
     },
+    "updateContentCommand": "bash .devcontainer/post_creation_script.sh",
     "postCreateCommand": [
       "bash"
     ],
