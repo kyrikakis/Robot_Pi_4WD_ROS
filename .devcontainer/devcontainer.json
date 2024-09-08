@@ -1,0 +1,23 @@
+{
+    "name": "Robot_Pi_4WD_ROS",
+    "dockerFile": "../Dockerfile", 
+    "runArgs": [
+      "---device=/dev/i2c-1:/dev/i2c-1"
+    ],
+    "remoteEnv": {
+    },
+    "postCreateCommand": [
+      "bash"
+    ],
+    "customizations": {
+      "vscode": {
+        "extensions": [
+            "ms-python.python",
+            "ms-vscode.cpptools-extension-pack",
+            "ms-azuretools.vscode-docker",
+            "ms-vscode.cmake-tools",
+            "twxs.cmake"
+        ]
+      }
+    }
+  }
