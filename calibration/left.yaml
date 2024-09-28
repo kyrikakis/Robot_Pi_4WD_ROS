@@ -1,0 +1,26 @@
+image_width: 1024
+image_height: 576
+camera_name: 1__base_axi_pcie_120000_rp1_i2c_80000_imx296_1a_1024x576
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [732.594427,   0.     , 466.611704,
+           0.     , 731.768499, 288.668877,
+           0.     ,   0.     ,   1.     ]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [-0.094399, -0.011658, 0.000754, -0.000034, 0.000000]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [ 0.999994,    0.003298,    0.001030,
+          -0.003317,   0.999811,    0.019132 ,
+          -0.000967,   -0.019136,   0.999816 ]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [726.464939, 0.000000, 474.340832, 0.000000     ,
+           0.000000, 726.464939, 270.433201, 0.000000     ,
+           0.000000, 0.000000, 1.000000, 0.000000     ]

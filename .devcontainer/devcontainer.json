@@ -1,10 +1,24 @@
 {
     "name": "Robot_Pi_4WD_ROS",
-    "dockerFile": "../Dockerfile", 
+    "dockerFile": "../Dockerfile",
     "runArgs": [
-      "---device=/dev/i2c-1:/dev/i2c-1"
+      "--privileged",
+      // "-v /dev/:/dev/",
+      "--device=/dev:/dev",
+      // "--device=/dev/i2c-1:/dev/i2c-1",
+      // "--device=/dev/ttyUSB0:/dev/ttyUSB0",
+      "--cap-add=SYS_ADMIN",
+      "--network=host"
     ],
+    "mounts": [
+      "type=bind,source=/dev/,target=/dev/",
+      "type=bind,source=/run/udev/,target=/run/udev/,readonly"
+    ],
+    "containerEnv": {
+      "UDEV": "1"
+    },
     "remoteEnv": {
+      "UDEV": "1"
     },
     "updateContentCommand": "bash .devcontainer/post_creation_script.sh",
     "postCreateCommand": [
@@ -17,7 +31,8 @@
             "ms-vscode.cpptools-extension-pack",
             "ms-azuretools.vscode-docker",
             "ms-vscode.cmake-tools",
-            "twxs.cmake"
+            "twxs.cmake",
+            "webfreak.debug"
         ]
       }
     }
