@@ -20,7 +20,7 @@
     "remoteEnv": {
       "UDEV": "1"
     },
-    "updateContentCommand": "bash .devcontainer/post_creation_script.sh",
+    // "updateContentCommand": "bash .devcontainer/post_creation_script.sh",
     "postCreateCommand": [
       "bash"
     ],
