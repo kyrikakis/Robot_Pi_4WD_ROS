@@ -8,8 +8,11 @@
       // "--device=/dev/i2c-1:/dev/i2c-1",
       // "--device=/dev/ttyUSB0:/dev/ttyUSB0",
       "--cap-add=SYS_ADMIN",
-      "--network=host"
+      "--network=host",
+      "--name=yahboom_camera",
+      "--restart=always"
     ],
+    "overrideCommand": false,
     "mounts": [
       "type=bind,source=/dev/,target=/dev/",
       "type=bind,source=/run/udev/,target=/run/udev/,readonly"

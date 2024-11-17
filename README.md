@@ -1,6 +1,8 @@
 # Robot_Pi_4WD_ROS
 Robot_Pi_4WD_ROS
 
+## Usefull commands
+```
 /pi-bno055/getbno055 -m ndof
 watch -n 0.5 /pi-bno055/getbno055 -t inf
 
@@ -20,3 +22,13 @@ ros2 run camera_ros camera_node --ros-args -p camera:=0 -p width:=1024 -p height
 
 ros2 launch stereo_image_proc.launch.py approximate_sync:=true approximate_sync_tolerance_seconds:=0.1
 
+ros2 run image_view image_view --ros-args -r image:=/camera/image_raw
+
+docker exec -i yahboom_camera bash -c "/workspaces/Robot_Pi_4WD_ROS/start_camera.sh"
+
+ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py
+
+ros2 launch nav2_bringup navigation_launch.py
+
+ros2 launch slam_toolbox online_async_launch.py
+```

@@ -7,5 +7,8 @@ getent group i2c || groupadd -g 998 i2c
 usermod -aG i2c ros
 
 # setup ros environment
-source "/opt/ros/$ROS_DISTRO/setup.bash"
+export ROS_DOMAIN_ID=20
+source "/opt/ros/humble/setup.bash"
+# source "/workspaces/Robot_Pi_4WD_ROS/install/setup.bash"
+/usr/bin/supervisord
 exec "$@"

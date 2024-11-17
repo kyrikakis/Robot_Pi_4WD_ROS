@@ -2,9 +2,6 @@ FROM ros:humble-perception-jammy
 
 RUN apt update && apt upgrade -y
 
-
-COPY ros_entrypoint.sh /ros_entrypoint.sh
-RUN chmod +x  /ros_entrypoint.sh
 ENV ROS_DISTRO humble
 ENV LANG en_US.UTF-8
 
@@ -70,11 +67,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     /root/.local/bin/meson install -C build && \
     ldconfig
 
-RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc 
+RUN cd /colcon_ws/src && \
+    git clone https://github.com/christianrauch/camera_ros.git && \
+    cd /colcon_ws && source /opt/ros/humble/setup.bash && colcon build --symlink-install && \
+    echo "source /colcon_ws/install/setup.bash" >> ~/.bashrc
+
+RUN apt-get update && apt-get install -y \
+    ros-humble-imu-tools \
+    ros-humble-joint-state-publisher \
+    ros-humble-slam-toolbox \
+    ros-humble-navigation2 \
+    ros-humble-nav2-bringup
+
+RUN apt-get update && apt-get install -y \
+    supervisor
+
+RUN echo "export ROS_DOMAIN_ID=20" >> ~/.bashrc
+RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+
+COPY ros_entrypoint.sh /ros_entrypoint.sh
+RUN chmod +x  /ros_entrypoint.sh
 ENTRYPOINT ["/ros_entrypoint.sh"]
 
 USER $USERNAME
 # terminal colors with xterm
 ENV TERM xterm
-WORKDIR /colcon_ws
-CMD ["bash"]
+WORKDIR /workspaces/Robot_Pi_4WD_ROS
