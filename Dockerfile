@@ -79,11 +79,22 @@ RUN apt-get update && apt-get install -y \
     ros-humble-navigation2 \
     ros-humble-nav2-bringup
 
-RUN apt-get update && apt-get install -y \
-    supervisor
+RUN pip3 install rpi-lgpio adafruit-circuitpython-ht16k33
 
 RUN echo "export ROS_DOMAIN_ID=20" >> ~/.bashrc
 RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+
+RUN mkdir -p /workspaces/Robot_Pi_4WD_ROS/
+COPY . /workspaces/Robot_Pi_4WD_ROS/
+
+RUN source /opt/ros/humble/setup.bash && \
+    cd /workspaces/Robot_Pi_4WD_ROS && \
+    colcon build --symlink-install && \
+    echo "source /workspaces/Robot_Pi_4WD_ROS/install/setup.bash" >> ~/.bashrc
+
+RUN apt-get update && apt-get install -y \
+    supervisor
+COPY ./supervisor/* /etc/supervisor/conf.d/
 
 COPY ros_entrypoint.sh /ros_entrypoint.sh
 RUN chmod +x  /ros_entrypoint.sh
@@ -93,3 +104,4 @@ USER $USERNAME
 # terminal colors with xterm
 ENV TERM xterm
 WORKDIR /workspaces/Robot_Pi_4WD_ROS
+CMD [ "sleep", "infinity" ]

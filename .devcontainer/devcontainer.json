@@ -1,22 +1,9 @@
 {
     "name": "Robot_Pi_4WD_ROS",
-    "dockerFile": "../Dockerfile",
-    "runArgs": [
-      "--privileged",
-      // "-v /dev/:/dev/",
-      "--device=/dev:/dev",
-      // "--device=/dev/i2c-1:/dev/i2c-1",
-      // "--device=/dev/ttyUSB0:/dev/ttyUSB0",
-      "--cap-add=SYS_ADMIN",
-      "--network=host",
-      "--name=yahboom_camera",
-      "--restart=always"
-    ],
+    "dockerComposeFile": "../docker-compose.yaml",
+    "service": "robot",
+    "workspaceFolder": "/workspaces/Robot_Pi_4WD_ROS",
     "overrideCommand": false,
-    "mounts": [
-      "type=bind,source=/dev/,target=/dev/",
-      "type=bind,source=/run/udev/,target=/run/udev/,readonly"
-    ],
     "containerEnv": {
       "UDEV": "1"
     },
@@ -24,9 +11,10 @@
       "UDEV": "1"
     },
     "updateContentCommand": "bash .devcontainer/post_creation_script.sh",
-    "postCreateCommand": [
-      "bash"
-    ],
+    // "postCreateCommand": [
+    //   "/usr/bin/supervisord"
+    // ],
+    "postStartCommand" : "/usr/bin/supervisord",
     "customizations": {
       "vscode": {
         "extensions": [

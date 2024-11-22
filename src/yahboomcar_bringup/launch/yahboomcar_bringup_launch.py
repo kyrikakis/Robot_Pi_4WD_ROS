@@ -18,7 +18,7 @@ print("---------------------robot_type = x3---------------------")
 def generate_launch_description():
     imu_filter_config = os.path.join(              
         get_package_share_directory('yahboomcar_bringup'),
-        'param',
+        'params',
         'imu_filter_param.yaml'
     ) 
 
@@ -27,19 +27,21 @@ def generate_launch_description():
             get_package_share_directory('imu_complementary_filter'), 'launch'),
             '/complementary_filter.launch.py'])
     )
-    
 
-    ekf_node = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([os.path.join(
-            get_package_share_directory('robot_localization'), 'launch'),
-            '/ekf.launch.py'])
-    )
     
     description_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([os.path.join(
         get_package_share_directory('yahboomcar_description'), 'launch'),
          '/description_launch.py'])
-    )   
+    )
+
+    robot_localization_node = Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='ekf_filter_node',
+        output='screen',
+        parameters=[os.path.join(get_package_share_directory("yahboomcar_bringup"), 'params', 'ekf.yaml')],
+    )
     
     base_link_to_imu_tf_node = Node(
      package='tf2_ros',
@@ -47,10 +49,18 @@ def generate_launch_description():
      name='base_link_to_base_imu',
      arguments=['-0.002999', '-0.0030001','0.031701','0','0','0','base_link','imu_frame']
     ) 
+
+    laser_frame_to_base_link_node = Node(
+     package='tf2_ros',
+     executable='static_transform_publisher',
+     name='base_link_to_base_laser',
+     arguments=['-0.0046412', '0' , '0.094079','0','0','0','base_link','laser_frame']
+    )
     
     return LaunchDescription([
         imu_filter_node,
-        ekf_node,
+        robot_localization_node,
         base_link_to_imu_tf_node,
+        laser_frame_to_base_link_node,
         description_launch
     ])

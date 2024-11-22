@@ -8,11 +8,11 @@
 # cd /colcon_ws && \
 # source /opt/ros/humble/setup.bash && colcon build --symlink-install  --event-handlers console_direct+ && \
 # echo "source /colcon_ws/install/setup.bash" >> ~/.bashrc && \
-# \
-source /opt/ros/humble/setup.bash
-cd /workspaces/Robot_Pi_4WD_ROS && \
-colcon build --symlink-install && \
-echo "source /workspaces/Robot_Pi_4WD_ROS/install/setup.bash" >> ~/.bashrc
+# # \
+# source /opt/ros/humble/setup.bash && \
+# cd /workspaces/Robot_Pi_4WD_ROS && \
+# colcon build --symlink-install && \
+# echo "source /workspaces/Robot_Pi_4WD_ROS/install/setup.bash" >> ~/.bashrc
 # cd / && git clone git@github.com:fm4dd/pi-bno055.git && cd pi-bno055 && make && \
 # sed -i '/BINPATH=\/home\/pi\/pi-bno055/c\BINPATH=\/pi-bno055' loadcal_bno055.sh && \
 # sed -i '/CALFILE=\/home\/pi\/pi-bno055-conf\/cal.cfg/c\CALFILE=\/pi-bno055\/bno055.cal' loadcal_bno055.sh && \

@@ -1,9 +1,17 @@
 import board
 import busio
 from adafruit_ht16k33 import matrix
-from MatrixMode import MATRIX_MODE
 import time
 
+class MATRIX_MODE:
+    NONE = "1"
+    DIZZY = "2"
+    CRY = "3"
+    HAPPY = "4"
+    RIGHT = "5"
+    LEFT = "6"
+    BLINK = "7"
+    RANDOM = "8"
 
 eyeSmile = [
     [False, False, False, False, False, False, False, False],
@@ -61,11 +69,12 @@ class CustomLEDMatrixController:
             self.fill_display(eyeSmile)
             # Update the physical display
             self.show_display()
-            time.sleep(3)
+            time.sleep(4)
             # Fill the display with the eyeSmile data for both left and right
             self.fill_display(eyeShut)
             # Update the physical display
             self.show_display()
+            time.sleep(1)
 
     def eyes_blink(self):
         self.clear_display()
@@ -105,6 +114,7 @@ class CustomLEDMatrixController:
 if __name__ == '__main__':
     print("Running main. After that, you can press ctrl-C to end the program.")
     display=CustomLEDMatrixController()
+    display.animation = MATRIX_MODE.HAPPY
     while True:
         try :
             display.eyes_smile()
