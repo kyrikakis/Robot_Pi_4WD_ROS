@@ -14,7 +14,7 @@
     // "postCreateCommand": [
     //   "/usr/bin/supervisord"
     // ],
-    "postStartCommand" : "/usr/bin/supervisord",
+    // "postStartCommand" : "/usr/bin/supervisord",
     "customizations": {
       "vscode": {
         "extensions": [
