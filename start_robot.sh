@@ -4,7 +4,7 @@ function cleanup()
   echo 'stop robot'
 }
 
-trap cleanup INT
+# trap cleanup INT
 
 export ROS_DOMAIN_ID=20  && \
 source /opt/ros/humble/setup.bash && \

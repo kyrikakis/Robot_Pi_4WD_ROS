@@ -16,7 +16,7 @@ setup(
         #(os.path.join('share','yahboomcar_description','urdf'),glob(os.path.join('urdf','*.*'))),
 		#(os.path.join('share','yahboomcar_description','meshes'),glob(os.path.join('meshes','*.*'))),
         (os.path.join('share','yahboomcar_description','rviz'),glob(os.path.join('rviz','*.rviz*'))),
-        (os.path.join('share', package_name, 'param'), glob(os.path.join('param', '*.yaml'))),
+        (os.path.join('share', package_name, 'params'), glob(os.path.join('params', '*.yaml'))),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

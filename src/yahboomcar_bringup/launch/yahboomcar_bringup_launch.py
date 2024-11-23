@@ -41,6 +41,7 @@ def generate_launch_description():
         name='ekf_filter_node',
         output='screen',
         parameters=[os.path.join(get_package_share_directory("yahboomcar_bringup"), 'params', 'ekf.yaml')],
+        remappings=[('/odometry/filtered','/odom')]
     )
     
     base_link_to_imu_tf_node = Node(
