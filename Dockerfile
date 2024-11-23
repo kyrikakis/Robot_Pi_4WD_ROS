@@ -84,6 +84,16 @@ RUN pip3 install rpi-lgpio adafruit-circuitpython-ht16k33
 RUN echo "export ROS_DOMAIN_ID=20" >> ~/.bashrc
 RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
 
+RUN source /opt/ros/$ROS_DISTRO/setup.bash && \
+    mkdir /uros_ws && cd /uros_ws && \
+    git clone -b $ROS_DISTRO https://github.com/micro-ROS/micro_ros_setup.git src/micro_ros_setup && \
+    rosdep update && rosdep install --from-paths src --ignore-src -y && \
+    colcon build && \
+    source install/local_setup.bash && \
+    ros2 run micro_ros_setup create_agent_ws.sh && \
+    ros2 run micro_ros_setup build_agent.sh && \
+    source install/local_setup.sh
+
 RUN mkdir -p /workspaces/Robot_Pi_4WD_ROS/
 COPY . /workspaces/Robot_Pi_4WD_ROS/
 
