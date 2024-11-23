@@ -22,12 +22,16 @@ def generate_launch_description():
         'imu_filter_param.yaml'
     ) 
 
-    imu_filter_node = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([os.path.join(
-            get_package_share_directory('imu_complementary_filter'), 'launch'),
-            '/complementary_filter.launch.py'])
-    )
+    imu_filter_config = os.path.join(get_package_share_directory('imu_complementary_filter'), 'config', 'filter_config.yaml')
 
+    imu_filter_node = Node(
+        package='imu_complementary_filter',
+        executable='complementary_filter_node',
+        name='complementary_filter_gain_node',
+        output='screen',
+        remappings=[('/imu/data_raw','/imu')],
+        parameters=[imu_filter_config],
+    )
     
     description_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([os.path.join(
