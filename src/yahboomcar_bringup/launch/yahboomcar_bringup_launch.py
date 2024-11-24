@@ -16,12 +16,6 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 print("---------------------robot_type = x3---------------------")
 def generate_launch_description():
-    imu_filter_config = os.path.join(              
-        get_package_share_directory('yahboomcar_bringup'),
-        'params',
-        'imu_filter_param.yaml'
-    ) 
-
     imu_filter_config = os.path.join(get_package_share_directory('imu_complementary_filter'), 'config', 'filter_config.yaml')
 
     imu_filter_node = Node(
