@@ -93,6 +93,14 @@ RUN source /opt/ros/$ROS_DISTRO/setup.bash && \
     ros2 run micro_ros_setup create_agent_ws.sh && \
     ros2 run micro_ros_setup build_agent.sh && \
     source install/local_setup.sh
+    
+RUN apt-get update && apt-get install -y \
+    vim less
+
+RUN cd / && git clone https://github.com/fm4dd/pi-bno055.git && cd pi-bno055 && make && \
+    sed -i '/BINPATH=\/home\/pi\/pi-bno055/c\BINPATH=\/pi-bno055' loadcal_bno055.sh && \
+    sed -i '/CALFILE=\/home\/pi\/pi-bno055-conf\/cal.cfg/c\CALFILE=\/workspaces\/Robot_Pi_4WD_ROS\/config/bno055.cal' loadcal_bno055.sh && \
+    sed -i 's/ndof/ndof_fmc/g' loadcal_bno055.sh
 
 RUN mkdir -p /workspaces/Robot_Pi_4WD_ROS/
 COPY . /workspaces/Robot_Pi_4WD_ROS/
@@ -104,15 +112,7 @@ RUN source /opt/ros/humble/setup.bash && \
 
 RUN apt-get update && apt-get install -y \
     supervisor
-COPY ./supervisor/* /etc/supervisor/conf.d/
-
-RUN apt-get update && apt-get install -y \
-    vim less
-
-RUN cd / && git clone https://github.com/fm4dd/pi-bno055.git && cd pi-bno055 && make && \
-    sed -i '/BINPATH=\/home\/pi\/pi-bno055/c\BINPATH=\/pi-bno055' loadcal_bno055.sh && \
-    sed -i '/CALFILE=\/home\/pi\/pi-bno055-conf\/cal.cfg/c\CALFILE=\/workspaces\/Robot_Pi_4WD_ROS\/config/bno055.cal' loadcal_bno055.sh && \
-    sed -i 's/ndof/ndof_fmc/g' loadcal_bno055.sh
+COPY ./supervisor/* /etc/supervisor/conf.d
 
 COPY ros_entrypoint.sh /ros_entrypoint.sh
 RUN chmod +x  /ros_entrypoint.sh
