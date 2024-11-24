@@ -1,11 +1,4 @@
 #!/bin/bash
-function cleanup()
-{
-  echo 'stop camera_ros'
-}
-
-# trap cleanup INT
-
 export ROS_DOMAIN_ID=20  && \
 source /opt/ros/humble/setup.bash && \
 source /colcon_ws/install/setup.bash && \
