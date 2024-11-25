@@ -46,7 +46,14 @@ def generate_launch_description():
      package='tf2_ros',
      executable='static_transform_publisher',
      name='base_link_to_base_imu',
-     arguments=['-0.002999', '-0.0030001','0.031701','0','0','0','base_link','imu_frame']
+     arguments=['0', '0','0','0','0','0','base_link','imu_frame']
+    )
+
+    base_link_to_imu2_tf_node = Node(
+     package='tf2_ros',
+     executable='static_transform_publisher',
+     name='base_link_to_base_imu2',
+     arguments=['0', '0','0','0','0','0','base_link','imu2_frame']
     ) 
 
     laser_frame_to_base_link_node = Node(
@@ -60,6 +67,7 @@ def generate_launch_description():
         imu_filter_node,
         robot_localization_node,
         base_link_to_imu_tf_node,
+        base_link_to_imu2_tf_node,
         laser_frame_to_base_link_node,
         description_launch
     ])
