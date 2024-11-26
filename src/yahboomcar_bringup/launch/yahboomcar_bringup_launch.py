@@ -16,16 +16,16 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 print("---------------------robot_type = x3---------------------")
 def generate_launch_description():
-    imu_filter_config = os.path.join(get_package_share_directory('imu_complementary_filter'), 'config', 'filter_config.yaml')
+    # imu_filter_config = os.path.join(get_package_share_directory('imu_complementary_filter'), 'config', 'filter_config.yaml')
 
-    imu_filter_node = Node(
-        package='imu_complementary_filter',
-        executable='complementary_filter_node',
-        name='complementary_filter_gain_node',
-        output='screen',
-        remappings=[('/imu/data_raw','/imu')],
-        parameters=[imu_filter_config],
-    )
+    # imu_filter_node = Node(
+    #     package='imu_complementary_filter',
+    #     executable='complementary_filter_node',
+    #     name='complementary_filter_gain_node',
+    #     output='screen',
+    #     remappings=[('/imu/data_raw','/imu')],
+    #     parameters=[imu_filter_config],
+    # )
     
     description_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([os.path.join(
@@ -53,7 +53,7 @@ def generate_launch_description():
      package='tf2_ros',
      executable='static_transform_publisher',
      name='base_link_to_base_imu2',
-     arguments=['0', '0','0','0','0','0','base_link','imu2_frame']
+     arguments=['0', '0','0','2.1','0','0','base_link','imu2_frame']
     ) 
 
     laser_frame_to_base_link_node = Node(
@@ -64,7 +64,7 @@ def generate_launch_description():
     )
     
     return LaunchDescription([
-        imu_filter_node,
+        # imu_filter_node,
         robot_localization_node,
         base_link_to_imu_tf_node,
         base_link_to_imu2_tf_node,

@@ -41,10 +41,10 @@ bno055:
     mag_factor: 16000000.0
     gyr_factor: 900.0
     grav_factor: 100.0
-    set_offsets: false # set to true to use offsets below
-    offset_acc: [0xFFEC, 0x00A5, 0xFFE8]
-    offset_mag: [0xFFB4, 0xFE9E, 0x027D]
-    offset_gyr: [0x0002, 0xFFFF, 0xFFFF]
+    set_offsets: true # set to true to use offsets below
+    offset_acc: [0x0012, 0x0030, 0xFFDB]
+    offset_mag: [0xFF42, 0x0176, 0xFD31]
+    offset_gyr: [0x0002, 0x0000, 0xFFFF]
     ## Sensor standard deviation [x,y,z]
     ## Used to calculate covariance matrices
     ## defaults are used if parameters below are not provided
