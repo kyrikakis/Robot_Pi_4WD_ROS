@@ -12,7 +12,10 @@ services:
       - type: bind
         source: /run/udev/
         target: /run/udev/
-        read_only: true
+      - type: mount
+        source: /boot/firmware
+        target: /boot/firmware
+        read_only: false
     cap_add: 
       - SYS_ADMIN
     privileged: true
