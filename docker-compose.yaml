@@ -12,7 +12,7 @@ services:
       - type: bind
         source: /run/udev/
         target: /run/udev/
-      - type: mount
+      - type: bind
         source: /boot/firmware
         target: /boot/firmware
         read_only: false
