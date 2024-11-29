@@ -8,11 +8,20 @@ Robot_Pi_4WD_ROS
 4. Connect to your pi5 through ssh from you desktop if you skipped adding your ssh pub keys in step 1. write your `~/.ssh/id_rsa.pub` in a usb stick and copy the contents in the pi ~/.ssh/authorized-keys
 5. `sudo update && sudo full-upgrade && sudo install -y vim less`
 6. Install docker: https://docs.docker.com/engine/install/debian/#install-using-the-repository and https://docs.docker.com/engine/install/linux-postinstall/
-7. Run `sudo raspi-config` and enable: i2c, vnc, ssh, pcie3
-8. Add an alias to the microros serial port according to https://forums.raspberrypi.com/viewtopic.php?t=90265:
+7. Add these in `/boot/firmware/config.txt`:
+```
+camera_auto_detect=0
+[all]
+dtparam=pciex1_gen=3
+power_force_3v3_pwm=1
+dtoverlay=arducam-pivariety,cam0
+dtoverlay=imx296,cam1
+```
+8. Run `sudo raspi-config` and enable: i2c, vnc, ssh, pcie3
+9. Add an alias to the microros serial port according to https://forums.raspberrypi.com/viewtopic.php?t=90265:
     `echo 'ACTION=="add",ENV{ID_SERIAL}=="Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001",ENV{ID_SERIAL_SHORT}=="0001",SYMLINK+="ttyUSB_ROS\"' >> /etc/udev/rules.d/99-usbserial.rules`
-9. Download the source code: `git clone https://github.com/kyrikakis/Robot_Pi_4WD_ROS.git`
-10. Run the image: `cd Robot_Pi_4WD_ROS && docker compose up`
+10. Download the source code: `git clone https://github.com/kyrikakis/Robot_Pi_4WD_ROS.git`
+11. Run the image: `cd Robot_Pi_4WD_ROS && docker compose up`
 
 ## Usefull commands
 ```
