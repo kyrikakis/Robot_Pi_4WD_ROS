@@ -6,7 +6,7 @@ Robot_Pi_4WD_ROS
 2. Edit the imager settings and add your ~/.ssh/id_rsa.pub
 3. Connect to your raspberry pi5 into the a monitor through hdmi0 a keyboard and mouse
 4. Connect to your pi5 through ssh from you desktop if you skipped adding your ssh pub keys in step 1. write your `~/.ssh/id_rsa.pub` in a usb stick and copy the contents in the pi ~/.ssh/authorized-keys
-5. `sudo update && sudo full-upgrade && suso install -y vim less`
+5. `sudo update && sudo full-upgrade && sudo install -y vim less`
 6. Install docker: https://docs.docker.com/engine/install/debian/#install-using-the-repository and https://docs.docker.com/engine/install/linux-postinstall/
 7. Run `sudo raspi-config` and enable: i2c, vnc, ssh, pcie3
 8. Add an alias to the microros serial port according to https://forums.raspberrypi.com/viewtopic.php?t=90265:
