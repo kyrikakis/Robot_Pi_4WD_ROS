@@ -3,13 +3,6 @@ Robot_Pi_4WD_ROS
 
 ## Usefull commands
 ```
-/pi-bno055/getbno055 -m ndof
-watch -n 0.5 /pi-bno055/getbno055 -t inf
-
-as soon as the sensor is fully calibrated...
-
-/pi-bno055/getbno055 -w bno055.cal
-/pi-bno055/loadcal_bno055.sh silent
 ros2 run bno055 bno055 --ros-args --params-file config/bno055_params.yaml
 
 ros2 launch sllidar_ros2 sllidar_a1_launch.py
