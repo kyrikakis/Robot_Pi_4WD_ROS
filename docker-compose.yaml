@@ -16,13 +16,6 @@ services:
         source: /boot/firmware
         target: /boot/firmware
         read_only: false
-      - type: bind
-        source: /tem/.X11-unix
-        target: /tmp/.X11-unix
-        read_only: true
-    environment:
-      DISPLAY: ${DISPLAY}
-      QT_X11_NO_MITSHM: 1
     cap_add: 
       - SYS_ADMIN
     privileged: true
