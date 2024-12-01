@@ -297,6 +297,19 @@
     </collision>
   </link>
   <joint
+    name="tof_Joint"
+    type="fixed">
+    <origin
+      xyz="0.10 0.05 0.06"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="depth_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <joint
     name="imu_Joint"
     type="fixed">
     <origin

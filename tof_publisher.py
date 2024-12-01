@@ -21,13 +21,13 @@ class TOFPublisher(Node):
         self.pointsize_ = self.width_ * self.height_
         self.frame_id = "sensor_frame"
         self.depth_msg_ = Float32MultiArray()
-        self.timer_ = self.create_timer(1/5, self.update)
+        self.timer_ = self.create_timer(1/10, self.update)
         self.publisher_ = self.create_publisher(PointCloud2, "point_cloud", 10)
         self.publisher_depth_ = self.create_publisher(Float32MultiArray, "depth_frame", 10)
         self.fx = self.width_ / (2 * tan(0.5 * pi * 64.3 / 180))
         self.fy = self.height_ / (2 * tan(0.5 * pi * 50.4 / 180))
         self.header = Header()
-        self.header.frame_id = "map"
+        self.header.frame_id = "depth_frame"
         self.points = None
         self.running_ = True
         self.process_point_cloud_thr = Thread(target=self.__generateSensorPointCloud, daemon=True)
@@ -61,7 +61,7 @@ class TOFPublisher(Node):
                 y = (v - self.height_ / 2) * z / self.fy
 
                 # Combined point cloud
-                points = np.stack((x, y, z), axis=-1)
+                points = np.stack((z, -x, -y), axis=-1) 
                 self.points = points[~np.isnan(points).any(axis=-1)]  # Filter invalid points
 
                 self.tof_.releaseFrame(frame)
@@ -103,7 +103,7 @@ def main(args = None):
     info = tof.getCameraInfo()
     if info.device_type == TOFDeviceType.HQVGA:
         tof.setControl(TOFControl.RANGE, 4)
-    tof.setControl(TOFControl.FRAME_RATE, 5)
+    tof.setControl(TOFControl.FRAME_RATE, 10)
     print("pointcloud publisher start")
 
     tof_publisher = TOFPublisher(tof, info)

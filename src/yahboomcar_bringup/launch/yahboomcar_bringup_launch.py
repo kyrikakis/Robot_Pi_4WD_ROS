@@ -53,7 +53,7 @@ def generate_launch_description():
      package='tf2_ros',
      executable='static_transform_publisher',
      name='base_link_to_base_imu2',
-     arguments=['0', '0','0','2.1','0','0','base_link','imu2_frame']
+     arguments=['0', '0','0','0.0','0','0','base_link','imu2_frame']
     ) 
 
     laser_frame_to_base_link_node = Node(
@@ -62,6 +62,13 @@ def generate_launch_description():
      name='base_link_to_base_laser',
      arguments=['-0.0046412', '0' , '0.1','0','0','0','base_link','laser_frame']
     )
+
+    depth_frame_to_base_link_node = Node(
+     package='tf2_ros',
+     executable='static_transform_publisher',
+     name='base_link_to_depth_frame',
+     arguments=['0.10', '0.05', '0.06','0','0','0','base_link','depth_frame']
+    )
     
     return LaunchDescription([
         imu_filter_node,
@@ -69,5 +76,6 @@ def generate_launch_description():
         base_link_to_imu_tf_node,
         base_link_to_imu2_tf_node,
         laser_frame_to_base_link_node,
+        depth_frame_to_base_link_node,
         description_launch
     ])

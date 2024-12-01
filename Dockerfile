@@ -85,7 +85,7 @@ RUN echo "Add Arducam_ppa repositories." && \
     curl -s --compressed "https://arducam.github.io/arducam_ppa/KEY.gpg" | sudo apt-key add - && \
     curl -s --compressed -o /etc/apt/sources.list.d/arducam_list_files.list "https://arducam.github.io/arducam_ppa/arducam_list_files.list" && \
     apt update && apt-get install -y arducam-config-parser-dev arducam-evk-sdk-dev arducam-tof-sdk-dev && \
-    python -m pip install ArducamDepthCamera
+    python3 -m pip install ArducamDepthCamera
 
 RUN echo "export ROS_DOMAIN_ID=20" >> ~/.bashrc
 RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
