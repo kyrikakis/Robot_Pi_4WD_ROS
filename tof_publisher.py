@@ -21,7 +21,7 @@ class TOFPublisher(Node):
         self.pointsize_ = self.width_ * self.height_
         self.frame_id = "sensor_frame"
         self.depth_msg_ = Float32MultiArray()
-        self.timer_ = self.create_timer(1/10, self.update)
+        self.timer_ = self.create_timer(1/15, self.update)
         self.publisher_ = self.create_publisher(PointCloud2, "point_cloud", 10)
         self.publisher_depth_ = self.create_publisher(Float32MultiArray, "depth_frame", 10)
         self.fx = self.width_ / (2 * tan(0.5 * pi * 64.3 / 180))
@@ -102,8 +102,8 @@ def main(args = None):
     
     info = tof.getCameraInfo()
     if info.device_type == TOFDeviceType.HQVGA:
-        tof.setControl(TOFControl.RANGE, 4)
-    tof.setControl(TOFControl.FRAME_RATE, 10)
+        tof.setControl(TOFControl.RANGE, 2)
+    tof.setControl(TOFControl.FRAME_RATE, 15)
     print("pointcloud publisher start")
 
     tof_publisher = TOFPublisher(tof, info)
