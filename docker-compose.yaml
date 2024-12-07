@@ -3,6 +3,8 @@ services:
     container_name: robot
     build: .
     network_mode: "host"
+    ipc: host
+    pid: host
     devices:
       - /dev:/dev
     volumes:
