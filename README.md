@@ -22,6 +22,8 @@ dtoverlay=imx296,cam1
     `echo 'ACTION=="add",ENV{ID_SERIAL}=="Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001",ENV{ID_SERIAL_SHORT}=="0001",SYMLINK+="ttyUSB_ROS\"' >> /etc/udev/rules.d/99-usbserial.rules`
 10. Download the source code: `git clone https://github.com/kyrikakis/Robot_Pi_4WD_ROS.git`
 11. Run the image: `cd Robot_Pi_4WD_ROS && docker compose up`
+12. Install ros2 jazzy to pi5 https://github.com/Ar-Ray-code/rpi-bullseye-ros2. Source ros -> 
+    `echo "export ROS_DOMAIN_ID=20" >> ~/.bashrc && echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc`
 
 ## Usefull commands
 ```
