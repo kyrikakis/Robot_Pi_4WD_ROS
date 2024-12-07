@@ -77,7 +77,8 @@ RUN apt-get update && apt-get install -y \
     ros-humble-joint-state-publisher \
     ros-humble-slam-toolbox \
     ros-humble-navigation2 \
-    ros-humble-nav2-bringup
+    ros-humble-nav2-bringup \
+    ros-humble-spatio-temporal-voxel-layer
 
 RUN pip3 install rpi-lgpio adafruit-circuitpython-ht16k33
 

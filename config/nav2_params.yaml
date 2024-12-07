@@ -139,7 +139,15 @@ controller_server:
       yaw_goal_tolerance: 0.25
     # DWB parameters
     FollowPath:
-      plugin: "dwb_core::DWBLocalPlanner"
+      plugin: "nav2_rotation_shim_controller::RotationShimController"
+      primary_controller: "dwb_core::DWBLocalPlanner"
+      angular_dist_threshold: 0.785
+      forward_sampling_distance: 0.5
+      rotate_to_heading_angular_vel: 1.8
+      max_angular_accel: 3.2
+      simulate_ahead_time: 1.0
+      rotate_to_goal_heading: False
+      #DWB settings
       debug_trajectory_details: True
       min_vel_x: 0.0
       min_vel_y: 0.0
@@ -190,8 +198,66 @@ global_costmap:
       robot_base_frame: base_link
       use_sim_time: True
       robot_radius: 0.12 # radius set and used, so no footprint points
-      resolution: 0.02
+      resolution: 0.01
       plugins: ["static_layer", "obstacle_layer", "voxel_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        footprint_clearing_enabled: true
+        max_obstacle_height: 2.0
+        combination_method: 1
+        scan:
+          topic: /scan
+          obstacle_max_range: 2.5
+          obstacle_min_range: 0.0
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.0
+          max_obstacle_height: 2.0
+          min_obstacle_height: 0.0
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          inf_is_valid: false
+      voxel_layer:
+        plugin: "nav2_costmap_2d::VoxelLayer"
+        enabled: True
+        footprint_clearing_enabled: true
+        publish_voxel_map: True
+        origin_z: 0.0
+        z_resolution: 0.01
+        z_voxels: 16
+        max_obstacle_height: 0.40
+        min_obstacle_height: 0.03
+        unknown_threshold: 15
+        mark_threshold: 10
+        observation_sources: pointcloud
+        combination_method: 1
+        pointcloud:  # no frame set, uses frame from message
+          topic: /point_cloud
+          max_obstacle_height: 0.40
+          min_obstacle_height: 0.03
+          obstacle_max_range: 1.0
+          obstacle_min_range: 0.3
+          raytrace_max_range: 6.0
+          raytrace_min_range: 0.0
+          clearing: True
+          marking: True
+          data_type: "PointCloud2"
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: True
+        enabled: true
+        subscribe_to_updates: true
+        transform_tolerance: 0.1
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: true
+        inflation_radius: 0.20
+        cost_scaling_factor: 6.7
+        inflate_unknown: false
+        inflate_around_unknown: true
+      always_send_full_costmap: True
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
@@ -216,10 +282,12 @@ global_costmap:
         enabled: true
         voxel_decay: 1.0
         decay_model: 0
-        voxel_size: 0.02
+        voxel_size: 0.01
         track_unknown_space: true
+        observation_persistence: 0.0
+        max_obstacle_height:   0.5
         unknown_threshold: 15
-        mark_threshold: 3
+        mark_threshold: 8
         update_footprint_enabled: true
         combination_method: 1
         origin_z: 0.0
@@ -227,13 +295,13 @@ global_costmap:
         transform_tolerance: 0.2
         mapping_mode: false
         map_save_duration: 60.0
-        observation_sources: pointcloud
-        pointcloud:
+        observation_sources: pointcloud_mark pointcloud_Clear
+        pointcloud_mark:
           data_type: PointCloud2
           topic: /point_cloud
           marking: true
-          clearing: true
-          obstacle_range: 3.0
+          clearing: false
+          obstacle_range: 1.0
           min_obstacle_height: 0.04
           max_obstacle_height: 0.5
           expected_update_rate: 0.0
@@ -243,73 +311,27 @@ global_costmap:
           voxel_min_points: 0
           clear_after_reading: true
           max_z: 7.0
-          min_z: 0.1
+          min_z: 0.04
           vertical_fov_angle: 0.8745
           horizontal_fov_angle: 1.048
-          decay_acceleration: 15.0
-          model_type: 0
-      static_layer:
-        plugin: "nav2_costmap_2d::StaticLayer"
-        map_subscribe_transient_local: True
-        enabled: true
-        subscribe_to_updates: true
-        transform_tolerance: 0.1
-      inflation_layer:
-        plugin: "nav2_costmap_2d::InflationLayer"
-        enabled: true
-        inflation_radius: 0.20
-        cost_scaling_factor: 6.7
-        inflate_unknown: false
-        inflate_around_unknown: true
-      always_send_full_costmap: True
-      obstacle_layer:
-        plugin: "nav2_costmap_2d::ObstacleLayer"
-        enabled: True
-        observation_sources: scan
-        footprint_clearing_enabled: true
-        max_obstacle_height: 2.0
-        combination_method: 1
-        scan:
-          topic: /scan
-          obstacle_max_range: 1.0
-          obstacle_min_range: 0.0
-          raytrace_max_range: 3.0
-          raytrace_min_range: 0.0
-          max_obstacle_height: 2.0
-          min_obstacle_height: 0.0
-          clearing: True
-          marking: True
-          data_type: "LaserScan"
-          inf_is_valid: false
-      voxel_layer:
-        plugin: "nav2_costmap_2d::VoxelLayer"
-        enabled: True
-        footprint_clearing_enabled: true
-        publish_voxel_map: True
-        origin_z: 0.0
-        z_resolution: 0.02
-        z_voxels: 16
-        max_obstacle_height: 0.40
-        min_obstacle_height: 0.03
-        unknown_threshold: 15
-        mark_threshold: 10
-        observation_sources: pointcloud
-        combination_method: 1
-        pointcloud:  # no frame set, uses frame from message
+          decay_acceleration: 1.0
+        pointcloud_clear:
+          data_type: PointCloud2
           topic: /point_cloud
-          max_obstacle_height: 0.40
-          min_obstacle_height: 0.03
-          obstacle_max_range: 1.0
-          obstacle_min_range: 0.3
-          raytrace_max_range: 6.0
-          raytrace_min_range: 0.0
-          clearing: True
-          marking: True
-          data_type: "PointCloud2" 
+          marking: false
+          clearing: true
+          obstacle_range: 1.5
+          expected_update_rate: 0.0
+          observation_persistence: 0.0
+          inf_is_valid: false
+          vertical_fov_angle: 0.8745
+          horizontal_fov_angle: 1.048
+          decay_acceleration: 1.0
+          model_type: 0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: true
-        inflation_radius: 0.15
+        inflation_radius: 0.22
         cost_scaling_factor: 3.7
         inflate_unknown: false
         inflate_around_unknown: true
@@ -327,7 +349,7 @@ local_costmap:
       rolling_window: true
       width: 3
       height: 3
-      resolution: 0.02
+      resolution: 0.01
       robot_radius: 0.12 # radius set and used, so no footprint points
       plugins: ["obstacle_layer", "voxel_layer", "inflation_layer"]
       obstacle_layer:
@@ -354,10 +376,12 @@ local_costmap:
         enabled: true
         voxel_decay: 1.0
         decay_model: 0
-        voxel_size: 0.02
+        voxel_size: 0.01
         track_unknown_space: true
+        observation_persistence: 0.0
+        max_obstacle_height:   0.5
         unknown_threshold: 15
-        mark_threshold: 3
+        mark_threshold: 8
         update_footprint_enabled: true
         combination_method: 1
         origin_z: 0.0
@@ -365,14 +389,14 @@ local_costmap:
         transform_tolerance: 0.2
         mapping_mode: false
         map_save_duration: 60.0
-        observation_sources: pointcloud
-        pointcloud:
+        observation_sources: pointcloud_mark pointcloud_Clear
+        pointcloud_mark:
           data_type: PointCloud2
           topic: /point_cloud
           marking: true
-          clearing: true
-          obstacle_range: 3.0
-          min_obstacle_height: 0.03
+          clearing: false
+          obstacle_range: 1.0
+          min_obstacle_height: 0.04
           max_obstacle_height: 0.5
           expected_update_rate: 0.0
           observation_persistence: 0.0
@@ -381,15 +405,27 @@ local_costmap:
           voxel_min_points: 0
           clear_after_reading: true
           max_z: 7.0
-          min_z: 0.1
+          min_z: 0.04
           vertical_fov_angle: 0.8745
           horizontal_fov_angle: 1.048
-          decay_acceleration: 15.0
+          decay_acceleration: 1.0
+        pointcloud_clear:
+          data_type: PointCloud2
+          topic: /point_cloud
+          marking: false
+          clearing: true
+          obstacle_range: 1.5
+          expected_update_rate: 0.0
+          observation_persistence: 0.0
+          inf_is_valid: false
+          vertical_fov_angle: 0.8745
+          horizontal_fov_angle: 1.048
+          decay_acceleration: 1.0
           model_type: 0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: true
-        inflation_radius: 0.12
+        inflation_radius: 0.20
         cost_scaling_factor: 3.7
         inflate_unknown: false
         inflate_around_unknown: true
