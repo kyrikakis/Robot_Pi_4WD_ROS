@@ -1,8 +1,8 @@
-FROM ros:humble-perception-jammy
+FROM ros:jazzy-perception-noble
 
 RUN apt update && apt upgrade -y
 
-ENV ROS_DISTRO humble
+ENV ROS_DISTRO jazzy
 ENV LANG en_US.UTF-8
 
 SHELL ["/bin/bash", "-c"] 
@@ -12,22 +12,22 @@ RUN mkdir -p /colcon_ws/src
 RUN apt update && apt install i2c-tools -y
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ros-humble-hardware-interface \
+    ros-$ROS_DISTRO-hardware-interface \
     libi2c-dev \
     i2c-tools \
-    ros-humble-hardware-interface \
-    ros-humble-controller-manager \
-    ros-humble-velocity-controllers \
-    ros-humble-joint-state-broadcaster \
-    ros-humble-robot-state-publisher \
-    ros-humble-xacro \
-    ros-humble-tf2 \
-    ros-humble-tf2-msgs \
-    ros-humble-teleop-twist-keyboard \
+    ros-$ROS_DISTRO-hardware-interface \
+    ros-$ROS_DISTRO-controller-manager \
+    ros-$ROS_DISTRO-velocity-controllers \
+    ros-$ROS_DISTRO-joint-state-broadcaster \
+    ros-$ROS_DISTRO-robot-state-publisher \
+    ros-$ROS_DISTRO-xacro \
+    ros-$ROS_DISTRO-tf2 \
+    ros-$ROS_DISTRO-tf2-msgs \
+    ros-$ROS_DISTRO-teleop-twist-keyboard \
     gdbserver \
     gdb \
-    ros-humble-bno055 \
-    ros-humble-robot-localization
+    ros-$ROS_DISTRO-bno055 \
+    ros-$ROS_DISTRO-robot-localization
 
 # # Install libcamera -Start
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -38,7 +38,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-yaml python3-ply python3-pip libyaml-dev \
     libglib2.0-dev libgstreamer-plugins-base1.0-dev
     
-RUN pip3 install --user meson
+RUN pip3 install --break-system-packages --user meson
 ENV PATH="$PATH:/root/.local/bin/"
 
 RUN cd / && git clone https://github.com/raspberrypi/libcamera.git --branch v0.3.1+rpt20240906 && \
@@ -69,27 +69,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN cd /colcon_ws/src && \
     git clone https://github.com/christianrauch/camera_ros.git && \
-    cd /colcon_ws && source /opt/ros/humble/setup.bash && colcon build --symlink-install && \
+    cd /colcon_ws && source '/opt/ros/jazzy/setup.bash' && colcon build --symlink-install && \
     echo "source /colcon_ws/install/setup.bash" >> ~/.bashrc
 
 RUN apt-get update && apt-get install -y \
-    ros-humble-imu-tools \
-    ros-humble-joint-state-publisher \
-    ros-humble-slam-toolbox \
-    ros-humble-navigation2 \
-    ros-humble-nav2-bringup \
-    ros-humble-spatio-temporal-voxel-layer
+    ros-$ROS_DISTRO-imu-tools \
+    ros-$ROS_DISTRO-joint-state-publisher \
+    ros-$ROS_DISTRO-slam-toolbox \
+    ros-$ROS_DISTRO-navigation2 \
+    ros-$ROS_DISTRO-nav2-bringup \
+    ros-$ROS_DISTRO-spatio-temporal-voxel-layer
 
-RUN pip3 install rpi-lgpio adafruit-circuitpython-ht16k33
+RUN pip3 install --break-system-packages rpi-lgpio adafruit-circuitpython-ht16k33
 
 RUN echo "Add Arducam_ppa repositories." && \
     curl -s --compressed "https://arducam.github.io/arducam_ppa/KEY.gpg" | sudo apt-key add - && \
     curl -s --compressed -o /etc/apt/sources.list.d/arducam_list_files.list "https://arducam.github.io/arducam_ppa/arducam_list_files.list" && \
     apt update && apt-get install -y arducam-config-parser-dev arducam-evk-sdk-dev arducam-tof-sdk-dev && \
-    python3 -m pip install ArducamDepthCamera
+    pip3 install --break-system-packages ArducamDepthCamera
 
 RUN echo "export ROS_DOMAIN_ID=20" >> ~/.bashrc
-RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+RUN echo "source /opt/ros/$ROS_DISTRO/setup.bash" >> ~/.bashrc
 
 RUN source /opt/ros/$ROS_DISTRO/setup.bash && \
     mkdir /uros_ws && cd /uros_ws && \
@@ -98,22 +98,22 @@ RUN source /opt/ros/$ROS_DISTRO/setup.bash && \
     colcon build && \
     source install/local_setup.bash && \
     ros2 run micro_ros_setup create_agent_ws.sh && \
-    ros2 run micro_ros_setup build_agent.sh && \
-    source install/local_setup.sh
+    ros2 run micro_ros_setup build_agent.sh
     
 RUN apt-get update && apt-get install -y \
     vim less
 
+RUN apt-get update && apt-get install -y \
+    supervisor
+
 RUN mkdir -p /workspaces/Robot_Pi_4WD_ROS/
 COPY . /workspaces/Robot_Pi_4WD_ROS/
 
-RUN source /opt/ros/humble/setup.bash && \
+RUN source /opt/ros/$ROS_DISTRO/setup.bash && \
     cd /workspaces/Robot_Pi_4WD_ROS && \
     colcon build --symlink-install && \
     echo "source /workspaces/Robot_Pi_4WD_ROS/install/setup.bash" >> ~/.bashrc
 
-RUN apt-get update && apt-get install -y \
-    supervisor
 COPY ./supervisor/* /etc/supervisor/conf.d
 
 COPY ros_entrypoint.sh /ros_entrypoint.sh
