@@ -24,6 +24,8 @@ dtoverlay=imx296,cam1
 11. Run the image: `cd Robot_Pi_4WD_ROS && docker compose up`
 12. Install ros2 jazzy to pi5 https://github.com/Ar-Ray-code/rpi-bullseye-ros2. Source ros -> 
     `echo "export ROS_DOMAIN_ID=20" >> ~/.bashrc && echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc`
+13. Install a bunch of ros stuff and:
+    `echo "source ~/colcon_ws/install/setup.bash" >> ~/.bashrc`
 
 ## Usefull commands
 ```
