@@ -54,3 +54,12 @@ ros2 launch slam_toolbox online_async_launch.py
 ros2 run rqt_graph rqt_graph
 ros2 run tf2_tools view_frames
 ```
+
+### Speech recognition
+
+Using speech recognition from https://github.com/Uberi/speech_recognition and snowboy https://github.com/kyrikakis/snowboy/tree/master
+
+to train a new model install sox and record three samples of the hotword 3 times record1/2/3 inside a models folder: 
+`rec -r 16000 -c 1 -b 16 -e signed-integer -t wav record1.wav`
+then run:
+`docker run -it -v $(pwd)/model:/snowboy-master/examples/Python/model meowxiik/snowboy-pmdl`

@@ -106,6 +106,12 @@ RUN apt-get update && apt-get install -y \
 RUN apt-get update && apt-get install -y \
     supervisor
 
+# Install speech-recognition
+RUN apt install -y portaudio19-dev swig libatlas-base-dev &&\
+    pip3 install --break-system-packages SpeechRecognition[audio] SpeechRecognition[whisper-local] && \
+    cd / && git clone https://github.com/kyrikakis/snowboy.git && \
+    cd /snowboy/swig/Python3 && make
+
 RUN mkdir -p /workspaces/Robot_Pi_4WD_ROS/
 COPY . /workspaces/Robot_Pi_4WD_ROS/
 
