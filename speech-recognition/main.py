@@ -8,7 +8,8 @@ with sr.Microphone() as source:
     while True:
         try:
             print("Say something!")
-            audio = r.listen(source, snowboy_configuration=["/snowboy/swig/Python3", ["/workspaces/Robot_Pi_4WD_ROS/speech-recognition/kiro.pmdl"]])
+            audio = r.listen(source, snowboy_configuration=["/snowboy/swig/Python3", ["/workspaces/Robot_Pi_4WD_ROS/speech-recognition/kiro.pmdl",
+                                                                                      "/workspaces/Robot_Pi_4WD_ROS/speech-recognition/robot.pmdl"]])
             print("hotword recognized!")
             # recognize speech using whisper
             start = time.time()
