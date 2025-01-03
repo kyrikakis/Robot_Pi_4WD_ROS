@@ -87,7 +87,7 @@ def main(args = None):
     tof = ArducamCamera()
 
     ret = 0
-    ret = tof.open(TOFConnect.CSI, 0)
+    ret = tof.open(TOFConnect.CSI, 8)
     if not ret:
         print("Failed to open camera. Error code:", ret)
         return

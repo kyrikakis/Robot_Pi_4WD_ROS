@@ -13,7 +13,7 @@ with sr.Microphone() as source:
             print("hotword recognized!")
             # recognize speech using whisper
             start = time.time()
-            print("Whisper thinks you said:" + r.recognize_whisper(audio, model="tiny.en", language="english"))
+            print("Whisper thinks you said:" + r.recognize_openai(audio))
             print("time elapsed in seconds:", time.time() - start)
         except sr.UnknownValueError:
             print("Whisper could not understand audio")
