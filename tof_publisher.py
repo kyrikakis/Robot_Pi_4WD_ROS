@@ -103,7 +103,7 @@ def main(args = None):
     info = tof.getCameraInfo()
     if info.device_type == TOFDeviceType.HQVGA:
         tof.setControl(TOFControl.RANGE, 2)
-    tof.setControl(TOFControl.FRAME_RATE, 15)
+    tof.setControl(TOFControl.FRAME_RATE, 12)
     print("pointcloud publisher start")
 
     tof_publisher = TOFPublisher(tof, info)

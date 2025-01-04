@@ -108,7 +108,7 @@ RUN apt-get update && apt-get install -y \
 
 # Install speech-recognition
 RUN apt install -y portaudio19-dev swig libatlas-base-dev &&\
-    pip3 install --break-system-packages SpeechRecognition[audio] SpeechRecognition[whisper-local] && \
+    pip3 install --break-system-packages SpeechRecognition[audio] SpeechRecognition[openai] && \
     cd / && git clone https://github.com/kyrikakis/snowboy.git && \
     cd /snowboy/swig/Python3 && make
 
