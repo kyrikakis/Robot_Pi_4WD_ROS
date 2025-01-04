@@ -18,6 +18,10 @@ services:
         source: /boot/firmware
         target: /boot/firmware
         read_only: false
+    environment:
+      PICOVOICE_API_KEY: "your key"
+      OPENAI_API_KEY: "your key"
+
     cap_add: 
       - SYS_ADMIN
     privileged: true

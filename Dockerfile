@@ -107,7 +107,8 @@ RUN apt-get update && apt-get install -y \
     supervisor
 
 # Install speech-recognition
-RUN pip3 install --break-system-packages pvporcupine openai
+RUN apt install -y portaudio19-dev && \
+    pip3 install --break-system-packages pvporcupine openai pyaudio
 
 RUN mkdir -p /workspaces/Robot_Pi_4WD_ROS/
 COPY . /workspaces/Robot_Pi_4WD_ROS/

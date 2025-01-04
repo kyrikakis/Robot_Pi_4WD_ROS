@@ -5,9 +5,10 @@ import openai
 import wave
 import tempfile
 import os
+import subprocess
 
 # Initialize Picovoice Porcupine
-porcupine = pvporcupine.create(access_key="RD3bZk2xNX6Ww5pZ1AcKp7AaemNhhkTSKNuPdFf14d8jStFRUGq3fg==", keywords=["porcupine"])
+porcupine = pvporcupine.create(access_key=os.environ['PICOVOICE_API_KEY'], keywords=["porcupine"])
 audio_stream = pyaudio.PyAudio().open(
     rate=porcupine.sample_rate,
     channels=1,
@@ -70,6 +71,15 @@ def transcribe_audio(audio_data):
     except openai.BadRequestError as e:
         print(e)
 
+def speak(text, voice="en-gb", speed=None, device="plughw:2,0", amplitude=50):
+    cmd = ["espeak"] + (["-v", voice] if voice else []) + (["-s", str(speed)] if speed else [])
+    try:
+        cmd += ["-a", str(amplitude), "-w", "temp.wav", text]
+        subprocess.run(cmd, check=True, capture_output=True)
+        subprocess.run(["aplay", "-D", device, "temp.wav"], check=True, capture_output=True)
+        os.remove("temp.wav")
+    except (subprocess.CalledProcessError, FileNotFoundError) as e: print(f"Error: {e}")
+
 try:
     print("Listening for wake word...")
     while True:
@@ -82,6 +92,7 @@ try:
             audio_data = record_until_silence()
             text = transcribe_audio(audio_data)
             print(f"Transcribed Text: {text}")
+            speak(text)
 
 except KeyboardInterrupt:
     print("Stopping...")
