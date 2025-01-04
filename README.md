@@ -57,9 +57,9 @@ ros2 run tf2_tools view_frames
 
 ### Speech recognition
 
-Using speech recognition from https://github.com/Uberi/speech_recognition and snowboy https://github.com/kyrikakis/snowboy/tree/master
+We are using picovoice.ai porcupine for hotword detection and openai whisper throught the cloud, 
+unfortunately was very expensive to do Speech to Text locally with whisper (120sec for base.en).
 
-to train a new model install sox and record three samples of the hotword 3 times record1/2/3 inside a models folder: 
-`rec -r 16000 -c 1 -b 16 -e signed-integer -t wav record1.wav`
-then run:
-`docker run -it -v $(pwd)/model:/snowboy-master/examples/Python/model meowxiik/snowboy-pmdl`
+The code is in /speech-recognition/listen.py file.
+
+You need to provide the picovoice and openai keys in the docker-compose file

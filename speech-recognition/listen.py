@@ -71,13 +71,12 @@ def transcribe_audio(audio_data):
     except openai.BadRequestError as e:
         print(e)
 
-def speak(text, voice="en-gb", speed=None, device="plughw:2,0", amplitude=50):
-    cmd = ["espeak"] + (["-v", voice] if voice else []) + (["-s", str(speed)] if speed else [])
+def speak(text, voice="mb-us2", speed=120, gap=1, device="plughw:2,0", amplitude=30):
+    cmd = ["espeak-ng"] + (["-v", voice] if voice else []) + (["-s", str(speed)] if speed else []) \
+        + (["-d", str(device)] if device else []) + (["-g", str(gap)] if gap else [])
     try:
-        cmd += ["-a", str(amplitude), "-w", "temp.wav", text]
+        cmd += ["-a", str(amplitude), text]
         subprocess.run(cmd, check=True, capture_output=True)
-        subprocess.run(["aplay", "-D", device, "temp.wav"], check=True, capture_output=True)
-        os.remove("temp.wav")
     except (subprocess.CalledProcessError, FileNotFoundError) as e: print(f"Error: {e}")
 
 try:

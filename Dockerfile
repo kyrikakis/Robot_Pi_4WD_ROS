@@ -107,7 +107,7 @@ RUN apt-get update && apt-get install -y \
     supervisor
 
 # Install speech-recognition
-RUN apt install -y portaudio19-dev && \
+RUN apt install -y portaudio19-dev espeak-ng mbrola-us2 && \
     pip3 install --break-system-packages pvporcupine openai pyaudio
 
 RUN mkdir -p /workspaces/Robot_Pi_4WD_ROS/
