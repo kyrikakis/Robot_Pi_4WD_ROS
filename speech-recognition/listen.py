@@ -8,7 +8,10 @@ import os
 import subprocess
 
 # Initialize Picovoice Porcupine
-porcupine = pvporcupine.create(access_key=os.environ['PICOVOICE_API_KEY'], keywords=["porcupine"])
+porcupine = pvporcupine.create(access_key=os.environ['PICOVOICE_API_KEY'], 
+            keyword_paths=["/workspaces/Robot_Pi_4WD_ROS/speech-recognition/smiley_en_raspberry-pi_v3_0_0.ppn",
+                           "/workspaces/Robot_Pi_4WD_ROS/speech-recognition/robot_en_raspberry-pi_v3_0_0.ppn"])
+                           
 audio_stream = pyaudio.PyAudio().open(
     rate=porcupine.sample_rate,
     channels=1,
