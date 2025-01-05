@@ -71,7 +71,7 @@ def transcribe_audio(audio_data):
     except openai.BadRequestError as e:
         print(e)
 
-def speak(text, voice="mb-us2", speed=120, gap=1, device="plughw:2,0", amplitude=30):
+def speak(text, voice="mb-us2", speed=120, gap=1, device="plughw:2,0", amplitude=40):
     cmd = ["espeak-ng"] + (["-v", voice] if voice else []) + (["-s", str(speed)] if speed else []) \
         + (["-d", str(device)] if device else []) + (["-g", str(gap)] if gap else [])
     try:
