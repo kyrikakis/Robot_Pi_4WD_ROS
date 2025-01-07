@@ -9,6 +9,8 @@ import subprocess
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
+from std_msgs.msg import UInt16
+from threading import Thread
 
 class SpeechListenerNode(Node):
     def __init__(self):
@@ -29,13 +31,29 @@ class SpeechListenerNode(Node):
 
         self.openai_client = openai.OpenAI()
 
-    def record_until_silence(self):
+        self.subscription = self.create_subscription(
+            UInt16,
+            'battery',
+            self.listener_callback,
+            10)
+        self.battery_level = 0
+
+        thread = Thread(target = self.run)
+        thread.start()
+        
+    def listener_callback(self, msg):
+        self.battery_level = msg.data
+
+    def record_until_silence(self, wait_seconds=10):
         """ Records audio until silence is detected or a max duration is reached. """
         frames = []
+        frames_count = 0
+        noise_detected = False
         silence_threshold = 20000  # Adjust based on your environment
         silence_duration = 0
-        silence_duration_sec = 2  # Count how long silence lasts
+        silence_duration_sec = 1  # Count how long silence lasts
         silence_duration_frames = int(silence_duration_sec * self.porcupine.sample_rate / self.porcupine.frame_length)
+        waiting_duration_frames = int(wait_seconds * self.porcupine.sample_rate / self.porcupine.frame_length)
 
         print("Recording")
 
@@ -43,6 +61,7 @@ class SpeechListenerNode(Node):
             pcm = self.audio_stream.read(self.porcupine.frame_length, exception_on_overflow=False)
             pcm_array = np.frombuffer(pcm, dtype=np.int16)
             frames.append(pcm)
+            frames_count +=1
 
             # Calculate the amplitude of the current frame to detect silence
             amplitude = np.max(np.abs(pcm_array))
@@ -51,11 +70,17 @@ class SpeechListenerNode(Node):
                 silence_duration += 1  # Increase silence counter if current frame is silent
             else:
                 silence_duration = 0  # Reset silence counter if there's noise
+                noise_detected = True
 
             # If silence lasts for a certain number of frames, stop recording
-            if silence_duration > silence_duration_frames:  # Adjust this to control how long silence is detected before stopping
-                print("Silence detected.")
-                break
+            if noise_detected:
+                if silence_duration > silence_duration_frames:  # Adjust this to control how long silence is detected before stopping
+                    print("Silence detected.")
+                    break
+            else:
+                if frames_count > waiting_duration_frames:
+                    print("Nothing detected, stopping.")
+                    break
 
         print("Recording complete.")
         return b''.join(frames)
@@ -81,7 +106,7 @@ class SpeechListenerNode(Node):
         except openai.BadRequestError as e:
             print(e)
 
-    def speak(self, text, voice="mb-us2", speed=120, gap=1, device="plughw:2,0", amplitude=40):
+    def speak(self, text, voice="mb-us2", speed=120, gap=0.9, device="plughw:2,0", amplitude=40):
         cmd = ["espeak-ng"] + (["-v", voice] if voice else []) + (["-s", str(speed)] if speed else []) \
             + (["-d", str(device)] if device else []) + (["-g", str(gap)] if gap else [])
         try:
@@ -101,13 +126,24 @@ class SpeechListenerNode(Node):
                     print("Wake word detected!")
                     audio_data = self.record_until_silence()
                     text = self.transcribe_audio(audio_data)
-                    print(f"Transcribed Text: {text}")
+                    print("Transcription:", text)
                     msg = String()
                     msg.data = text
                     self.publisher.publish(msg)
-                    self.speak(text)
-        except KeyboardInterrupt:
-            print("Stopping...")
+                    if(text.find("battery level") > 0):
+                        self.speak("My battery level is: " + str(self.battery_level) + " volts, I think I can make it")
+                    elif(text.find("Go to your room") > -1):
+                        self.speak("I don't have a room, we need a bigger place")
+                    elif(text.find("How are you") > -1):
+                        self.speak("I'm good! Thank you. What's your name?")
+                        audio_data = self.record_until_silence(10)
+                        text = self.transcribe_audio(audio_data)
+                        print("Transcription:", text)
+                        if(text.find("My name is") > -1):
+                            name =  text[11:]
+                            self.speak("Nice to meet you: " + name)
+                    else:
+                        self.speak(text)
         finally:
             self.audio_stream.stop_stream()
             self.audio_stream.close()
@@ -116,7 +152,6 @@ class SpeechListenerNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     speech_listener = SpeechListenerNode()
-    speech_listener.run()
     rclpy.spin(speech_listener)
     speech_listener.destroy_node()
     rclpy.shutdown()
