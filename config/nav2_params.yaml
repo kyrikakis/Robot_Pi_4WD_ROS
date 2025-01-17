@@ -171,7 +171,7 @@ global_costmap:
         enabled: true
         inflation_radius: 0.20
         cost_scaling_factor: 6.7
-        inflate_unknown: false
+        inflate_unknown: true
         inflate_around_unknown: true
       always_send_full_costmap: True
       obstacle_layer:
@@ -249,7 +249,7 @@ global_costmap:
         enabled: true
         inflation_radius: 0.15
         cost_scaling_factor: 3.7
-        inflate_unknown: false
+        inflate_unknown: true
         inflate_around_unknown: true
       always_send_full_costmap: True
 
@@ -342,7 +342,7 @@ local_costmap:
         enabled: true
         inflation_radius: 0.15
         cost_scaling_factor: 3.7
-        inflate_unknown: false
+        inflate_unknown: true
         inflate_around_unknown: true
       always_send_full_costmap: True
 
@@ -369,7 +369,7 @@ planner_server:
       plugin: "nav2_navfn_planner::NavfnPlanner"
       tolerance: 0.5
       use_astar: false
-      allow_unknown: true
+      allow_unknown: false
 
 smoother_server:
   ros__parameters:
