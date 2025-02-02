@@ -111,7 +111,10 @@ RUN apt install -y portaudio19-dev espeak-ng mbrola-us2 && \
     pip3 install --break-system-packages pvporcupine openai pyaudio
 
 # Install foxglove bridge
-RUN apt-get update && apt install -y ros-$ROS_DISTRO-foxglove-bridge
+RUN apt-get update && apt install -y \
+    ros-$ROS_DISTRO-foxglove-bridge \
+    ros-$ROS_DISTRO-rmw-cyclonedds-cpp
+ENV RMW_IMPLEMENTATION rmw_cyclonedds_cpp
 
 RUN mkdir -p /workspaces/Robot_Pi_4WD_ROS/
 COPY . /workspaces/Robot_Pi_4WD_ROS/
