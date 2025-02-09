@@ -26,6 +26,14 @@ dtoverlay=imx296,cam1
     `echo "export ROS_DOMAIN_ID=20" >> ~/.bashrc && echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc`
 13. Install a bunch of ros stuff and:
     `echo "source ~/colcon_ws/install/setup.bash" >> ~/.bashrc`
+14. Optional: Install realtek drivers
+    ```
+    apt-get install raspberrypi-kernel-headers
+    git clone -b v5.6.4.2 https://github.com/aircrack-ng/rtl8812au.git
+    sudo git checkout 63cf0b4
+    make
+    make install
+    ```
 
 ## Usefull commands
 ```
