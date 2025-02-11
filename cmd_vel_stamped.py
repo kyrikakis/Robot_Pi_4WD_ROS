@@ -11,7 +11,7 @@ MIN_RECEIVED_INTERVAL_SEC = 0.25
 class CmdVelStamped(Node):
 
     def __init__(self):
-        super().__init__('minimal_subscriber')
+        super().__init__('cmd_vel_stamped')
         self.subscription = self.create_subscription(
             Twist,
             '/cmd_vel_stamped',

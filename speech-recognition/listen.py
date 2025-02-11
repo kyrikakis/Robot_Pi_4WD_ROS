@@ -10,6 +10,8 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 from std_msgs.msg import UInt16
+from std_msgs.msg import Int32
+from example_interfaces.msg import Int32MultiArray
 from threading import Thread
 
 class SpeechListenerNode(Node):
@@ -131,7 +133,7 @@ class SpeechListenerNode(Node):
                     msg.data = text
                     self.publisher.publish(msg)
                     if(text.find("battery level") > 0):
-                        self.speak("My battery level is: " + str(self.battery_level) + " volts, I think I can make it")
+                        self.speak("My battery level is: " + str(self.battery_level/10) + " volts, I think I can make it")
                     elif(text.find("Go to your room") > -1):
                         self.speak("I don't have a room, we need a bigger place")
                     elif(text.find("How are you") > -1):
@@ -142,6 +144,18 @@ class SpeechListenerNode(Node):
                         if(text.find("My name is") > -1):
                             name =  text[11:]
                             self.speak("Nice to meet you: " + name)
+                        else:
+                            name =  text[0:]
+                            self.speak("Nice to meet you: " + name)
+                    elif(text.find("Move your head right") > -1):
+                        z_rotation = Int32()
+                        z_rotation.data = int(text[21:22])
+                    elif(text.find("Move your head left") > -1):
+                        z_rotation = text[20:22]
+                    elif(text.find("Move your head up") > -1):
+                        y_rotation = text[20:22]
+                    elif(text.find("Move your head up") > -1):
+                        y_rotation = text[20:22]
                     else:
                         self.speak(text)
         finally:
