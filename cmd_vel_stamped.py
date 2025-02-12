@@ -5,8 +5,8 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist
 import time
 
-SEND_INTERVAL_SEC = 0.25
-MIN_RECEIVED_INTERVAL_SEC = 0.25
+SEND_INTERVAL_SEC = 0.1
+MIN_RECEIVED_INTERVAL_SEC = 0.2
 
 class CmdVelStamped(Node):
 
@@ -30,8 +30,8 @@ class CmdVelStamped(Node):
     
     def check_twist(self):
         while(True):
-            send_time_elapsed = time.time() - self.last_send 
             time.sleep(SEND_INTERVAL_SEC)
+            send_time_elapsed = time.time() - self.last_send 
             self.last_send = time.time()
             received_time_leapsed = time.time() - self.last_received
             if(received_time_leapsed > MIN_RECEIVED_INTERVAL_SEC):
@@ -57,6 +57,7 @@ def main(args=None):
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)
+    thread.join()
     minimal_subscriber.destroy_node()
     rclpy.shutdown()
 
