@@ -8,12 +8,12 @@ import numpy as np
 from threading import Thread
 
 
-from ArducamDepthCamera import (ArducamCamera, TOFConnect, TOFDeviceType, 
-                                TOFOutput, TOFControl, DepthData, ArducamInfo)
+from ArducamDepthCamera import (ArducamCamera, Connection, DeviceType, 
+                                FrameType, Control, DepthData, CameraInfo)
 
 class TOFPublisher(Node):
 
-    def __init__(self, tof: ArducamCamera, camera_info: ArducamInfo):
+    def __init__(self, tof: ArducamCamera, camera_info: CameraInfo):
         super().__init__('arducam')
         self.tof_ = tof
         self.width_ = camera_info.width
@@ -37,8 +37,8 @@ class TOFPublisher(Node):
         while self.running_:
             frame = self.tof_.requestFrame(200)
             if frame is not None and isinstance(frame, DepthData):
-                depth_buf = frame.getDepthData()
-                confidence_buf = frame.getConfidenceData()
+                depth_buf = frame.depth_data
+                confidence_buf = frame.confidence_data
 
                 depth_buf[confidence_buf < 30] = 0
 
@@ -87,12 +87,12 @@ def main(args = None):
     tof = ArducamCamera()
 
     ret = 0
-    ret = tof.open(TOFConnect.CSI, 8)
+    ret = tof.open(Connection.CSI, 8)
     if not ret:
         print("Failed to open camera. Error code:", ret)
         return
     
-    ret = tof.start(TOFOutput.DEPTH)
+    ret = tof.start(FrameType.DEPTH)
     if ret != 0:
         print("Failed to start camera. Error code:", ret)
         tof.close()
@@ -101,9 +101,9 @@ def main(args = None):
 
     
     info = tof.getCameraInfo()
-    if info.device_type == TOFDeviceType.HQVGA:
-        tof.setControl(TOFControl.RANGE, 2)
-    tof.setControl(TOFControl.FRAME_RATE, 12)
+    if info.device_type == DeviceType.HQVGA:
+        tof.setControl(Control.RANGE, 2)
+    tof.setControl(Control.FRAME_RATE, 12)
     print("pointcloud publisher start")
 
     tof_publisher = TOFPublisher(tof, info)
