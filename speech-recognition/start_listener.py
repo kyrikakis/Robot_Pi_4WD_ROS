@@ -146,15 +146,15 @@ class SpeechListenerNode(Node):
                         else:
                             name =  text[0:]
                             self.speak("Nice to meet you: " + name)
-                    elif(text.find("Move your head to the right") > -1):
+                    elif(text.find("Look right") > -1):
                         z_msg = Int32()
                         z_msg.data = -40
                         self.z_publisher.publish(z_msg)
-                    elif(text.find("Move your head to the left") > -1):
+                    elif(text.find("Look left") > -1):
                         z_msg = Int32()
                         z_msg.data = 38
                         self.z_publisher.publish(z_msg)
-                    elif(text.find("Move your head up") > -1):
+                    elif(text.find("Look up") > -1):
                         y_msg = Int32()
                         y_msg.data = -36
                         self.y_publisher.publish(y_msg)
@@ -162,7 +162,7 @@ class SpeechListenerNode(Node):
                         y_msg = Int32()
                         y_msg.data = 19
                         self.y_publisher.publish(y_msg)
-                    elif(text.find("Move your head straight") > -1):
+                    elif(text.find("Look straight") > -1):
                         y_msg = Int32()
                         y_msg.data = 0
                         self.y_publisher.publish(y_msg)

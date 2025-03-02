@@ -169,8 +169,8 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: true
-        inflation_radius: 0.20
-        cost_scaling_factor: 6.7
+        inflation_radius: 0.18
+        cost_scaling_factor: 5.7
         inflate_unknown: true
         inflate_around_unknown: true
       always_send_full_costmap: True
@@ -247,8 +247,8 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: true
-        inflation_radius: 0.15
-        cost_scaling_factor: 3.7
+        inflation_radius: 0.18
+        cost_scaling_factor: 5.7
         inflate_unknown: true
         inflate_around_unknown: true
       always_send_full_costmap: True
@@ -340,8 +340,8 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: true
-        inflation_radius: 0.15
-        cost_scaling_factor: 3.7
+        inflation_radius: 0.18
+        cost_scaling_factor: 5.7
         inflate_unknown: true
         inflate_around_unknown: true
       always_send_full_costmap: True
@@ -362,7 +362,7 @@ map_saver:
 
 planner_server:
   ros__parameters:
-    expected_planner_frequency: 20.0
+    expected_planner_frequency: 30.0
     planner_plugins: ["GridBased"]
     costmap_update_timeout: 1.0
     GridBased:
