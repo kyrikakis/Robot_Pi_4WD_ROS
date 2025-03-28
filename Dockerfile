@@ -117,7 +117,7 @@ RUN apt-get update && apt install -y \
 # ENV RMW_IMPLEMENTATION rmw_cyclonedds_cpp
 
 RUN source /opt/ros/$ROS_DISTRO/setup.bash && \
-    cd /colcon_ws/src && git clone https://github.com/kyrikakis/hailo_rpi_ros2.git && \
+    cd /colcon_ws/src && git clone https://github.com/kyrikakis/hailo_tappas_ros2.git && \
     cd /colcon_ws && colcon build --symlink-install
 
 RUN mkdir -p /workspaces/Robot_Pi_4WD_ROS/
