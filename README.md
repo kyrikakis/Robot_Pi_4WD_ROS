@@ -1,5 +1,11 @@
 # Robot_Pi_4WD_ROS
-Robot_Pi_4WD_ROS
+
+![robot_front](./images/robot_front.jpeg)
+![robot_front_left](./images/robot_front_left.jpeg)
+![robot_front_right](./images/robot_front_right.jpeg)
+![robot_back_left](./images/robot_back_left.jpeg)
+![robot_back_right](./images/robot_back_right.jpeg)
+![robot_top](./images/robot_top.jpeg)
 
 ## Installation
 1. Download and install a new pi bookworm image in a micro sd. Proposed a Sundisk Extreme A2 256GB using the pi imager 
