@@ -2,6 +2,7 @@
 
 ![robot_front](./images/robot_front.jpeg)
 ![robot_front_left](./images/robot_front_left.jpeg)
+![robot_left](./images/robot_left.jpeg)
 ![robot_front_right](./images/robot_front_right.jpeg)
 ![robot_back_left](./images/robot_back_left.jpeg)
 ![robot_back_right](./images/robot_back_right.jpeg)
