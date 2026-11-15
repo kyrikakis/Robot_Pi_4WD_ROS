@@ -3,3 +3,7 @@ install/
 log/
 yahboomcar_ws/
 core
+__pycache__/
+*.pyc
+*.swp
+.env
