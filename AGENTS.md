@@ -102,12 +102,12 @@ when new work comes up, add it here.
   planned with Whisper on the Hailo.
 - Possible CPU savings: ToF frame rate, BNO055 query rate (100 Hz, EKF runs at 30 Hz).
 - Hailo face recognition is currently disabled inside its container to save CPU.
-- Pi host clean-up (leave until the Hailo side is revisited): the host's
-  supervisor program `face` (`~/tappas` pipeline + `gscam`, HailoRT 4.19 era)
-  is a stalled leftover from before the Hailo container, which captures the
-  camera itself. Once the container is confirmed to cover it, remove `face`,
-  `~/tappas`, host ROS (`/opt/ros/jazzy`, `~/colcon_ws`) and README steps 12-13.
-  Keep Docker, the kernel/drivers, Hailo firmware/runtime, `config.txt` and
-  the udev rule.
+- Pi host leftovers: the host's old face-recognition pipeline (supervisor
+  program `face`: `~/tappas` + `gscam`, from before the Hailo container) was
+  stalled and is now disabled in `/etc/supervisor/conf.d/face.conf`. Its files
+  stay: `~/tappas` must not be touched (owner's uncommitted work and face
+  galleries), and `~/colcon_ws` has uncommitted changes in `YOLO-HailoRT-ROS2`
+  and `camera_ros`. Host ROS (`/opt/ros/jazzy`) and README steps 12-13 stay
+  while that workspace exists.
 - Host apt upgrade with Hailo, kernel and camera packages held: `~/upgrade-host.sh`
   on the Pi (run while no image build is running).
