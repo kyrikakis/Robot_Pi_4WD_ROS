@@ -15,7 +15,9 @@ slam_toolbox:
     base_frame: base_footprint
     scan_topic: /scan
     use_map_saver: true
-    mode: localization #mapping #localization
+    # mapping: build the map as the robot drives. For localization against a
+    # saved map, set mode: localization and map_file_name / map_start_pose.
+    mode: mapping
 
     # if you'd like to immediately start continuing a map at a given pose
     # or at the dock, but they are mutually exclusive, if pose is given
