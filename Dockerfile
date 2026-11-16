@@ -14,16 +14,17 @@ ENV LANG=en_US.UTF-8
 
 SHELL ["/bin/bash", "-c"]
 
+# Bring the base image up to the current ROS sync first. ROS packages are
+# released in synchronised batches; installing new packages on top of an older
+# batch can mix incompatible versions. (Ubuntu and ROS apt packages are the one
+# thing not pinned in this file.)
+RUN apt-get update && apt-get upgrade -y
+
 RUN mkdir -p /colcon_ws/src
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ros-$ROS_DISTRO-hardware-interface \
     libi2c-dev \
     i2c-tools \
-    ros-$ROS_DISTRO-hardware-interface \
-    ros-$ROS_DISTRO-controller-manager \
-    ros-$ROS_DISTRO-velocity-controllers \
-    ros-$ROS_DISTRO-joint-state-broadcaster \
     ros-$ROS_DISTRO-robot-state-publisher \
     ros-$ROS_DISTRO-xacro \
     ros-$ROS_DISTRO-tf2 \
@@ -79,7 +80,6 @@ RUN cd /colcon_ws/src && \
     echo "source /colcon_ws/install/setup.bash" >> ~/.bashrc
 
 RUN apt-get update && apt-get install -y \
-    ros-$ROS_DISTRO-imu-tools \
     ros-$ROS_DISTRO-joint-state-publisher \
     ros-$ROS_DISTRO-slam-toolbox \
     ros-$ROS_DISTRO-navigation2 \
