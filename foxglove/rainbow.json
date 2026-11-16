@@ -1,0 +1,227 @@
+{
+  "configById": {
+    "3D!rainbow": {
+      "cameraState": {
+        "distance": 2.5,
+        "perspective": true,
+        "phi": 55,
+        "thetaOffset": 45,
+        "targetOffset": [
+          0,
+          0,
+          0
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "fovy": 45,
+        "near": 0.01,
+        "far": 1000
+      },
+      "followMode": "follow-pose",
+      "followTf": "base_link",
+      "scene": {
+        "transforms": {
+          "labelSize": 0.04,
+          "axisScale": 0.3
+        }
+      },
+      "transforms": {
+        "frame:map": {
+          "visible": false
+        },
+        "frame:odom": {
+          "visible": false
+        }
+      },
+      "topics": {
+        "/map": {
+          "visible": true,
+          "colorMode": "map"
+        },
+        "/global_costmap/costmap": {
+          "visible": false,
+          "colorMode": "costmap"
+        },
+        "/local_costmap/costmap": {
+          "visible": true,
+          "colorMode": "costmap",
+          "alpha": 0.6
+        },
+        "/local_costmap/voxel_grid": {
+          "visible": true,
+          "pointSize": 4,
+          "colorMode": "flat",
+          "flatColor": "#ff8000ff"
+        },
+        "/scan": {
+          "visible": true,
+          "pointSize": 4,
+          "colorMode": "flat",
+          "flatColor": "#ff0000ff"
+        },
+        "/point_cloud": {
+          "visible": true,
+          "pointSize": 2,
+          "colorMode": "colormap",
+          "colorField": "z",
+          "colorMap": "turbo"
+        },
+        "/plan": {
+          "visible": true,
+          "lineWidth": 0.02,
+          "gradient": [
+            "#00ff00ff",
+            "#00ff00ff"
+          ]
+        },
+        "/local_costmap/published_footprint": {
+          "visible": true
+        }
+      },
+      "layers": {
+        "grid": {
+          "layerId": "foxglove.Grid",
+          "instanceId": "grid",
+          "visible": true,
+          "frameId": "odom",
+          "size": 10,
+          "divisions": 20,
+          "lineWidth": 1,
+          "color": "#248eff40"
+        },
+        "rainbow-urdf": {
+          "layerId": "foxglove.Urdf",
+          "instanceId": "rainbow-urdf",
+          "label": "Rainbow",
+          "visible": true,
+          "sourceType": "topic",
+          "topic": "/robot_description"
+        }
+      },
+      "publish": {
+        "type": "pose",
+        "poseTopic": "/goal_pose",
+        "pointTopic": "/clicked_point",
+        "poseEstimateTopic": "/initialpose",
+        "poseEstimateXDeviation": 0.25,
+        "poseEstimateYDeviation": 0.25,
+        "poseEstimateThetaDeviation": 0.26
+      }
+    },
+    "Teleop!rainbow": {
+      "topic": "/cmd_vel_stamped",
+      "publishRate": 10,
+      "upButton": {
+        "field": "linear-x",
+        "value": 0.15
+      },
+      "downButton": {
+        "field": "linear-x",
+        "value": -0.1
+      },
+      "leftButton": {
+        "field": "angular-z",
+        "value": 0.8
+      },
+      "rightButton": {
+        "field": "angular-z",
+        "value": -0.8
+      }
+    },
+    "Plot!speed": {
+      "title": "Commanded vs actual speed",
+      "paths": [
+        {
+          "value": "/cmd_vel.linear.x",
+          "enabled": true,
+          "label": "commanded linear (m/s)",
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/odom.twist.twist.linear.x",
+          "enabled": true,
+          "label": "actual linear (m/s)",
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/cmd_vel.angular.z",
+          "enabled": true,
+          "label": "commanded angular (rad/s)",
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/odom.twist.twist.angular.z",
+          "enabled": true,
+          "label": "actual angular (rad/s)",
+          "timestampMethod": "receiveTime"
+        }
+      ],
+      "showLegend": true,
+      "followingViewWidth": 20
+    },
+    "CallService!head": {
+      "serviceName": "/head/set_pose",
+      "requestPayload": "{\n  \"pan\": 0.0,\n  \"tilt\": 0.0\n}",
+      "buttonText": "Point head (radians: pan + = left, tilt + = down)"
+    },
+    "CallService!eyes": {
+      "serviceName": "/eyes/set_expression",
+      "requestPayload": "{\n  \"expression\": \"happy\"\n}",
+      "buttonText": "Set eyes (happy, open, closed, off)"
+    },
+    "Image!faces": {
+      "imageMode": {
+        "imageTopic": "/hailo_face_recognition/image_bbx/compressed"
+      }
+    },
+    "RosOut!log": {
+      "searchTerms": [],
+      "minLogLevel": 3
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": {
+    "speed": 1
+  },
+  "layout": {
+    "direction": "row",
+    "first": "3D!rainbow",
+    "second": {
+      "direction": "column",
+      "first": {
+        "direction": "row",
+        "first": "Teleop!rainbow",
+        "second": {
+          "direction": "column",
+          "first": "CallService!head",
+          "second": "CallService!eyes",
+          "splitPercentage": 50
+        },
+        "splitPercentage": 45
+      },
+      "second": {
+        "direction": "column",
+        "first": "Plot!speed",
+        "second": {
+          "direction": "row",
+          "first": "Image!faces",
+          "second": "RosOut!log",
+          "splitPercentage": 50
+        },
+        "splitPercentage": 45
+      },
+      "splitPercentage": 35
+    },
+    "splitPercentage": 62
+  }
+}

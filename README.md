@@ -106,6 +106,14 @@ forwards that to the ESP on `/cmd_vel` and sends zero velocity when commands sto
 ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=cmd_vel_stamped
 ```
 
+### Foxglove
+
+Connect the Foxglove app to `ws://<robot-ip>:8765` (Foxglove WebSocket; the IP is
+published on `/rpi5_ip`), then import the layout `foxglove/rainbow.json`. It has the
+3D view (click to send a Nav2 goal), teleop, commanded vs actual speed, head and
+eyes controls, the face-recognition camera and the log. The ToF cloud is heavy
+over Wi-Fi; hide `/point_cloud` in the 3D view if it lags.
+
 ### Useful commands
 
 ```
