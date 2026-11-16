@@ -10,13 +10,14 @@ Rainbow is a hobby robot: a small 4WD skid-steer chassis (19 x 14 cm) with a
 pan/tilt head, on a Raspberry Pi 5 running ROS 2 Jazzy in Docker. Everything
 ROS-side is in the `rainbow_*` packages under `src/` (see the README table).
 
-The hardware is split across three computers/containers:
+The hardware is split across the ESP board, two containers and the Pi host:
 
 | Where | What | In this repo? |
 |---|---|---|
 | ESP32 board (micro-ROS over `/dev/ttyUSB_ROS`) | Motor PID, head servos, lidar, battery, an IMU | No. Firmware is out of scope; treat its topics as a fixed contract |
 | `robot` container (this repo) | Everything in `src/`, run by supervisor | Yes |
-| Hailo container ([hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2)) | Face recognition on the Hailo, plus the RGB camera (`gscam`) | No. Only `hailo_msgs` is built here, to read its messages |
+| Hailo container ([hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2)) | Face recognition on the Hailo | No. Only `hailo_msgs` is built here, to read its messages |
+| Pi host (supervisor, `/etc/supervisor/conf.d/face.conf`) | The RGB camera (`gscam`, publishes `/camera/image_raw`) | No |
 
 Contracts with the ESP firmware (do not rename): it subscribes to `cmd_vel`,
 `servo_s1` (pan) and `servo_s2` (tilt), and publishes `/odom_raw`, `/scan` in
