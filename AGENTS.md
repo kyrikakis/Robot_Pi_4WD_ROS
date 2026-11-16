@@ -104,8 +104,10 @@ when new work comes up, add it here.
 
 - Drive test with the ESP on (teleop, head directions, lidar/odometry, Nav2
   in a small room). The image rebuild of the refactor is done.
-- Check ToF obstacles clear in `/local_costmap/voxel_grid`; if they linger, the
-  ToF frame orientation for the voxel layer needs flipping.
+- ToF is out of Nav2 (voxel_layer removed from both costmaps' plugin lists in
+  nav2.yaml) because it added noise. Debug the noise (confidence threshold,
+  floor points, frame orientation), then re-enable and check obstacles clear
+  in `/local_costmap/voxel_grid`. The ToF node itself still runs.
 - Calibrate the Camera Module 3 (the files in `calibration/` are for the IMX296).
 - Wake word "Hey Rainbow" (placeholder in `rainbow_voice`); speech to text is
   planned with Whisper on the Hailo.

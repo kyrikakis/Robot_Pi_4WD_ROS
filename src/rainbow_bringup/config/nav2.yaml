@@ -157,7 +157,9 @@ global_costmap:
       footprint_padding: 0.01
       resolution: 0.02
       track_unknown_space: true
-      plugins: ["static_layer", "obstacle_layer", "voxel_layer", "inflation_layer"]
+      # voxel_layer (ToF) disabled while its noise is debugged; to re-enable, add
+      # "voxel_layer" back before "inflation_layer"
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
@@ -250,7 +252,9 @@ local_costmap:
       resolution: 0.02
       footprint: "[[0.10, 0.07], [0.10, -0.07], [-0.09, -0.07], [-0.09, 0.07]]"
       footprint_padding: 0.01
-      plugins: ["obstacle_layer", "voxel_layer", "inflation_layer"]
+      # voxel_layer (ToF) disabled while its noise is debugged; to re-enable, add
+      # "voxel_layer" back before "inflation_layer"
+      plugins: ["obstacle_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
