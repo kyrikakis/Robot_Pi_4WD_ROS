@@ -59,8 +59,9 @@ The code you edit is the code the robot runs. Lessons learned:
 - The ToF publishes with sensor-data QoS (best effort); subscribers must match.
   The sensor has no frame-rate control (always ~25-30 fps; the SDK rejects
   FRAME_RATE), so `frame_rate` is applied by skipping frames. Its range is in
-  mm (2000 or 4000) and only accepted after `start()`. Most of the node's CPU
-  (~18%) is the SDK's own depth computation, which no setting reduces.
+  mm (2000 or 4000; we use 4000) and only accepted after `start()`. Nearly all
+  of the node's CPU (~18%) is the SDK's own depth computation, which no setting
+  reduces; the node's own processing is a percent or two.
 - With the ESP board off there is no odometry or lidar, so SLAM and Nav2 start
   but cannot do anything useful. Do not read that as a failure.
 - The Hailo container's supervisor socket is reachable from here at

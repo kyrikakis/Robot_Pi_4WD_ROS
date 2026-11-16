@@ -5,8 +5,9 @@ Publishes:
                                                  (z forward, x right, y down)
   tof/depth/image_raw   sensor_msgs/Image        32FC1, metres, 0 = no reading
 
-Each frame is published once, as it arrives from the sensor. Pixels below
-the confidence threshold or outside [min_range, max_range] are dropped.
+The sensor runs at a fixed ~25-30 fps; frames are published at frame_rate,
+and each output only when something subscribes to it. Pixels below the
+confidence threshold or outside [min_range, max_range] are dropped.
 """
 
 import threading
@@ -27,10 +28,10 @@ class TofNode(Node):
         self.frame_id = self.declare_parameter('frame_id', 'tof_optical_frame').value
         self.camera_index = self.declare_parameter('camera_index', 8).value
         self.frame_rate = self.declare_parameter('frame_rate', 12).value
-        self.range_mm = self.declare_parameter('range_mm', 2000).value
+        self.range_mm = self.declare_parameter('range_mm', 4000).value
         self.confidence = self.declare_parameter('confidence_threshold', 30).value
         self.min_range = self.declare_parameter('min_range', 0.05).value
-        self.max_range = self.declare_parameter('max_range', 2.0).value
+        self.max_range = self.declare_parameter('max_range', 4.0).value
         self.hfov_deg = self.declare_parameter('horizontal_fov_deg', 64.3).value
         self.vfov_deg = self.declare_parameter('vertical_fov_deg', 50.4).value
 
@@ -42,6 +43,8 @@ class TofNode(Node):
         info = self.camera.getCameraInfo()
         self.width, self.height = info.width, info.height
         self.rays_x, self.rays_y = self.make_rays(self.width, self.height)
+        self.cloud_fields = [PointField(name=n, offset=4 * i, datatype=PointField.FLOAT32,
+                                        count=1) for i, n in enumerate('xyz')]
 
         self.running = True
         self.thread = threading.Thread(target=self.capture_loop, daemon=True)
@@ -91,32 +94,40 @@ class TofNode(Node):
                     continue
                 # Keep to the schedule, but do not try to catch up after a gap
                 next_time = max(next_time + period, now)
-                if isinstance(frame, DepthData):
-                    depth = frame.depth_data.astype(np.float32) / 1000.0
-                    valid = ((frame.confidence_data >= self.confidence)
-                             & (depth >= self.min_range) & (depth <= self.max_range))
-                    depth[~valid] = 0.0
-                    self.publish(depth, valid)
+                want_cloud = self.cloud_pub.get_subscription_count() > 0
+                want_image = self.depth_pub.get_subscription_count() > 0
+                if isinstance(frame, DepthData) and (want_cloud or want_image):
+                    self.publish(frame, want_cloud, want_image)
             finally:
                 self.camera.releaseFrame(frame)
 
-    def publish(self, depth, valid):
+    def publish(self, frame, want_cloud, want_image):
+        """Publish one frame. Each output is only built when something subscribes."""
+        # depth_data is float32 millimetres; convert to metres in one new array
+        depth = np.multiply(frame.depth_data, 0.001, dtype=np.float32)
+        valid = frame.confidence_data >= self.confidence
+        valid &= depth >= self.min_range
+        valid &= depth <= self.max_range
         header = Header(frame_id=self.frame_id, stamp=self.get_clock().now().to_msg())
 
-        image = Image(header=header, height=self.height, width=self.width,
-                      encoding='32FC1', is_bigendian=0, step=self.width * 4)
-        image.data = depth.tobytes()
-        self.depth_pub.publish(image)
+        if want_image:
+            depth[~valid] = 0.0
+            image = Image(header=header, height=self.height, width=self.width,
+                          encoding='32FC1', is_bigendian=0, step=self.width * 4)
+            image.data = depth.tobytes()
+            self.depth_pub.publish(image)
 
-        z = depth[valid]
-        points = np.column_stack((self.rays_x[valid] * z, self.rays_y[valid] * z, z))
-        cloud = PointCloud2(header=header, height=1, width=len(points),
-                            is_bigendian=False, point_step=12,
-                            row_step=12 * len(points), is_dense=True)
-        cloud.fields = [PointField(name=n, offset=4 * i, datatype=PointField.FLOAT32, count=1)
-                        for i, n in enumerate('xyz')]
-        cloud.data = points.astype(np.float32).tobytes()
-        self.cloud_pub.publish(cloud)
+        if want_cloud:
+            z = depth[valid]
+            points = np.empty((len(z), 3), dtype=np.float32)
+            np.multiply(self.rays_x[valid], z, out=points[:, 0])
+            np.multiply(self.rays_y[valid], z, out=points[:, 1])
+            points[:, 2] = z
+            cloud = PointCloud2(header=header, height=1, width=len(points),
+                                fields=self.cloud_fields, is_bigendian=False, point_step=12,
+                                row_step=12 * len(points), is_dense=True)
+            cloud.data = points.tobytes()
+            self.cloud_pub.publish(cloud)
 
     def stop(self):
         self.running = False
