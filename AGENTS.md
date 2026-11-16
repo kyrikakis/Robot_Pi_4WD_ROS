@@ -106,5 +106,7 @@ when new work comes up, add it here.
   planned with Whisper on the Hailo.
 - Possible CPU savings: ToF frame rate, BNO055 query rate (100 Hz, EKF runs at 30 Hz).
 - Hailo face recognition is currently disabled inside its container to save CPU.
-- Host apt upgrade with Hailo, kernel and camera packages held: `~/upgrade-host.sh`
-  on the Pi (run while no image build is running).
+- Host: Hailo, kernel (6.6, contains the Hailo driver) and camera packages are
+  held with apt-mark. Update them together later, with the Hailo container
+  and a rebuild of the ALFA Wi-Fi driver (rtl8812au) for the new kernel.
+  Debian 12 is in LTS until mid-2028; a move to Debian 13 is due eventually.
