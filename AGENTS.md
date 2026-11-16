@@ -10,14 +10,16 @@ Rainbow is a hobby robot: a small 4WD skid-steer chassis (19 x 14 cm) with a
 pan/tilt head, on a Raspberry Pi 5 running ROS 2 Jazzy in Docker. Everything
 ROS-side is in the `rainbow_*` packages under `src/` (see the README table).
 
-The hardware is split across the ESP board, two containers and the Pi host:
+The hardware is split across the ESP board and two containers. The Pi host
+itself only runs Docker, the Hailo driver/firmware/runtime service
+(`hailort.service`) and system config; it runs no ROS. The Hailo container's
+compose setup lives in `~/hailo_tappas_ros2` on the host.
 
 | Where | What | In this repo? |
 |---|---|---|
 | ESP32 board (micro-ROS over `/dev/ttyUSB_ROS`) | Motor PID, head servos, lidar, battery, an IMU | No. Firmware is out of scope; treat its topics as a fixed contract |
 | `robot` container (this repo) | Everything in `src/`, run by supervisor | Yes |
-| Hailo container ([hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2)) | Face recognition on the Hailo | No. Only `hailo_msgs` is built here, to read its messages |
-| Pi host (supervisor, `/etc/supervisor/conf.d/face.conf`) | The RGB camera (`gscam`, publishes `/camera/image_raw`) | No |
+| Hailo container ([hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2)) | Face recognition on the Hailo, capturing the RGB camera itself | No. Only `hailo_msgs` is built here, to read its messages |
 
 Contracts with the ESP firmware (do not rename): it subscribes to `cmd_vel`,
 `servo_s1` (pan) and `servo_s2` (tilt), and publishes `/odom_raw`, `/scan` in
@@ -102,12 +104,5 @@ when new work comes up, add it here.
   planned with Whisper on the Hailo.
 - Possible CPU savings: ToF frame rate, BNO055 query rate (100 Hz, EKF runs at 30 Hz).
 - Hailo face recognition is currently disabled inside its container to save CPU.
-- Pi host leftovers: the host's old face-recognition pipeline (supervisor
-  program `face`: `~/tappas` + `gscam`, from before the Hailo container) was
-  stalled and is now disabled in `/etc/supervisor/conf.d/face.conf`. Its files
-  stay: `~/tappas` must not be touched (owner's uncommitted work and face
-  galleries), and `~/colcon_ws` has uncommitted changes in `YOLO-HailoRT-ROS2`
-  and `camera_ros`. Host ROS (`/opt/ros/jazzy`) and README steps 12-13 stay
-  while that workspace exists.
 - Host apt upgrade with Hailo, kernel and camera packages held: `~/upgrade-host.sh`
   on the Pi (run while no image build is running).

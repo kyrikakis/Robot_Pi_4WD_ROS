@@ -31,11 +31,7 @@ dtoverlay=imx708,cam1
 10. Download the source code: `git clone https://github.com/kyrikakis/Robot_Pi_4WD_ROS.git`
 11. Run the image: `cd Robot_Pi_4WD_ROS && docker compose up`.
     The code is built into the image, so to update later: `git pull && docker compose build && docker compose up -d`
-12. Install ros2 jazzy to pi5 https://github.com/Ar-Ray-code/rpi-bullseye-ros2. Source ros -> 
-    `echo "export ROS_DOMAIN_ID=20" >> ~/.bashrc && echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc`
-13. Install a bunch of ros stuff and:
-    `echo "source ~/colcon_ws/install/setup.bash" >> ~/.bashrc`
-14. Optional: Install realtek drivers
+12. Optional: Install realtek drivers
     ```
     apt-get install raspberrypi-kernel-headers
     git clone -b v5.6.4.2 https://github.com/aircrack-ng/rtl8812au.git
