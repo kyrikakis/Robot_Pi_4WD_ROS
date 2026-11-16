@@ -1,15 +1,20 @@
 FROM ros:jazzy-perception-noble
 
-RUN apt update && apt upgrade -y
+# Everything cloned or pip-installed below is pinned, so a rebuild produces the
+# same software as the last one. To update something, change its pin here.
+ARG CAMERA_ROS_COMMIT=d54147c18bd433d83ee0b884e4297ba38a06a513
+# Must match the hailo_tappas_ros2 container that publishes the detections
+ARG HAILO_TAPPAS_ROS2_COMMIT=f50f2a329c4766103e98cf455e58fa67d8289e65
+ARG MICRO_ROS_SETUP_COMMIT=b1b18bc64b02da9f1745d111f37fe10f3107cef4
+ARG MICRO_ROS_AGENT_COMMIT=af007872b034d1ed31de4815377031350ab0034b
+ARG MICRO_ROS_MSGS_COMMIT=4594d9db17db735b1e655141fb4afb4cdcfc5789
 
-ENV ROS_DISTRO jazzy
-ENV LANG en_US.UTF-8
+ENV ROS_DISTRO=jazzy
+ENV LANG=en_US.UTF-8
 
-SHELL ["/bin/bash", "-c"] 
+SHELL ["/bin/bash", "-c"]
 
 RUN mkdir -p /colcon_ws/src
-
-RUN apt update && apt install i2c-tools -y
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-$ROS_DISTRO-hardware-interface \
@@ -38,7 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-yaml python3-ply python3-pip libyaml-dev \
     libglib2.0-dev libgstreamer-plugins-base1.0-dev
     
-RUN pip3 install --break-system-packages --user meson
+RUN pip3 install --break-system-packages --user meson==1.7.0
 ENV PATH="$PATH:/root/.local/bin/"
 
 RUN cd / && git clone https://github.com/raspberrypi/libcamera.git --branch v0.3.1+rpt20240906 && \
@@ -69,6 +74,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN cd /colcon_ws/src && \
     git clone https://github.com/christianrauch/camera_ros.git && \
+    git -C camera_ros checkout $CAMERA_ROS_COMMIT && \
     cd /colcon_ws && source '/opt/ros/jazzy/setup.bash' && colcon build --symlink-install && \
     echo "source /colcon_ws/install/setup.bash" >> ~/.bashrc
 
@@ -80,13 +86,18 @@ RUN apt-get update && apt-get install -y \
     ros-$ROS_DISTRO-nav2-bringup \
     ros-$ROS_DISTRO-spatio-temporal-voxel-layer
 
-RUN pip3 install --break-system-packages rpi-lgpio adafruit-circuitpython-ht16k33
+# Eyes LED matrix (adafruit) and GPIO
+RUN pip3 install --break-system-packages rpi-lgpio==0.6 adafruit-circuitpython-ht16k33==4.6.11
 
-RUN echo "Add Arducam_ppa repositories." && \
-    curl -s --compressed "https://arducam.github.io/arducam_ppa/KEY.gpg" | sudo apt-key add - && \
-    curl -s --compressed -o /etc/apt/sources.list.d/arducam_list_files.list "https://arducam.github.io/arducam_ppa/arducam_list_files.list" && \
-    apt update && apt-get install -y arducam-config-parser-dev arducam-evk-sdk-dev arducam-tof-sdk-dev && \
-    pip3 install --break-system-packages ArducamDepthCamera
+# Arducam ToF SDK, from Arducam's apt repository
+RUN apt-get update && apt-get install -y --no-install-recommends curl gnupg && \
+    install -d -m 0755 /etc/apt/keyrings && \
+    curl -fsSL --compressed https://arducam.github.io/arducam_ppa/KEY.gpg \
+        | gpg --dearmor -o /etc/apt/keyrings/arducam.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/arducam.gpg] https://arducam.github.io/arducam_ppa linux main" \
+        > /etc/apt/sources.list.d/arducam.list && \
+    apt-get update && apt-get install -y arducam-config-parser-dev arducam-evk-sdk-dev arducam-tof-sdk-dev && \
+    pip3 install --break-system-packages ArducamDepthCamera==0.1.21
 
 RUN echo "export ROS_DOMAIN_ID=20" >> ~/.bashrc
 RUN echo "source /opt/ros/$ROS_DISTRO/setup.bash" >> ~/.bashrc
@@ -94,10 +105,13 @@ RUN echo "source /opt/ros/$ROS_DISTRO/setup.bash" >> ~/.bashrc
 RUN source /opt/ros/$ROS_DISTRO/setup.bash && \
     mkdir /uros_ws && cd /uros_ws && \
     git clone -b $ROS_DISTRO https://github.com/micro-ROS/micro_ros_setup.git src/micro_ros_setup && \
+    git -C src/micro_ros_setup checkout $MICRO_ROS_SETUP_COMMIT && \
     rosdep update && rosdep install --from-paths src --ignore-src -y && \
     colcon build && \
     source install/local_setup.bash && \
     ros2 run micro_ros_setup create_agent_ws.sh && \
+    git -C src/uros/micro-ROS-Agent checkout $MICRO_ROS_AGENT_COMMIT && \
+    git -C src/uros/micro_ros_msgs checkout $MICRO_ROS_MSGS_COMMIT && \
     ros2 run micro_ros_setup build_agent.sh
     
 RUN apt-get update && apt-get install -y \
@@ -115,9 +129,12 @@ RUN apt-get update && apt install -y \
     # ros-$ROS_DISTRO-rmw-cyclonedds-cpp
 # ENV RMW_IMPLEMENTATION rmw_cyclonedds_cpp
 
+# Message definitions for the Hailo face detections, so nodes here and the
+# Foxglove bridge can read them. The detector itself runs in the Hailo container.
 RUN source /opt/ros/$ROS_DISTRO/setup.bash && \
     cd /colcon_ws/src && git clone https://github.com/kyrikakis/hailo_tappas_ros2.git && \
-    cd /colcon_ws && colcon build --symlink-install
+    git -C hailo_tappas_ros2 checkout $HAILO_TAPPAS_ROS2_COMMIT && \
+    cd /colcon_ws && colcon build --symlink-install --packages-select hailo_msgs
 
 RUN mkdir -p /workspaces/Robot_Pi_4WD_ROS/
 COPY . /workspaces/Robot_Pi_4WD_ROS/
@@ -133,8 +150,7 @@ COPY ros_entrypoint.sh /ros_entrypoint.sh
 RUN chmod +x  /ros_entrypoint.sh
 ENTRYPOINT ["/ros_entrypoint.sh"]
 
-USER $USERNAME
 # terminal colors with xterm
-ENV TERM xterm
+ENV TERM=xterm
 WORKDIR /workspaces/Robot_Pi_4WD_ROS
 CMD [ "sleep", "infinity" ]
