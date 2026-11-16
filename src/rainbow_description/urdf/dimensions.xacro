@@ -49,9 +49,11 @@
   <xacro:property name="head_pan_z"   value="0.071"/>   <!-- above the floor -->
   <xacro:property name="head_tilt_dx" value="-0.004"/>  <!-- relative to the pan joint -->
   <xacro:property name="head_tilt_dz" value="0.041"/>
-  <xacro:property name="head_pan_limit"  value="${pi / 2}"/>
-  <xacro:property name="head_tilt_lower" value="${-pi / 4}"/>
-  <xacro:property name="head_tilt_upper" value="${pi / 4}"/>
+  <!-- Same limits as rainbow_drivers head node (degrees there) -->
+  <xacro:property name="head_pan_lower"  value="${radians(-40)}"/>
+  <xacro:property name="head_pan_upper"  value="${radians(38)}"/>
+  <xacro:property name="head_tilt_lower" value="${radians(-36)}"/>
+  <xacro:property name="head_tilt_upper" value="${radians(19)}"/>
 
   <!-- Ears, relative to the tilt joint. Right ear: RGB camera. Left ear: ToF -->
   <xacro:property name="ear_dx" value="0.067"/>

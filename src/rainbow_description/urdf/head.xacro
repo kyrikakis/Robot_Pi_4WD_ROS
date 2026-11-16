@@ -16,7 +16,7 @@
     <child link="head_pan_link"/>
     <origin xyz="${head_pan_x} 0 ${head_pan_z - wheel_radius}"/>
     <axis xyz="0 0 1"/>
-    <limit lower="${-head_pan_limit}" upper="${head_pan_limit}" effort="1.0" velocity="3.0"/>
+    <limit lower="${head_pan_lower}" upper="${head_pan_upper}" effort="1.0" velocity="3.0"/>
   </joint>
 
   <link name="head_tilt_link">

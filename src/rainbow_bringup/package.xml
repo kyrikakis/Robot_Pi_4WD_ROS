@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>rainbow_bringup</name>
+  <version>0.1.0</version>
+  <description>Launch files and configuration that bring Rainbow up.</description>
+  <maintainer email="kirikakis@gmail.com">Stefanos Kyrikakis</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>rainbow_description</exec_depend>
+  <exec_depend>rainbow_drivers</exec_depend>
+  <exec_depend>rainbow_voice</exec_depend>
+  <exec_depend>robot_localization</exec_depend>
+  <exec_depend>bno055</exec_depend>
+  <exec_depend>slam_toolbox</exec_depend>
+  <exec_depend>nav2_bringup</exec_depend>
+  <exec_depend>foxglove_bridge</exec_depend>
+  <!-- micro_ros_agent is built from source in /uros_ws (see Dockerfile) -->
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

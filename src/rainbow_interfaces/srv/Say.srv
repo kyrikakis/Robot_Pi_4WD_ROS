@@ -1,0 +1,7 @@
+# Speak a sentence. Returns once it has been spoken.
+string text
+# Volume 0-200 (espeak amplitude). 0 keeps the current volume.
+uint16 volume
+---
+bool success
+string message

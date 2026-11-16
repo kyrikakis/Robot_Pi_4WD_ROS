@@ -1,0 +1,12 @@
+# Point the head. Angles in radians, following the URDF joints:
+#   pan:  positive turns left (about +z)
+#   tilt: positive pitches down (about +y)
+# Values outside the head's limits are clamped.
+float64 pan
+float64 tilt
+---
+bool success
+string message
+# The pose actually commanded, after clamping
+float64 pan
+float64 tilt

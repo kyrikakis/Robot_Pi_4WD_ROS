@@ -106,9 +106,9 @@ RUN apt-get update && apt-get install -y \
 RUN apt-get update && apt-get install -y \
     supervisor
 
-# Install speech-recognition
+# Speech: espeak-ng for text to speech, portaudio/pyaudio for audio input
 RUN apt install -y portaudio19-dev espeak-ng mbrola-us2 && \
-    pip3 install --break-system-packages pvporcupine openai pyaudio
+    pip3 install --break-system-packages pyaudio
 
 # Install foxglove bridge
 RUN apt-get update && apt install -y \

@@ -42,39 +42,69 @@ dtoverlay=imx296,cam1
     make install
     ```
 
-## Usefull commands
+## Software
+
+Rainbow's ROS 2 packages live in `src/`:
+
+| Package | What it does |
+|---|---|
+| `rainbow_description` | URDF of the robot: chassis, sensors and the pan/tilt head |
+| `rainbow_bringup` | Launch files and all configuration (EKF, BNO055, SLAM, Nav2) |
+| `rainbow_drivers` | Head, eyes, ToF depth camera, velocity watchdog, IP publisher |
+| `rainbow_voice` | Text to speech |
+| `rainbow_interfaces` | Service definitions |
+
+The ESP32 board runs the motors (with PID), the head servos, the lidar, battery
+monitoring and its own IMU. It talks to the Pi over micro-ROS (`/dev/ttyUSB_ROS`).
+
+Face recognition runs on the Hailo in its own container, from
+[hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2).
+
+### Services
+
+Supervisor starts these when the container starts (`supervisor/rainbow.conf`):
+
+| Program | Launch file | Contents |
+|---|---|---|
+| `rainbow_base` | `base.launch.py` | micro-ROS agent, description, BNO055, EKF, head, eyes, ToF, velocity watchdog, IP publisher |
+| `rainbow_slam` | `slam.launch.py` | slam_toolbox |
+| `rainbow_navigation` | `navigation.launch.py` | Nav2 |
+| `rainbow_foxglove` | `foxglove.launch.py` | Foxglove bridge on port 8765 |
+| `rainbow_voice` | `voice.launch.py` | Text to speech |
+
 ```
-ros2 run bno055 bno055 --ros-args --params-file config/bno055_params.yaml
+supervisorctl status
+supervisorctl restart rainbow_navigation
+supervisorctl tail -f rainbow_base
+```
 
-ros2 launch sllidar_ros2 sllidar_a1_launch.py
-ros2 launch pca9685_ros2_control_example diff_drive_example.launch.py
-ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args --remap /cmd_vel:=/diff_drive_controller/cmd_vel_unstamped
+To run everything by hand instead: `scripts/rainbow_launch.sh rainbow.launch.py`
+(arguments `slam`, `navigation`, `foxglove`, `voice`, `tof`, `microros`, all
+default `true`).
 
-ros2 run camera_ros camera_node --ros-args -p camera:=1 -p width:=1024 -p height:=576 -p role:=video -p format:=BGR888 -p FrameDurationLimits:="[50000,50000]" -r __node:=right
+### Talking to the robot
 
-ros2 run camera_ros camera_node --ros-args -p camera:=0 -p width:=1024 -p height:=576 -p role:=video -p format:=BGR888 -p FrameDurationLimits:="[50000,50000]" -r __node:=left
+```
+# Head (radians; pan positive = left, tilt positive = down)
+ros2 service call /head/set_pose rainbow_interfaces/srv/SetHeadPose "{pan: 0.3, tilt: 0.0}"
+ros2 service call /head/center std_srvs/srv/Trigger
 
-ros2 launch stereo_image_proc.launch.py approximate_sync:=true approximate_sync_tolerance_seconds:=0.1
+# Eyes: happy, open, closed, off
+ros2 service call /eyes/set_expression rainbow_interfaces/srv/SetExpression "{expression: happy}"
 
-ros2 run image_view image_view --ros-args -r image:=/camera/image_raw
+# Speech
+ros2 service call /speech/say rainbow_interfaces/srv/Say "{text: 'Hello, I am Rainbow'}"
+```
 
-docker exec -i yahboom_camera bash -c "/workspaces/Robot_Pi_4WD_ROS/start_camera.sh"
+The old topics still work: `/head/z_rotation` and `/head/y_rotation` (degrees),
+`/eyes`, `/speech/speak` and `/speech/amplitude`.
 
-ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py
+Driving: Nav2 and teleop publish to `/cmd_vel_stamped`; the velocity watchdog
+forwards that to the ESP on `/cmd_vel` and sends zero velocity when commands stop.
 
-ros2 launch nav2_bringup navigation_launch.py
+### Useful commands
 
-ros2 launch slam_toolbox online_async_launch.py
-
-ros2 run rqt_graph rqt_graph
+```
 ros2 run tf2_tools view_frames
+ros2 run rqt_graph rqt_graph
 ```
-
-### Speech recognition
-
-We are using picovoice.ai porcupine for hotword detection and openai whisper throught the cloud, 
-unfortunately was very expensive to do Speech to Text locally with whisper (120sec for base.en).
-
-The code is in /speech-recognition/listen.py file.
-
-You need to provide the picovoice and openai keys in the docker-compose file
