@@ -1,0 +1,96 @@
+<?xml version="1.0"?>
+<!-- Chassis, wheels and body-mounted sensors (lidar, IMUs). -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <material name="aluminium"><color rgba="0.75 0.75 0.78 1"/></material>
+  <material name="black"><color rgba="0.1 0.1 0.1 1"/></material>
+  <material name="pcb_green"><color rgba="0.1 0.35 0.2 1"/></material>
+
+  <link name="base_footprint"/>
+
+  <link name="base_link">
+    <visual>
+      <!-- chassis plate -->
+      <origin xyz="${chassis_x_offset} 0 ${chassis_top_z - wheel_radius - chassis_plate_t / 2}"/>
+      <geometry><box size="${chassis_length} ${chassis_width} ${chassis_plate_t}"/></geometry>
+      <material name="aluminium"/>
+    </visual>
+    <visual>
+      <!-- electronics stack -->
+      <origin xyz="${stack_x} 0 ${chassis_top_z - wheel_radius + stack_height / 2}"/>
+      <geometry><box size="${stack_length} ${stack_width} ${stack_height}"/></geometry>
+      <material name="pcb_green"/>
+    </visual>
+    <collision>
+      <origin xyz="${chassis_x_offset} 0 ${chassis_top_z - wheel_radius + stack_height / 2}"/>
+      <geometry><box size="${chassis_length} ${chassis_width} ${stack_height}"/></geometry>
+    </collision>
+  </link>
+
+  <joint name="base_footprint_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 ${wheel_radius}"/>
+  </joint>
+
+  <!--
+    Wheels are fixed joints: the ESP board drives them and does not publish
+    wheel joint states, and nothing on the Pi needs their rotation.
+  -->
+  <xacro:macro name="wheel" params="name x y">
+    <link name="wheel_${name}_link">
+      <visual>
+        <origin rpy="${pi / 2} 0 0"/>
+        <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+        <material name="black"/>
+      </visual>
+      <collision>
+        <origin rpy="${pi / 2} 0 0"/>
+        <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+      </collision>
+    </link>
+    <joint name="wheel_${name}_joint" type="fixed">
+      <parent link="base_link"/>
+      <child link="wheel_${name}_link"/>
+      <origin xyz="${x} ${y} 0"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:wheel name="front_left"  x="${wheelbase / 2}"  y="${track_width / 2}"/>
+  <xacro:wheel name="front_right" x="${wheelbase / 2}"  y="${-track_width / 2}"/>
+  <xacro:wheel name="rear_left"   x="${-wheelbase / 2}" y="${track_width / 2}"/>
+  <xacro:wheel name="rear_right"  x="${-wheelbase / 2}" y="${-track_width / 2}"/>
+
+  <!--
+    Sensor frame names below match what the publishers use today:
+    laser_frame and imu_frame come from the ESP firmware, imu2_frame from
+    config/bno055_params.yaml.
+  -->
+  <link name="laser_frame">
+    <visual>
+      <origin xyz="0 0 -0.010"/>
+      <geometry><cylinder radius="0.025" length="0.040"/></geometry>
+      <material name="black"/>
+    </visual>
+  </link>
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="laser_frame"/>
+    <origin xyz="${lidar_x} ${lidar_y} ${lidar_z - wheel_radius}"/>
+  </joint>
+
+  <link name="imu_frame"/>
+  <joint name="esp_imu_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu_frame"/>
+    <origin xyz="${esp_imu_x} ${esp_imu_y} ${esp_imu_z - wheel_radius}"/>
+  </joint>
+
+  <link name="imu2_frame"/>
+  <joint name="bno055_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu2_frame"/>
+    <origin xyz="${bno055_x} ${bno055_y} ${bno055_z - wheel_radius}"/>
+  </joint>
+
+</robot>

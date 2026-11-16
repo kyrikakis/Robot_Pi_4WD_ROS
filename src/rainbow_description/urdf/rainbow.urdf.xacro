@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<!--
+  Rainbow: 4WD skid-steer robot with a pan/tilt head.
+
+  Args:
+    camera_model  imx708 (default, Camera Module 3 Wide NoIR) or imx296
+-->
+<robot name="rainbow" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:include filename="$(find rainbow_description)/urdf/dimensions.xacro"/>
+  <xacro:include filename="$(find rainbow_description)/urdf/base.xacro"/>
+  <xacro:include filename="$(find rainbow_description)/urdf/head.xacro"/>
+</robot>

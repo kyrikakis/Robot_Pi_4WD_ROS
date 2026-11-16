@@ -1,0 +1,83 @@
+<?xml version="1.0"?>
+<!--
+  Pan/tilt head with the eyes, the RGB camera (right ear) and the
+  ToF depth camera (left ear). Everything on the head moves with the
+  head_pan_joint and head_tilt_joint, so whatever drives the servos only
+  has to publish /joint_states for those two joints.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <material name="head_blue"><color rgba="0.55 0.85 0.9 1"/></material>
+  <material name="eyes_black"><color rgba="0.05 0.05 0.08 1"/></material>
+
+  <link name="head_pan_link"/>
+  <joint name="head_pan_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="head_pan_link"/>
+    <origin xyz="${head_pan_x} 0 ${head_pan_z - wheel_radius}"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="${-head_pan_limit}" upper="${head_pan_limit}" effort="1.0" velocity="3.0"/>
+  </joint>
+
+  <link name="head_tilt_link">
+    <visual>
+      <!-- eyes panel -->
+      <origin xyz="${eyes_dx} 0 ${eyes_dz}"/>
+      <geometry><box size="0.010 0.060 0.065"/></geometry>
+      <material name="eyes_black"/>
+    </visual>
+  </link>
+  <joint name="head_tilt_joint" type="revolute">
+    <parent link="head_pan_link"/>
+    <child link="head_tilt_link"/>
+    <origin xyz="${head_tilt_dx} 0 ${head_tilt_dz}"/>
+    <!-- positive tilt pitches the head down (right-hand rule about +y) -->
+    <axis xyz="0 1 0"/>
+    <limit lower="${head_tilt_lower}" upper="${head_tilt_upper}" effort="1.0" velocity="3.0"/>
+  </joint>
+
+  <!--
+    An ear holding a camera. Creates <name>_link (the camera body, x forward)
+    and <name>_optical_frame (z forward, x right, y down: the frame image
+    and depth data are expressed in, per REP 103).
+  -->
+  <xacro:macro name="ear_camera" params="name y">
+    <link name="${name}_link">
+      <visual>
+        <origin rpy="0 ${pi / 2} 0"/>
+        <geometry><cylinder radius="0.025" length="0.012"/></geometry>
+        <material name="head_blue"/>
+      </visual>
+    </link>
+    <joint name="${name}_joint" type="fixed">
+      <parent link="head_tilt_link"/>
+      <child link="${name}_link"/>
+      <origin xyz="${ear_dx} ${y} ${ear_dz}"/>
+    </joint>
+
+    <link name="${name}_optical_frame"/>
+    <joint name="${name}_optical_joint" type="fixed">
+      <parent link="${name}_link"/>
+      <child link="${name}_optical_frame"/>
+      <origin rpy="${-pi / 2} 0 ${-pi / 2}"/>
+    </joint>
+  </xacro:macro>
+
+  <!--
+    Right ear: the RGB camera. camera_model selects the module fitted:
+      imx708: Camera Module 3 Wide NoIR (fitted now)
+      imx296: Global Shutter camera (previously fitted)
+    The frames are the same for both; the argument is exported as a
+    property so launch files and calibration can pick the right settings.
+  -->
+  <xacro:arg name="camera_model" default="imx708"/>
+  <xacro:property name="camera_model" value="$(arg camera_model)"/>
+  <xacro:if value="${camera_model not in ['imx708', 'imx296']}">
+    <xacro:ERROR_camera_model_must_be_imx708_or_imx296/>
+  </xacro:if>
+  <xacro:ear_camera name="camera" y="${-ear_dy}"/>
+
+  <!-- Left ear: Arducam ToF depth camera -->
+  <xacro:ear_camera name="tof" y="${ear_dy}"/>
+
+</robot>
