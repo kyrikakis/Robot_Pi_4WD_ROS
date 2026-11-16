@@ -75,6 +75,9 @@ The code you edit is the code the robot runs. Lessons learned:
 
 ## Pushing from the container
 
+The Pi host's checkout fetches over HTTPS (the host has no GitHub key) and
+pushes over SSH; the image copies that `.git`, so the container inherits both.
+
 The container has no SSH keys; VS Code forwards the laptop's agent, which holds
 a work key and the owner's personal key. Pin this repo to the personal one
 (lost on every container rebuild):
