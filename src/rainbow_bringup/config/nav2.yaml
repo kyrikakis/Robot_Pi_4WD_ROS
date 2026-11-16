@@ -239,7 +239,8 @@ global_costmap:
 local_costmap:
   local_costmap:
     ros__parameters:
-      update_frequency: 5.0
+      # Matched to the ToF's 15 fps; above the controller's 20 Hz gains nothing
+      update_frequency: 15.0
       publish_frequency: 2.0
       global_frame: odom
       robot_base_frame: base_link

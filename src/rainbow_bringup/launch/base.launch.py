@@ -75,9 +75,10 @@ def generate_launch_description():
         Node(
             package='rainbow_drivers',
             executable='tof',
-            # 6 fps is plenty for Nav2 at 0.26 m/s (voxels decay after 1 s);
-            # 12 fps cost ~25% of a core
-            parameters=[{'frame_rate': 6}],
+            # The sensor always runs at ~25-30 fps and the SDK's depth computation
+            # costs the same either way; frame_rate sets how many clouds Nav2's
+            # voxel layers have to process. 15 fps: obstacles within ~70 ms.
+            parameters=[{'frame_rate': 15}],
             respawn=True,
             respawn_delay=5.0,
             condition=IfCondition(LaunchConfiguration('tof')),
