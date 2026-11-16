@@ -75,6 +75,9 @@ def generate_launch_description():
         Node(
             package='rainbow_drivers',
             executable='tof',
+            # 6 fps is plenty for Nav2 at 0.26 m/s (voxels decay after 1 s);
+            # 12 fps cost ~25% of a core
+            parameters=[{'frame_rate': 6}],
             respawn=True,
             respawn_delay=5.0,
             condition=IfCondition(LaunchConfiguration('tof')),

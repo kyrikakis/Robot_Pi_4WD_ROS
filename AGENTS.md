@@ -57,6 +57,10 @@ The code you edit is the code the robot runs. Lessons learned:
   level: YAML anchors defined as extra top-level keys make every node fail to
   start. Validate a params file by starting one real node with it on domain 77.
 - The ToF publishes with sensor-data QoS (best effort); subscribers must match.
+  The sensor has no frame-rate control (always ~25-30 fps; the SDK rejects
+  FRAME_RATE), so `frame_rate` is applied by skipping frames. Its range is in
+  mm (2000 or 4000) and only accepted after `start()`. Most of the node's CPU
+  (~18%) is the SDK's own depth computation, which no setting reduces.
 - With the ESP board off there is no odometry or lidar, so SLAM and Nav2 start
   but cannot do anything useful. Do not read that as a failure.
 - The Hailo container's supervisor socket is reachable from here at
@@ -104,7 +108,6 @@ when new work comes up, add it here.
 - Calibrate the Camera Module 3 (the files in `calibration/` are for the IMX296).
 - Wake word "Hey Rainbow" (placeholder in `rainbow_voice`); speech to text is
   planned with Whisper on the Hailo.
-- Possible CPU savings: ToF frame rate, BNO055 query rate (100 Hz, EKF runs at 30 Hz).
 - Hailo face recognition is currently disabled inside its container to save CPU.
 - Host: Hailo, kernel (6.6, contains the Hailo driver) and camera packages are
   held with apt-mark. Update them together later, with the Hailo container

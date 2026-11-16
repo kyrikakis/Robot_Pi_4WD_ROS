@@ -10,6 +10,7 @@ the confidence threshold or outside [min_range, max_range] are dropped.
 """
 
 import threading
+import time
 
 import numpy as np
 import rclpy
@@ -26,7 +27,7 @@ class TofNode(Node):
         self.frame_id = self.declare_parameter('frame_id', 'tof_optical_frame').value
         self.camera_index = self.declare_parameter('camera_index', 8).value
         self.frame_rate = self.declare_parameter('frame_rate', 12).value
-        self.range_setting = self.declare_parameter('range', 2).value
+        self.range_mm = self.declare_parameter('range_mm', 2000).value
         self.confidence = self.declare_parameter('confidence_threshold', 30).value
         self.min_range = self.declare_parameter('min_range', 0.05).value
         self.max_range = self.declare_parameter('max_range', 2.0).value
@@ -48,8 +49,8 @@ class TofNode(Node):
         self.get_logger().info(f'ToF started: {self.width}x{self.height} at {self.frame_rate} fps')
 
     def open_camera(self):
-        from ArducamDepthCamera import (ArducamCamera, Connection, Control, DeviceType,
-                                        FrameType, TofErrorCode)
+        from ArducamDepthCamera import (ArducamCamera, Connection, Control, FrameType,
+                                        TofErrorCode)
 
         camera = ArducamCamera()
         ret = camera.open(Connection.CSI, self.camera_index)
@@ -59,9 +60,12 @@ class TofNode(Node):
         if ret != TofErrorCode.ArducamSuccess:
             camera.close()
             raise RuntimeError(f'failed to start ToF camera (error {ret})')
-        if camera.getCameraInfo().device_type == DeviceType.HQVGA:
-            camera.setControl(Control.RANGE, self.range_setting)
-        camera.setControl(Control.FRAME_RATE, self.frame_rate)
+        # Range in mm (2000 or 4000); only accepted after start(). The sensor
+        # has no frame-rate control (it runs at ~25-30 fps), so frame_rate is
+        # applied in capture_loop by skipping frames.
+        ret = camera.setControl(Control.RANGE, self.range_mm)
+        if ret != TofErrorCode.ArducamSuccess:
+            self.get_logger().warning(f'ToF rejected range {self.range_mm} mm (error {ret})')
         return camera
 
     def make_rays(self, width, height):
@@ -74,11 +78,19 @@ class TofNode(Node):
     def capture_loop(self):
         from ArducamDepthCamera import DepthData
 
+        # The sensor may run faster than frame_rate; skip frames to hold it
+        period = 1.0 / self.frame_rate
+        next_time = 0.0
         while self.running and rclpy.ok():
             frame = self.camera.requestFrame(200)
             if frame is None:
                 continue
             try:
+                now = time.monotonic()
+                if now < next_time:
+                    continue
+                # Keep to the schedule, but do not try to catch up after a gap
+                next_time = max(next_time + period, now)
                 if isinstance(frame, DepthData):
                     depth = frame.depth_data.astype(np.float32) / 1000.0
                     valid = ((frame.confidence_data >= self.confidence)
