@@ -1,0 +1,97 @@
+# AGENTS.md
+
+Guidance for AI coding agents (and people) working on this repo. Read the
+README first for hardware setup and day-to-day commands; this file covers what
+the code does not tell you.
+
+## What this is
+
+Rainbow is a hobby robot: a small 4WD skid-steer chassis (19 x 14 cm) with a
+pan/tilt head, on a Raspberry Pi 5 running ROS 2 Jazzy in Docker. Everything
+ROS-side is in the `rainbow_*` packages under `src/` (see the README table).
+
+The hardware is split across three computers/containers:
+
+| Where | What | In this repo? |
+|---|---|---|
+| ESP32 board (micro-ROS over `/dev/ttyUSB_ROS`) | Motor PID, head servos, lidar, battery, an IMU | No. Firmware is out of scope; treat its topics as a fixed contract |
+| `robot` container (this repo) | Everything in `src/`, run by supervisor | Yes |
+| Hailo container ([hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2)) | Face recognition on the Hailo, plus the RGB camera (`gscam`) | No. Only `hailo_msgs` is built here, to read its messages |
+
+Contracts with the ESP firmware (do not rename): it subscribes to `cmd_vel`,
+`servo_s1` (pan) and `servo_s2` (tilt), and publishes `/odom_raw`, `/scan` in
+`laser_frame`, and `/imu` in `imu_frame`. The ESP's IMU is mounted wrongly and
+unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
+
+## How it runs
+
+- Appliance style: the Dockerfile copies the repo into the image and builds it,
+  so a power-on is a clean deployment. This is deliberate; do not bind-mount
+  the repo. The image is built from the **Pi host's** checkout, not from inside
+  the container.
+- Supervisor runs five programs from `supervisor/rainbow.conf`, each a
+  `rainbow_bringup` launch file via `scripts/rainbow_launch.sh`.
+- `ROS_DOMAIN_ID=20` for the robot.
+- All measurements live in `src/rainbow_description/urdf/dimensions.xacro`
+  (measured values are marked). Nav2's footprint in `rainbow_bringup/config/nav2.yaml`
+  must be kept in sync with it by hand.
+
+## Working on the live robot
+
+The code you edit is the code the robot runs. Lessons learned:
+
+- **Test new nodes on another ROS domain** (`ROS_DOMAIN_ID=77`) so they cannot
+  command the real robot or clash with its TF.
+- **Never stop processes by name pattern** (`pkill -f joint_state_publisher`
+  also kills the robot's own). Stop test processes by PID. `setsid` forks, so
+  `$!` after it is not the node's PID.
+- **Hardware is single-owner**: the I2C eyes, BNO055 and the ToF camera can only
+  be opened by one process; test their nodes by restarting the supervisor
+  program, not alongside it.
+- `supervisorctl tail` can fail on non-UTF-8 log output; read
+  `/var/log/supervisor/<program>-stdout*.log` directly.
+- **ROS params files** (`config/*.yaml`) must only have node names at the top
+  level: YAML anchors defined as extra top-level keys make every node fail to
+  start. Validate a params file by starting one real node with it on domain 77.
+- The ToF publishes with sensor-data QoS (best effort); subscribers must match.
+- With the ESP board off there is no odometry or lidar, so SLAM and Nav2 start
+  but cannot do anything useful. Do not read that as a failure.
+- The Hailo container's supervisor socket is reachable from here at
+  `/proc/<its supervisord pid>/root/run/supervisor.sock` (this container shares
+  the host PID namespace).
+
+## Conventions
+
+- Work happens on the `refactor` branch until the refactor is finished; do not
+  merge to `main` or suggest merging until the owner says so.
+- Python nodes: ament_python, one node per module, `ament_flake8 --linelength 100`
+  clean. New services go in `rainbow_interfaces`. Keep the old topics
+  (`/head/*_rotation`, `/eyes`, `/speech/*`) working.
+- Pin anything cloned or pip-installed in the Dockerfile (pins are `ARG`s at
+  the top). Ubuntu/ROS apt packages are the exception, with `apt-get upgrade`
+  kept on purpose.
+- The README is curated: change it only to keep it correct, never pad it.
+- The version before the refactor is tagged `v0-legacy`.
+
+## Pushing from the container
+
+The container has no SSH keys; VS Code forwards the laptop's agent, which holds
+a work key and the owner's personal key. Pin this repo to the personal one
+(lost on every container rebuild):
+
+```
+ssh-add -L | grep 'kirikakis@gmail.com' > ~/.ssh/id_ed25519_personal.pub
+git config core.sshCommand "ssh -i ~/.ssh/id_ed25519_personal.pub -o IdentitiesOnly=yes"
+```
+
+## Open work
+
+- First full image rebuild of the refactor, then a drive test with the ESP on
+  (teleop, head directions, lidar/odometry, Nav2 in a small room).
+- Check ToF obstacles clear in `/local_costmap/voxel_grid`; if they linger, the
+  ToF frame orientation for the voxel layer needs flipping.
+- Calibrate the Camera Module 3 (the files in `calibration/` are for the IMX296).
+- Wake word "Hey Rainbow" (placeholder in `rainbow_voice`); speech to text is
+  planned with Whisper on the Hailo.
+- Possible CPU savings: ToF frame rate, BNO055 query rate (100 Hz, EKF runs at 30 Hz).
+- Hailo face recognition is currently disabled inside its container to save CPU.
