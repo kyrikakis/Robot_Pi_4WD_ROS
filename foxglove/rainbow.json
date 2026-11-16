@@ -137,47 +137,6 @@
         "value": -0.8
       }
     },
-    "Plot!speed": {
-      "title": "Commanded vs actual speed",
-      "paths": [
-        {
-          "value": "/cmd_vel.linear.x",
-          "enabled": true,
-          "label": "commanded linear (m/s)",
-          "timestampMethod": "receiveTime"
-        },
-        {
-          "value": "/odom.twist.twist.linear.x",
-          "enabled": true,
-          "label": "actual linear (m/s)",
-          "timestampMethod": "receiveTime"
-        },
-        {
-          "value": "/cmd_vel.angular.z",
-          "enabled": true,
-          "label": "commanded angular (rad/s)",
-          "timestampMethod": "receiveTime"
-        },
-        {
-          "value": "/odom.twist.twist.angular.z",
-          "enabled": true,
-          "label": "actual angular (rad/s)",
-          "timestampMethod": "receiveTime"
-        }
-      ],
-      "showLegend": true,
-      "followingViewWidth": 20
-    },
-    "CallService!head": {
-      "serviceName": "/head/set_pose",
-      "requestPayload": "{\n  \"pan\": 0.0,\n  \"tilt\": 0.0\n}",
-      "buttonText": "Point head (radians: pan + = left, tilt + = down)"
-    },
-    "CallService!eyes": {
-      "serviceName": "/eyes/set_expression",
-      "requestPayload": "{\n  \"expression\": \"happy\"\n}",
-      "buttonText": "Set eyes (happy, open, closed, off)"
-    },
     "Image!faces": {
       "imageMode": {
         "imageTopic": "/hailo_face_recognition/image_bbx/compressed"
@@ -186,6 +145,19 @@
     "RosOut!log": {
       "searchTerms": [],
       "minLogLevel": 3
+    },
+    "Plot!battery": {
+      "title": "Battery (/battery, raw: probably volts x 10)",
+      "paths": [
+        {
+          "value": "/battery.data",
+          "enabled": true,
+          "label": "battery",
+          "timestampMethod": "receiveTime"
+        }
+      ],
+      "showLegend": true,
+      "followingViewWidth": 600
     }
   },
   "globalVariables": {},
@@ -201,26 +173,16 @@
       "first": {
         "direction": "row",
         "first": "Teleop!rainbow",
-        "second": {
-          "direction": "column",
-          "first": "CallService!head",
-          "second": "CallService!eyes",
-          "splitPercentage": 50
-        },
+        "second": "Plot!battery",
         "splitPercentage": 45
       },
       "second": {
         "direction": "column",
-        "first": "Plot!speed",
-        "second": {
-          "direction": "row",
-          "first": "Image!faces",
-          "second": "RosOut!log",
-          "splitPercentage": 50
-        },
-        "splitPercentage": 45
+        "first": "Image!faces",
+        "second": "RosOut!log",
+        "splitPercentage": 55
       },
-      "splitPercentage": 35
+      "splitPercentage": 40
     },
     "splitPercentage": 62
   }
