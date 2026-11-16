@@ -86,6 +86,9 @@ git config core.sshCommand "ssh -i ~/.ssh/id_ed25519_personal.pub -o IdentitiesO
 
 ## Open work
 
+Keep this list current: when an item is done, remove it in the same commit;
+when new work comes up, add it here.
+
 - First full image rebuild of the refactor, then a drive test with the ESP on
   (teleop, head directions, lidar/odometry, Nav2 in a small room).
 - Check ToF obstacles clear in `/local_costmap/voxel_grid`; if they linger, the
