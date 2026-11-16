@@ -71,7 +71,9 @@ The code you edit is the code the robot runs. Lessons learned:
   clean. New services go in `rainbow_interfaces`. Keep the old topics
   (`/head/*_rotation`, `/eyes`, `/speech/*`) working.
 - Pin anything cloned or pip-installed in the Dockerfile (pins are `ARG`s at
-  the top). Ubuntu/ROS apt packages are the exception, with `apt-get upgrade`
+  the top). Pin pip dependencies that can break things too, not only the
+  packages you asked for: an unpinned Adafruit-Blinka upgrade once broke the
+  eyes. Ubuntu/ROS apt packages are the exception, with `apt-get upgrade`
   kept on purpose.
 - The README is curated: change it only to keep it correct, never pad it.
 - The version before the refactor is tagged `v0-legacy`.
@@ -95,8 +97,8 @@ git config core.sshCommand "ssh -i ~/.ssh/id_ed25519_personal.pub -o IdentitiesO
 Keep this list current: when an item is done, remove it in the same commit;
 when new work comes up, add it here.
 
-- First full image rebuild of the refactor, then a drive test with the ESP on
-  (teleop, head directions, lidar/odometry, Nav2 in a small room).
+- Drive test with the ESP on (teleop, head directions, lidar/odometry, Nav2
+  in a small room). The image rebuild of the refactor is done.
 - Check ToF obstacles clear in `/local_costmap/voxel_grid`; if they linger, the
   ToF frame orientation for the voxel layer needs flipping.
 - Calibrate the Camera Module 3 (the files in `calibration/` are for the IMX296).

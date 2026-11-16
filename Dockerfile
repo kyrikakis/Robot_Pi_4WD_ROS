@@ -87,7 +87,10 @@ RUN apt-get update && apt-get install -y \
     ros-$ROS_DISTRO-spatio-temporal-voxel-layer
 
 # Eyes LED matrix (adafruit) and GPIO
-RUN pip3 install --break-system-packages rpi-lgpio==0.6 adafruit-circuitpython-ht16k33==4.6.11
+# Blinka and gpiod are pinned too: an unpinned Blinka upgrade once needed gpiod
+# on the Pi 5 and broke the eyes
+RUN pip3 install --break-system-packages rpi-lgpio==0.6 adafruit-circuitpython-ht16k33==4.6.11 \
+    Adafruit-Blinka==10.2.0 gpiod==2.6.0
 
 # Arducam ToF SDK, from Arducam's apt repository
 RUN apt-get update && apt-get install -y --no-install-recommends curl gnupg && \
