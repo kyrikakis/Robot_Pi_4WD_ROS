@@ -22,13 +22,15 @@ camera_auto_detect=0
 dtparam=pciex1_gen=3
 power_force_3v3_pwm=1
 dtoverlay=arducam-pivariety,cam0
-dtoverlay=imx296,cam1
+dtoverlay=imx708,cam1
 ```
+   `cam0` is the Arducam ToF, `cam1` the Camera Module 3 (use `imx296` for the Global Shutter camera).
 8. Run `sudo raspi-config` and enable: i2c, vnc, ssh, pcie3
 9. Add an alias to the microros serial port according to https://forums.raspberrypi.com/viewtopic.php?t=90265:
     `echo 'ACTION=="add",ENV{ID_SERIAL}=="Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001",ENV{ID_SERIAL_SHORT}=="0001",SYMLINK+="ttyUSB_ROS\"' >> /etc/udev/rules.d/99-usbserial.rules`
 10. Download the source code: `git clone https://github.com/kyrikakis/Robot_Pi_4WD_ROS.git`
-11. Run the image: `cd Robot_Pi_4WD_ROS && docker compose up`
+11. Run the image: `cd Robot_Pi_4WD_ROS && docker compose up`.
+    The code is built into the image, so to update later: `git pull && docker compose build && docker compose up -d`
 12. Install ros2 jazzy to pi5 https://github.com/Ar-Ray-code/rpi-bullseye-ros2. Source ros -> 
     `echo "export ROS_DOMAIN_ID=20" >> ~/.bashrc && echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc`
 13. Install a bunch of ros stuff and:
@@ -51,11 +53,13 @@ Rainbow's ROS 2 packages live in `src/`:
 | `rainbow_description` | URDF of the robot: chassis, sensors and the pan/tilt head |
 | `rainbow_bringup` | Launch files and all configuration (EKF, BNO055, SLAM, Nav2) |
 | `rainbow_drivers` | Head, eyes, ToF depth camera, velocity watchdog, IP publisher |
-| `rainbow_voice` | Text to speech |
+| `rainbow_voice` | Text to speech; wake word placeholder (`voice.launch.py wake_word:=true`) |
 | `rainbow_interfaces` | Service definitions |
 
 The ESP32 board runs the motors (with PID), the head servos, the lidar, battery
 monitoring and its own IMU. It talks to the Pi over micro-ROS (`/dev/ttyUSB_ROS`).
+The ESP's IMU is mounted the wrong way round and is not used; the EKF uses the
+BNO055 on the Pi.
 
 Face recognition runs on the Hailo in its own container, from
 [hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2).
@@ -101,6 +105,10 @@ The old topics still work: `/head/z_rotation` and `/head/y_rotation` (degrees),
 
 Driving: Nav2 and teleop publish to `/cmd_vel_stamped`; the velocity watchdog
 forwards that to the ESP on `/cmd_vel` and sends zero velocity when commands stop.
+
+```
+ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=cmd_vel_stamped
+```
 
 ### Useful commands
 
