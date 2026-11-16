@@ -146,18 +146,18 @@
       "searchTerms": [],
       "minLogLevel": 3
     },
-    "Plot!battery": {
-      "title": "Battery (/battery, raw: probably volts x 10)",
-      "paths": [
-        {
-          "value": "/battery.data",
-          "enabled": true,
-          "label": "battery",
-          "timestampMethod": "receiveTime"
-        }
+    "Gauge!battery": {
+      "foxglovePanelTitle": "Battery (volts x 10: 69 = 6.9 V empty, 80 = 8.0 V full)",
+      "path": "/battery.data",
+      "minValue": 69,
+      "maxValue": 80,
+      "colorMode": "colormap",
+      "colorMap": "red-yellow-green",
+      "gradient": [
+        "#ff0000ff",
+        "#00ff00ff"
       ],
-      "showLegend": true,
-      "followingViewWidth": 600
+      "reverse": false
     }
   },
   "globalVariables": {},
@@ -173,7 +173,7 @@
       "first": {
         "direction": "row",
         "first": "Teleop!rainbow",
-        "second": "Plot!battery",
+        "second": "Gauge!battery",
         "splitPercentage": 45
       },
       "second": {

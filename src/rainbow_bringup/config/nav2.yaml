@@ -17,7 +17,9 @@ bt_navigator:
     robot_base_frame: base_link
     odom_topic: /odom
     bt_loop_duration: 10
-    default_server_timeout: 20
+    # ms to wait for a server to acknowledge a request; 20 (the default) timed
+    # out on the busy Pi and aborted goals while re-planning
+    default_server_timeout: 200
     wait_for_service_timeout: 1000
     action_server_result_timeout: 900.0
     navigators: ["navigate_to_pose", "navigate_through_poses"]
@@ -35,8 +37,8 @@ bt_navigator:
 
 controller_server:
   ros__parameters:
-    # 20 Hz is plenty for 0.26 m/s and leaves CPU for SLAM and the Hailo
-    controller_frequency: 20.0
+    # MPPI only reached 10-16 Hz at 20 on the Pi; 15 is plenty for 0.26 m/s
+    controller_frequency: 15.0
     costmap_update_timeout: 0.30
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
@@ -62,17 +64,19 @@ controller_server:
     FollowPath:
       plugin: "nav2_mppi_controller::MPPIController"
       motion_model: "DiffDrive"
-      time_steps: 56
-      model_dt: 0.05
-      batch_size: 1000          # 2000 is the default; 1000 keeps the Pi 5 responsive
+      # model_dt must be >= the control period (1/15 s); 40 x 0.07 s keeps the
+      # 2.8 s look-ahead of the default 56 x 0.05 s, with fewer steps to compute
+      time_steps: 40
+      model_dt: 0.07
+      batch_size: 600           # 2000 is the default; 1000 still missed 15 Hz on the Pi
       iteration_count: 1
       vx_std: 0.2
       vy_std: 0.0
-      wz_std: 0.4
+      wz_std: 0.8               # sample faster turns; 0.4 rarely tried them
       vx_max: 0.26
       vx_min: -0.15             # allows backing out of dead ends
       vy_max: 0.0
-      wz_max: 1.0
+      wz_max: 1.5               # rad/s; 1.0 made turns and corrections slow
       ax_max: 2.0
       ax_min: -2.0
       ay_max: 0.0
@@ -175,9 +179,9 @@ global_costmap:
         combination_method: 1
         scan:
           topic: /scan
-          obstacle_max_range: 2.5
+          obstacle_max_range: 3.0
           obstacle_min_range: 0.0
-          raytrace_max_range: 3.0
+          raytrace_max_range: 4.0
           raytrace_min_range: 0.0
           max_obstacle_height: 2.0
           min_obstacle_height: 0.0
@@ -232,8 +236,10 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: true
-        inflation_radius: 0.20
-        cost_scaling_factor: 10.0
+        # Planner's view: wide and gentle so paths keep to the middle of open
+        # space; gaps the robot fits through stay usable (only the footprint is lethal)
+        inflation_radius: 0.45
+        cost_scaling_factor: 3.0
         inflate_unknown: false
         inflate_around_unknown: false
       always_send_full_costmap: True
@@ -241,8 +247,8 @@ global_costmap:
 local_costmap:
   local_costmap:
     ros__parameters:
-      # Matched to the ToF's 15 fps; above the controller's 20 Hz gains nothing
-      update_frequency: 15.0
+      # 10 Hz is plenty for the lidar; it shares the controller's process
+      update_frequency: 10.0
       publish_frequency: 2.0
       global_frame: odom
       robot_base_frame: base_link
@@ -264,9 +270,9 @@ local_costmap:
         combination_method: 1
         scan:
           topic: /scan
-          obstacle_max_range: 2.5
+          obstacle_max_range: 3.0
           obstacle_min_range: 0.0
-          raytrace_max_range: 3.0
+          raytrace_max_range: 4.0
           raytrace_min_range: 0.0
           max_obstacle_height: 2.0
           min_obstacle_height: 0.0
@@ -321,8 +327,9 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: true
-        inflation_radius: 0.20
-        cost_scaling_factor: 10.0
+        # Controller's view: moderate, so it keeps clear without creeping
+        inflation_radius: 0.25
+        cost_scaling_factor: 5.0
         inflate_unknown: false
         inflate_around_unknown: false
       always_send_full_costmap: True
@@ -347,7 +354,7 @@ planner_server:
       allow_unknown: true
       max_iterations: 1000000
       max_on_approach_iterations: 1000
-      max_planning_time: 2.0
+      max_planning_time: 1.0
       cost_travel_multiplier: 2.0   # prefer the middle of corridors and doorways
       use_final_approach_orientation: false
       smoother:
@@ -409,8 +416,8 @@ velocity_smoother:
     scale_velocities: False
     feedback: "OPEN_LOOP"
     # Same limits as the MPPI controller
-    max_velocity: [0.26, 0.0, 1.0]
-    min_velocity: [-0.15, 0.0, -1.0]
+    max_velocity: [0.26, 0.0, 1.5]
+    min_velocity: [-0.15, 0.0, -1.5]
     max_accel: [2.0, 0.0, 3.2]
     max_decel: [-2.0, 0.0, -3.2]
     odom_topic: "odom"

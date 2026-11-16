@@ -21,9 +21,10 @@ compose setup lives in `~/hailo_tappas_ros2` on the host.
 | `robot` container (this repo) | Everything in `src/`, run by supervisor | Yes |
 | Hailo container ([hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2)) | Face recognition on the Hailo, capturing the RGB camera itself | No. Only `hailo_msgs` is built here, to read its messages |
 
-Contracts with the ESP firmware (do not rename): it subscribes to `cmd_vel`,
-`servo_s1` (pan) and `servo_s2` (tilt), and publishes `/odom_raw`, `/scan` in
-`laser_frame`, and `/imu` in `imu_frame`. The ESP's IMU is mounted wrongly and
+Contracts with the ESP firmware (node `YB_Car_Node`, do not rename): it
+subscribes to `cmd_vel`, `servo_s1` (pan), `servo_s2` (tilt) and `/beep`, and
+publishes `/odom_raw`, `/scan` in `laser_frame`, `/imu` in `imu_frame`, and
+`/battery` (UInt16, volts x 10, 1 Hz; the owner's pack runs ~6.9-8.0 V). The ESP's IMU is mounted wrongly and
 unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
 
 ## How it runs
@@ -34,6 +35,8 @@ unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
   the container.
 - Supervisor runs five programs from `supervisor/rainbow.conf`, each a
   `rainbow_bringup` launch file via `scripts/rainbow_launch.sh`.
+- Nav2 runs composed in one process (`nav2_container`); as separate processes
+  its 11 servers cost ~66% of a core idle, composed ~38%.
 - `ROS_DOMAIN_ID=20` for the robot.
 - All measurements live in `src/rainbow_description/urdf/dimensions.xacro`
   (measured values are marked). Nav2's footprint in `rainbow_bringup/config/nav2.yaml`
@@ -108,6 +111,9 @@ when new work comes up, add it here.
   nav2.yaml) because it added noise. Debug the noise (confidence threshold,
   floor points, frame orientation), then re-enable and check obstacles clear
   in `/local_costmap/voxel_grid`. The ToF node itself still runs.
+- Battery node: warn around 7.0 V (log, eyes or speech) and cancel Nav2 goals /
+  stop at the cutoff (~6.6-6.9 V, judged at rest). The firmware's own low-voltage
+  behaviour is unknown.
 - Calibrate the Camera Module 3 (the files in `calibration/` are for the IMX296).
 - Wake word "Hey Rainbow" (placeholder in `rainbow_voice`); speech to text is
   planned with Whisper on the Hailo.

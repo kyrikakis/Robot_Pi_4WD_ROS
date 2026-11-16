@@ -29,10 +29,10 @@ slam_toolbox:
     debug_logging: false
     throttle_scans: 1
     transform_publish_period: 0.02 #if 0 never publishes odometry
-    map_update_interval: 5.0
+    map_update_interval: 1.0   # redraw the map every second
     resolution: 0.02
     min_laser_range: 0.0 #for rastering images
-    max_laser_range: 20.0 #for rastering images
+    max_laser_range: 8.0  # the lidar's rated maximum
     minimum_time_interval: 0.5
     transform_timeout: 0.2
     tf_buffer_duration: 30.
@@ -42,8 +42,10 @@ slam_toolbox:
     # General Parameters
     use_scan_matching: true
     use_scan_barycenter: true
-    minimum_travel_distance: 0.5
-    minimum_travel_heading: 0.5
+    # A new scan is added after this much travel or turning. Small robot in
+    # small rooms: 10 cm / ~9 deg (was 0.5 m / ~29 deg, which barely mapped)
+    minimum_travel_distance: 0.1
+    minimum_travel_heading: 0.15
     scan_buffer_size: 10
     scan_buffer_maximum_scan_distance: 10.0
     link_match_minimum_response_fine: 0.1  
