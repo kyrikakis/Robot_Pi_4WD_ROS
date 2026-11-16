@@ -1,0 +1,8 @@
+# Built inside the image; never copy a host build in
+build/
+install/
+log/
+core
+__pycache__/
+*.pyc
+.env

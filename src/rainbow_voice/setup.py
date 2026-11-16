@@ -19,6 +19,7 @@ setup(
     entry_points={
         'console_scripts': [
             'speech = rainbow_voice.speech_node:main',
+            'wake_word = rainbow_voice.wake_word_node:main',
         ],
     },
 )
