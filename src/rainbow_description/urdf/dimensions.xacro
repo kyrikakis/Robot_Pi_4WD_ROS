@@ -31,18 +31,21 @@
   <xacro:property name="stack_height" value="0.110"/>
   <xacro:property name="stack_x"      value="-0.010"/>
 
-  <!-- Lidar, on the top plate (scan plane height above the floor) -->
+  <!-- Lidar, on the top plate. Base measured at 14 cm; the scan plane is
+       about 2.5 cm above the base (from the photos). Heights above the floor. -->
   <xacro:property name="lidar_x" value="-0.008"/>
   <xacro:property name="lidar_y" value="0.0"/>
-  <xacro:property name="lidar_z" value="0.197"/>
+  <xacro:property name="lidar_base_z" value="0.140"/>
+  <xacro:property name="lidar_z" value="${lidar_base_z + 0.025}"/>
 
-  <!-- IMUs. TODO: real positions; both are on the electronics stack somewhere -->
-  <xacro:property name="esp_imu_x" value="0.0"/>
+  <!-- IMUs. BNO055: measured, middle of the board stack, 7 cm above the floor.
+       ESP IMU: TODO real position, somewhere on the board stack. -->
+  <xacro:property name="esp_imu_x" value="${stack_x}"/>
   <xacro:property name="esp_imu_y" value="0.0"/>
   <xacro:property name="esp_imu_z" value="0.090"/>
-  <xacro:property name="bno055_x"  value="0.0"/>
+  <xacro:property name="bno055_x"  value="${stack_x}"/>
   <xacro:property name="bno055_y"  value="0.0"/>
-  <xacro:property name="bno055_z"  value="0.120"/>
+  <xacro:property name="bno055_z"  value="0.070"/>
 
   <!-- Head: pan joint on the chassis plate, tilt joint above it -->
   <xacro:property name="head_pan_x"   value="0.071"/>   <!-- ahead of base_link -->
