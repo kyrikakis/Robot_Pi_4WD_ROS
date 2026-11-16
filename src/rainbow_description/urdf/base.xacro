@@ -64,12 +64,12 @@
   <!--
     Sensor frame names below match what the publishers use today:
     laser_frame and imu_frame come from the ESP firmware, imu2_frame from
-    config/bno055_params.yaml.
+    rainbow_bringup/config/bno055.yaml.
   -->
   <link name="laser_frame">
     <visual>
       <origin xyz="0 0 -0.010"/>
-      <geometry><cylinder radius="0.025" length="0.040"/></geometry>
+      <geometry><cylinder radius="0.019" length="0.028"/></geometry>
       <material name="black"/>
     </visual>
   </link>

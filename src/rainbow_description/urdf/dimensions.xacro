@@ -1,10 +1,12 @@
 <?xml version="1.0"?>
 <!--
-  All of Rainbow's measurements, in metres and radians.
+  All of Rainbow's measurements, in metres and radians. Heights are above the floor.
 
-  Measured with a ruler: wheel_diameter, wheelbase.
-  Everything else is scaled from the photos in images/ using those two
-  numbers (about +/-1 cm). Values marked TODO are placeholders.
+  Measured with a ruler (marked "measured"):
+    wheel diameter 4.5 cm, wheelbase 13 cm, outer width across the tyres 14 cm,
+    lidar base 14 cm, BNO055 7 cm, cameras 13 cm high and 8 cm apart.
+  Everything else is scaled from the photos in images/ using the wheel
+  diameter (about +/-1 cm). Values marked TODO are placeholders.
 
   Frame convention (REP 103/105): x forward, y left, z up.
   base_link sits on the robot's centre of rotation (midway between the
@@ -13,58 +15,64 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
   <!-- Wheels and chassis -->
-  <xacro:property name="wheel_diameter" value="0.065"/>   <!-- ruler -->
+  <xacro:property name="wheel_diameter" value="0.045"/>   <!-- measured -->
   <xacro:property name="wheel_radius"   value="${wheel_diameter / 2}"/>
-  <xacro:property name="wheel_width"    value="0.027"/>
-  <xacro:property name="wheelbase"      value="0.160"/>   <!-- ruler: front axle to rear axle -->
-  <xacro:property name="track_width"    value="0.160"/>   <!-- photo: left to right tyre centres -->
+  <xacro:property name="wheel_width"    value="0.020"/>
+  <xacro:property name="wheelbase"      value="0.130"/>   <!-- measured: front axle to rear axle -->
+  <xacro:property name="outer_width"    value="0.140"/>   <!-- measured: outside of tyre to outside of tyre -->
+  <xacro:property name="track_width"    value="${outer_width - wheel_width}"/> <!-- tyre centre to tyre centre -->
 
-  <xacro:property name="chassis_length"   value="0.229"/>
-  <xacro:property name="chassis_width"    value="0.140"/>
-  <xacro:property name="chassis_x_offset" value="0.010"/> <!-- plate centre is slightly ahead of the axle midpoint -->
-  <xacro:property name="chassis_top_z"    value="0.071"/> <!-- plate top, above the floor -->
+  <xacro:property name="chassis_length"   value="0.158"/>
+  <xacro:property name="chassis_width"    value="0.100"/>
+  <xacro:property name="chassis_x_offset" value="0.007"/> <!-- plate centre is slightly ahead of the axle midpoint -->
+  <xacro:property name="chassis_top_z"    value="0.049"/> <!-- plate top -->
   <xacro:property name="chassis_plate_t"  value="0.003"/>
 
-  <!-- Electronics stack (Pi 5, Hailo, ESP board), for visuals only -->
-  <xacro:property name="stack_length" value="0.090"/>
-  <xacro:property name="stack_width"  value="0.090"/>
-  <xacro:property name="stack_height" value="0.110"/>
-  <xacro:property name="stack_x"      value="-0.010"/>
+  <!-- Electronics stack (Pi 5, Hailo, ESP board), from the plate up to the
+       top plate the lidar sits on. Visuals only. -->
+  <xacro:property name="stack_length" value="0.062"/>
+  <xacro:property name="stack_width"  value="0.062"/>
+  <xacro:property name="stack_height" value="${0.140 - 0.049}"/>
+  <xacro:property name="stack_x"      value="-0.007"/>
 
-  <!-- Lidar, on the top plate. Base measured at 14 cm; the scan plane is
-       about 2.5 cm above the base (from the photos). Heights above the floor. -->
-  <xacro:property name="lidar_x" value="-0.008"/>
+  <!-- Lidar, on the top plate. Base measured; the scan plane is about
+       1.7 cm above the base (from the photos). -->
+  <xacro:property name="lidar_x" value="-0.005"/>
   <xacro:property name="lidar_y" value="0.0"/>
-  <xacro:property name="lidar_base_z" value="0.140"/>
-  <xacro:property name="lidar_z" value="${lidar_base_z + 0.025}"/>
+  <xacro:property name="lidar_base_z" value="0.140"/>     <!-- measured -->
+  <xacro:property name="lidar_z" value="${lidar_base_z + 0.017}"/>
 
-  <!-- IMUs. BNO055: measured, middle of the board stack, 7 cm above the floor.
+  <!-- IMUs. BNO055: measured, middle of the board stack.
        ESP IMU: TODO real position, somewhere on the board stack. -->
   <xacro:property name="esp_imu_x" value="${stack_x}"/>
   <xacro:property name="esp_imu_y" value="0.0"/>
-  <xacro:property name="esp_imu_z" value="0.090"/>
+  <xacro:property name="esp_imu_z" value="0.065"/>
   <xacro:property name="bno055_x"  value="${stack_x}"/>
   <xacro:property name="bno055_y"  value="0.0"/>
-  <xacro:property name="bno055_z"  value="0.070"/>
+  <xacro:property name="bno055_z"  value="0.070"/>        <!-- measured -->
 
   <!-- Head: pan joint on the chassis plate, tilt joint above it -->
-  <xacro:property name="head_pan_x"   value="0.071"/>   <!-- ahead of base_link -->
-  <xacro:property name="head_pan_z"   value="0.071"/>   <!-- above the floor -->
-  <xacro:property name="head_tilt_dx" value="-0.004"/>  <!-- relative to the pan joint -->
-  <xacro:property name="head_tilt_dz" value="0.041"/>
+  <xacro:property name="head_pan_x"   value="0.049"/>    <!-- ahead of base_link -->
+  <xacro:property name="head_pan_z"   value="${chassis_top_z}"/>
+  <xacro:property name="head_tilt_dx" value="-0.003"/>   <!-- relative to the pan joint -->
+  <xacro:property name="head_tilt_dz" value="0.028"/>
   <!-- Same limits as rainbow_drivers head node (degrees there) -->
   <xacro:property name="head_pan_lower"  value="${radians(-40)}"/>
   <xacro:property name="head_pan_upper"  value="${radians(38)}"/>
   <xacro:property name="head_tilt_lower" value="${radians(-36)}"/>
   <xacro:property name="head_tilt_upper" value="${radians(19)}"/>
 
-  <!-- Ears, relative to the tilt joint. Right ear: RGB camera. Left ear: ToF -->
-  <xacro:property name="ear_dx" value="0.067"/>
-  <xacro:property name="ear_dy" value="0.060"/>
-  <xacro:property name="ear_dz" value="0.065"/>
+  <!-- Ears, relative to the tilt joint. Right ear: RGB camera. Left ear: ToF.
+       Measured: 13 cm above the floor (head level) and 8 cm apart. -->
+  <xacro:property name="camera_z"   value="0.130"/>      <!-- measured -->
+  <xacro:property name="camera_gap" value="0.080"/>      <!-- measured -->
+  <xacro:property name="ear_dx" value="0.046"/>
+  <xacro:property name="ear_dy" value="${camera_gap / 2}"/>
+  <xacro:property name="ear_dz" value="${camera_z - head_pan_z - head_tilt_dz}"/>
+  <xacro:property name="ear_radius" value="0.018"/>
 
   <!-- Eyes LED matrix, relative to the tilt joint -->
-  <xacro:property name="eyes_dx" value="0.070"/>
-  <xacro:property name="eyes_dz" value="0.020"/>
+  <xacro:property name="eyes_dx" value="0.048"/>
+  <xacro:property name="eyes_dz" value="0.014"/>
 
 </robot>

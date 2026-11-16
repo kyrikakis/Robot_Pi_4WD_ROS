@@ -23,7 +23,7 @@
     <visual>
       <!-- eyes panel -->
       <origin xyz="${eyes_dx} 0 ${eyes_dz}"/>
-      <geometry><box size="0.010 0.060 0.065"/></geometry>
+      <geometry><box size="0.008 0.042 0.045"/></geometry>
       <material name="eyes_black"/>
     </visual>
   </link>
@@ -45,7 +45,7 @@
     <link name="${name}_link">
       <visual>
         <origin rpy="0 ${pi / 2} 0"/>
-        <geometry><cylinder radius="0.025" length="0.012"/></geometry>
+        <geometry><cylinder radius="${ear_radius}" length="0.010"/></geometry>
         <material name="head_blue"/>
       </visual>
     </link>
