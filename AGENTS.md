@@ -33,8 +33,10 @@ unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
   so a power-on is a clean deployment. This is deliberate; do not bind-mount
   the repo. The image is built from the **Pi host's** checkout, not from inside
   the container.
-- Supervisor runs five programs from `supervisor/rainbow.conf`, each a
-  `rainbow_bringup` launch file via `scripts/rainbow_launch.sh`.
+- Supervisor runs six programs from `supervisor/rainbow.conf`, each a
+  `rainbow_bringup` launch file via `scripts/rainbow_launch.sh`. The micro-ROS
+  agent is its own program (`rainbow_microros`) so restarting the base does not
+  disconnect the ESP.
 - Nav2 runs composed in one process (`nav2_container`); as separate processes
   its 11 servers cost ~66% of a core idle, composed ~38%.
 - `ROS_DOMAIN_ID=20` for the robot.
@@ -65,6 +67,18 @@ The code you edit is the code the robot runs. Lessons learned:
   mm (2000 or 4000; we use 4000) and only accepted after `start()`. Nearly all
   of the node's CPU (~18%) is the SDK's own depth computation, which no setting
   reduces; the node's own processing is a percent or two.
+- **ESP connection**: if `/scan`, `/odom_raw` and `/battery` stop, the ESP's CP2102
+  USB serial chip may have locked up (`dmesg`: `cp210x ... failed set request`).
+  It is powered by the Pi, so a battery reset does not clear it; re-enumerate it:
+  `echo 0 > /sys/bus/usb/devices/1-2/authorized; sleep 2; echo 1 > .../authorized`.
+  The agent reconnects by itself. Avoid restarting `rainbow_microros`.
+- After an ESP reset its servos go to the firmware's default position; the head
+  node resends the pose every second so the head (and the calibrated ToF) return.
+  Do not move the head without the owner watching.
+- ToF calibration: `scripts/calibrate_tof.py` (robot facing clear floor, head
+  centred) gives the FOV and the mount pitch/roll. Current values: FOV 48.5 x
+  39.3 deg (in base.launch.py; the spec's 64.3 x 50.4 is wrong), pitch +2.6 deg,
+  roll -2.2 deg (dimensions.xacro). Floor then reads within ~1-2 cm to 1 m.
 - With the ESP board off there is no odometry or lidar, so SLAM and Nav2 start
   but cannot do anything useful. Do not read that as a failure.
 - The Hailo container's supervisor socket is reachable from here at
@@ -108,9 +122,10 @@ when new work comes up, add it here.
 - Drive test with the ESP on (teleop, head directions, lidar/odometry, Nav2
   in a small room). The image rebuild of the refactor is done.
 - ToF is out of Nav2 (voxel_layer removed from both costmaps' plugin lists in
-  nav2.yaml) because it added noise. Debug the noise (confidence threshold,
-  floor points, frame orientation), then re-enable and check obstacles clear
-  in `/local_costmap/voxel_grid`. The ToF node itself still runs.
+  nav2.yaml). Calibration is done (floor flat to 1 m, ~3 cm obstacles
+  detectable). Next: floor-aware filtering, re-enable in Nav2, and the blind
+  zone of ~20-25 cm in front of the nose (head level); tilting the head down
+  fixes it, to be tried step by step with the owner watching.
 - Battery node: warn around 7.0 V (log, eyes or speech) and cancel Nav2 goals /
   stop at the cutoff (~6.6-6.9 V, judged at rest). The firmware's own low-voltage
   behaviour is unknown.

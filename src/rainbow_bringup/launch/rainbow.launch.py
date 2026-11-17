@@ -27,8 +27,8 @@ def generate_launch_description():
     args = ['slam', 'navigation', 'foxglove', 'voice', 'tof', 'microros']
     return LaunchDescription(
         [DeclareLaunchArgument(a, default_value='true') for a in args] + [
-            part('base', arguments={'tof': LaunchConfiguration('tof'),
-                                    'microros': LaunchConfiguration('microros')}),
+            part('microros', 'microros'),
+            part('base', arguments={'tof': LaunchConfiguration('tof')}),
             part('slam', 'slam'),
             part('navigation', 'navigation'),
             part('foxglove', 'foxglove'),

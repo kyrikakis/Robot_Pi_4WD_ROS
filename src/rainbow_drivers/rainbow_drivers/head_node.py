@@ -9,7 +9,8 @@ Interfaces:
   ~/center        std_srvs/srv/Trigger                 back to 0, 0
   /head/z_rotation, /head/y_rotation  std_msgs/Int32   pan/tilt in degrees
                                                        (kept from the old node)
-  servo_s1, servo_s2  std_msgs/Int32 (out)             servo angles for the ESP
+  servo_s1, servo_s2  std_msgs/Int32 (out)             servo angles for the ESP,
+                                                       resent every second
   /joint_states       sensor_msgs/JointState (out)
 """
 
@@ -54,10 +55,11 @@ class HeadNode(Node):
         self.pan_deg = 0.0
         self.tilt_deg = 0.0
         self.send_servos()
-        # The ESP may not be listening yet when we start: resend the pose for a
-        # few seconds so the head ends up where we think it is.
-        self.resend_count = 0
-        self.resend_timer = self.create_timer(1.0, self.resend_initial_pose)
+        # Keep resending the pose: when the ESP resets or reconnects its servos go
+        # to the firmware's default position, which would leave the head (and the
+        # calibrated ToF) somewhere other than where /joint_states says it is.
+        resend = self.declare_parameter('servo_resend_period', 1.0).value
+        self.create_timer(resend, self.send_servos)
         self.create_timer(1.0 / rate, self.publish_joint_states)
 
     @staticmethod
@@ -77,12 +79,6 @@ class HeadNode(Node):
             self.pan_sign * self.pan_deg + self.pan_offset))))
         self.tilt_pub.publish(Int32(data=int(round(
             self.tilt_sign * self.tilt_deg + self.tilt_offset))))
-
-    def resend_initial_pose(self):
-        self.send_servos()
-        self.resend_count += 1
-        if self.resend_count >= 5:
-            self.resend_timer.cancel()
 
     def publish_joint_states(self):
         msg = JointState()

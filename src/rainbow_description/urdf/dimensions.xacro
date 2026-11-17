@@ -73,6 +73,11 @@
   <xacro:property name="ear_dz" value="${camera_z - head_pan_z - head_tilt_dz}"/>
   <xacro:property name="ear_radius" value="0.018"/>
 
+  <!-- ToF mounting angles, from scripts/calibrate_tof.py against the floor
+       (head centred). Pitch + = looking down, roll + = right side low. -->
+  <xacro:property name="tof_pitch" value="${radians(2.6)}"/>
+  <xacro:property name="tof_roll"  value="${radians(-2.2)}"/>
+
   <!-- Eyes LED matrix, relative to the tilt joint -->
   <xacro:property name="eyes_dx" value="0.048"/>
   <xacro:property name="eyes_dz" value="0.014"/>

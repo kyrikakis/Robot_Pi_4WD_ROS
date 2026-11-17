@@ -1,6 +1,9 @@
 """Rainbow's base: everything needed for the robot to move and know where it is.
 
-  - micro-ROS agent: the bridge to the ESP board (motors, servos, lidar, IMU, odometry)
+The micro-ROS agent (the bridge to the ESP board) is in microros.launch.py,
+run as its own supervisor program so restarting the base does not disconnect
+the ESP.
+
   - robot description and TF tree
   - BNO055 IMU
   - EKF: fuses wheel odometry and the BNO055 into /odom
@@ -8,9 +11,7 @@
   - ToF depth camera
 
 Arguments:
-  microros   true   start the micro-ROS agent
   tof        true   start the ToF depth camera
-  serial_port       /dev/ttyUSB_ROS
 """
 
 from launch import LaunchDescription
@@ -28,22 +29,7 @@ def config(name):
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('microros', default_value='true'),
         DeclareLaunchArgument('tof', default_value='true'),
-        DeclareLaunchArgument('serial_port', default_value='/dev/ttyUSB_ROS'),
-
-        # The ESP board can be switched off; the agent exits when the serial
-        # port is missing, so keep retrying until it appears.
-        Node(
-            package='micro_ros_agent',
-            executable='micro_ros_agent',
-            name='micro_ros_agent',
-            arguments=['serial', '--dev', LaunchConfiguration('serial_port'),
-                       '-b', '921600', '-v4'],
-            respawn=True,
-            respawn_delay=5.0,
-            condition=IfCondition(LaunchConfiguration('microros')),
-        ),
 
         # The head node publishes the head joints, so no joint_state_publisher
         IncludeLaunchDescription(
@@ -78,7 +64,11 @@ def generate_launch_description():
             # The sensor always runs at ~25-30 fps and the SDK's depth computation
             # costs the same either way; frame_rate sets how many clouds Nav2's
             # voxel layers have to process. 15 fps: obstacles within ~70 ms.
-            parameters=[{'frame_rate': 15}],
+            # FOV measured with scripts/calibrate_tof.py (camera height + lidar
+            # corridor width); the spec sheet's 64.3 x 50.4 is too wide
+            parameters=[{'frame_rate': 15,
+                         'horizontal_fov_deg': 48.5,
+                         'vertical_fov_deg': 39.3}],
             respawn=True,
             respawn_delay=5.0,
             condition=IfCondition(LaunchConfiguration('tof')),
