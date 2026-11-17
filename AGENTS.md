@@ -33,10 +33,13 @@ unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
   so a power-on is a clean deployment. This is deliberate; do not bind-mount
   the repo. The image is built from the **Pi host's** checkout, not from inside
   the container.
-- Supervisor runs six programs from `supervisor/rainbow.conf`, each a
+- Supervisor runs seven programs from `supervisor/rainbow.conf`, each a
   `rainbow_bringup` launch file via `scripts/rainbow_launch.sh`. The micro-ROS
-  agent is its own program (`rainbow_microros`) so restarting the base does not
-  disconnect the ESP.
+  agent (`rainbow_microros`) and the ToF (`rainbow_tof`) are separate programs:
+  restarting the base disconnects neither the ESP nor the ToF.
+- **Restarting `rainbow_base` restarts the EKF, which resets the odometry and
+  scrambles the SLAM map: restart `rainbow_slam` right after, and ask the owner
+  before restarting the base.** Restarting Nav2 or the ToF is safe for the map.
 - Nav2 runs composed in one process (`nav2_container`); as separate processes
   its 11 servers cost ~66% of a core idle, composed ~38%.
 - `ROS_DOMAIN_ID=20` for the robot.
@@ -73,9 +76,21 @@ The code you edit is the code the robot runs. Lessons learned:
   `echo 0 > /sys/bus/usb/devices/1-2/authorized; sleep 2; echo 1 > .../authorized`.
   The agent reconnects by itself. Avoid restarting `rainbow_microros`: after the
   agent stops, the ESP itself needs a board reset (with the agent running).
-- The ToF is in both costmaps (STVL): marks 3-16 cm above the floor within 1 m,
-  flying-pixel filter in the node, clears only 0.3-1.5 m in the central ~90% of
-  the view, out-of-view voxels fade after 30 s.
+- The ToF is in both costmaps (STVL). The node does the floor filtering and
+  publishes `/tof/obstacles` (2-16 cm above the floor within 0.7 m, 3.5-16 cm
+  beyond; Nav2 marks only from this), after dropping flying pixels and the image
+  edges. Clearing uses `/point_cloud`, 0.15-1.5 m in the central ~90% of the view
+  (matching the edge crop); out-of-view voxels fade after 30 s.
+- Narrow passages: footprint padding 0 and MPPI's CostCritic with
+  `consider_footprint: true` (it collides only where the footprint touches an
+  obstacle cell). Planner inflation 0.35 m / factor 6 keeps paths off walls in
+  open space; controller 0.20 m / factor 10 does not fill gaps. A 28 cm gap
+  passes. Centre-only checking made it scrape the bed.
+- Turning: the robot responds ~160 ms late and turns at ~80-87% of the commanded
+  rate. The velocity watchdog multiplies turn rate by `angular_gain` 1.2, and a
+  rotation shim in front of MPPI rotates in place at 1.2 rad/s with
+  `closed_loop: false` (ramping from the measured speed made turns crawl).
+  Tune overshoot with `max_angular_accel` (1.6) first.
 - Nav2 never reverses (vx_min 0, no BackUp in its behavior trees in
   `rainbow_bringup/behavior_trees/`): nothing sees low obstacles behind.
 - Frames and IMU are verified: base_footprint -> base_link is a fixed joint, so

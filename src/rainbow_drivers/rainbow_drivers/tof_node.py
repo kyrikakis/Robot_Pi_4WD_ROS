@@ -4,6 +4,12 @@ Publishes:
   point_cloud           sensor_msgs/PointCloud2  in tof_optical_frame
                                                  (z forward, x right, y down)
   tof/depth/image_raw   sensor_msgs/Image        32FC1, metres, 0 = no reading
+  tof/obstacles         sensor_msgs/PointCloud2  in tof_optical_frame: only the points
+                                                 that are obstacles (Nav2 marks these)
+
+Obstacles are points between a floor-height threshold and obstacle_max_height
+above base_footprint: obstacle_min_height_near up to near_distance from the
+robot, where the calibrated floor is cleanest, obstacle_min_height_far beyond.
 
 The sensor runs at a fixed ~25-30 fps; frames are published at frame_rate,
 and each output only when something subscribes to it. Pixels below the
@@ -20,6 +26,7 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image, PointCloud2, PointField
 from std_msgs.msg import Header
+from tf2_ros import Buffer, TransformException, TransformListener
 
 
 class TofNode(Node):
@@ -39,10 +46,24 @@ class TofNode(Node):
         # reports a point in mid-air. Drop pixels whose depth differs from a neighbour
         # by more than this (m); 0 disables the filter.
         self.edge_threshold = self.declare_parameter('edge_threshold', 0.05).value
+        # Drop this many pixels at the image edges, where the ToF is least reliable.
+        # Keep the published view inside Nav2's clearing frustum, or edge noise is
+        # marked but never cleared.
+        self.crop_x = self.declare_parameter('crop_x_px', 14).value
+        self.crop_y = self.declare_parameter('crop_y_px', 10).value
+        # Floor-aware obstacle cloud (heights above base_footprint, m)
+        self.base_frame = self.declare_parameter('base_frame', 'base_footprint').value
+        self.near_distance = self.declare_parameter('near_distance', 0.7).value
+        self.min_h_near = self.declare_parameter('obstacle_min_height_near', 0.02).value
+        self.min_h_far = self.declare_parameter('obstacle_min_height_far', 0.035).value
+        self.max_h = self.declare_parameter('obstacle_max_height', 0.16).value
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
 
         qos = qos_profile_sensor_data
         self.cloud_pub = self.create_publisher(PointCloud2, 'point_cloud', qos)
         self.depth_pub = self.create_publisher(Image, 'tof/depth/image_raw', qos)
+        self.obstacle_pub = self.create_publisher(PointCloud2, 'tof/obstacles', qos)
 
         self.camera = self.open_camera()
         info = self.camera.getCameraInfo()
@@ -101,8 +122,9 @@ class TofNode(Node):
                 next_time = max(next_time + period, now)
                 want_cloud = self.cloud_pub.get_subscription_count() > 0
                 want_image = self.depth_pub.get_subscription_count() > 0
-                if isinstance(frame, DepthData) and (want_cloud or want_image):
-                    self.publish(frame, want_cloud, want_image)
+                want_obst = self.obstacle_pub.get_subscription_count() > 0
+                if isinstance(frame, DepthData) and (want_cloud or want_image or want_obst):
+                    self.publish(frame, want_cloud, want_image, want_obst)
             finally:
                 self.camera.releaseFrame(frame)
 
@@ -120,7 +142,32 @@ class TofNode(Node):
                         jump |= np.abs(nb - d) > self.edge_threshold
         return jump
 
-    def publish(self, frame, want_cloud, want_image):
+    def obstacle_mask(self, points):
+        """Which points are obstacles: above the floor threshold, below max height."""
+        try:
+            t = self.tf_buffer.lookup_transform(self.base_frame, self.frame_id, rclpy.time.Time())
+        except TransformException:
+            return None
+        q, tr = t.transform.rotation, t.transform.translation
+        x, y, z, w = q.x, q.y, q.z, q.w
+        rot = np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+                        [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                        [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]],
+                       dtype=np.float32)
+        base = points @ rot.T + np.array([tr.x, tr.y, tr.z], dtype=np.float32)
+        height = base[:, 2]
+        distance = np.hypot(base[:, 0], base[:, 1])
+        min_h = np.where(distance <= self.near_distance, self.min_h_near, self.min_h_far)
+        return (height >= min_h) & (height <= self.max_h)
+
+    def make_cloud(self, header, points):
+        cloud = PointCloud2(header=header, height=1, width=len(points),
+                            fields=self.cloud_fields, is_bigendian=False, point_step=12,
+                            row_step=12 * len(points), is_dense=True)
+        cloud.data = points.tobytes()
+        return cloud
+
+    def publish(self, frame, want_cloud, want_image, want_obst=False):
         """Publish one frame. Each output is only built when something subscribes."""
         # depth_data is float32 millimetres; convert to metres in one new array
         depth = np.multiply(frame.depth_data, 0.001, dtype=np.float32)
@@ -129,6 +176,12 @@ class TofNode(Node):
         valid &= depth <= self.max_range
         if self.edge_threshold > 0:
             valid &= ~self.flying_pixels(depth, valid)
+        if self.crop_x:
+            valid[:, :self.crop_x] = False
+            valid[:, -self.crop_x:] = False
+        if self.crop_y:
+            valid[:self.crop_y, :] = False
+            valid[-self.crop_y:, :] = False
         header = Header(frame_id=self.frame_id, stamp=self.get_clock().now().to_msg())
 
         if want_image:
@@ -138,17 +191,18 @@ class TofNode(Node):
             image.data = depth.tobytes()
             self.depth_pub.publish(image)
 
-        if want_cloud:
+        if want_cloud or want_obst:
             z = depth[valid]
             points = np.empty((len(z), 3), dtype=np.float32)
             np.multiply(self.rays_x[valid], z, out=points[:, 0])
             np.multiply(self.rays_y[valid], z, out=points[:, 1])
             points[:, 2] = z
-            cloud = PointCloud2(header=header, height=1, width=len(points),
-                                fields=self.cloud_fields, is_bigendian=False, point_step=12,
-                                row_step=12 * len(points), is_dense=True)
-            cloud.data = points.tobytes()
-            self.cloud_pub.publish(cloud)
+            if want_cloud:
+                self.cloud_pub.publish(self.make_cloud(header, points))
+            if want_obst:
+                mask = self.obstacle_mask(points)
+                if mask is not None:
+                    self.obstacle_pub.publish(self.make_cloud(header, points[mask]))
 
     def stop(self):
         self.running = False

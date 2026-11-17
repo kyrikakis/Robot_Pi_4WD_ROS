@@ -8,17 +8,15 @@ the ESP.
   - BNO055 IMU
   - EKF: fuses wheel odometry and the BNO055 into /odom
   - velocity watchdog, head, eyes, IP publisher
-  - ToF depth camera
 
-Arguments:
-  tof        true   start the ToF depth camera
+The ToF depth camera is in tof.launch.py (supervisor program rainbow_tof), so
+changing it does not restart the EKF, which would jump the odometry under SLAM.
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition
+from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
@@ -29,8 +27,6 @@ def config(name):
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('tof', default_value='true'),
-
         # The head node publishes the head joints, so no joint_state_publisher
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(PathJoinSubstitution(
@@ -54,25 +50,11 @@ def generate_launch_description():
             remappings=[('odometry/filtered', 'odom')],
         ),
 
-        # 20 Hz so commands reach the ESP as often as Nav2's controller sends them
+        # 20 Hz so commands reach the ESP as often as Nav2's controller sends them.
+        # angular_gain 1.2: measured, the robot turns at ~80-87% of the commanded rate
         Node(package='rainbow_drivers', executable='cmd_vel_watchdog',
-             parameters=[{'rate': 20.0}]),
+             parameters=[{'rate': 20.0, 'angular_gain': 1.2}]),
         Node(package='rainbow_drivers', executable='head'),
         Node(package='rainbow_drivers', executable='eyes', respawn=True, respawn_delay=2.0),
         Node(package='rainbow_drivers', executable='ip_publisher'),
-        Node(
-            package='rainbow_drivers',
-            executable='tof',
-            # The sensor always runs at ~25-30 fps and the SDK's depth computation
-            # costs the same either way; frame_rate sets how many clouds Nav2's
-            # voxel layers have to process. 15 fps: obstacles within ~70 ms.
-            # FOV measured with scripts/calibrate_tof.py (camera height + lidar
-            # corridor width); the spec sheet's 64.3 x 50.4 is too wide
-            parameters=[{'frame_rate': 15,
-                         'horizontal_fov_deg': 48.5,
-                         'vertical_fov_deg': 39.3}],
-            respawn=True,
-            respawn_delay=5.0,
-            condition=IfCondition(LaunchConfiguration('tof')),
-        ),
     ])

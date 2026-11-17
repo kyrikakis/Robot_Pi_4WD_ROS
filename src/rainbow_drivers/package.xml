@@ -14,6 +14,7 @@
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>rainbow_interfaces</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
   <!-- Not in rosdep, installed with pip in the Dockerfile:
        adafruit-circuitpython-ht16k33 (eyes), ArducamDepthCamera (tof) -->
 

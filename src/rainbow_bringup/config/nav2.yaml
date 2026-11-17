@@ -62,7 +62,22 @@ controller_server:
       yaw_goal_tolerance: 0.25
 
     FollowPath:
-      plugin: "nav2_mppi_controller::MPPIController"
+      # Rotation shim in front of MPPI: when the heading is off by more than
+      # angular_dist_threshold it rotates in place at a fixed speed and brakes
+      # early (the robot responds ~160 ms late and turns ~27% slower than
+      # commanded, which made MPPI turn slowly and overshoot), then hands over.
+      plugin: "nav2_rotation_shim_controller::RotationShimController"
+      primary_controller: "nav2_mppi_controller::MPPIController"
+      angular_dist_threshold: 0.6        # rad (~35 deg)
+      angular_disengage_threshold: 0.15  # rad: finish the turn itself, hand over below ~9 deg
+      forward_sampling_distance: 0.3
+      rotate_to_heading_angular_vel: 1.2
+      max_angular_accel: 1.6             # brake earlier: the robot responds ~160 ms late
+      simulate_ahead_time: 1.0
+      rotate_to_goal_heading: true
+      # Ramp from the last command, not the measured speed: the robot responds late
+      # and weakly, so ramping from measured speed made turns build up very slowly
+      closed_loop: false
       motion_model: "DiffDrive"
       # model_dt must be >= the control period (1/15 s); 40 x 0.07 s keeps the
       # 2.8 s look-ahead of the default 56 x 0.05 s, with fewer steps to compute
@@ -97,8 +112,11 @@ controller_server:
       CostCritic:
         enabled: true
         cost_power: 1
-        cost_weight: 3.81
+        cost_weight: 3.0           # 2.0 hugged walls, 3.81 refused tight gaps
         critical_cost: 300.0
+        # Footprint check: a trajectory only collides where the robot's footprint
+        # overlaps a real obstacle cell, so it can squeeze through gaps it fits
+        # without its corners touching (centre-only made it scrape the bed)
         consider_footprint: true
         collision_cost: 1000000.0
         near_goal_distance: 0.5
@@ -158,7 +176,7 @@ global_costmap:
       global_frame: map
       robot_base_frame: base_link
       footprint: "[[0.10, 0.07], [0.10, -0.07], [-0.09, -0.07], [-0.09, 0.07]]"
-      footprint_padding: 0.01
+      footprint_padding: 0.0   # the forbidden zone is exactly the robot's half-width
       resolution: 0.02
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "voxel_layer", "inflation_layer"]
@@ -209,11 +227,11 @@ global_costmap:
         observation_sources: pointcloud_mark pointcloud_clear
         pointcloud_mark:
           data_type: PointCloud2
-          topic: /point_cloud
+          topic: /tof/obstacles       # floor-filtered in the ToF node
           marking: true
           clearing: false
           obstacle_range: 1.0
-          min_obstacle_height: 0.03   # floor-aware, from the calibrated floor
+          min_obstacle_height: 0.01   # floor filtering is done in the ToF node
           max_obstacle_height: 0.16   # below the robot top; taller things pass overhead
           expected_update_rate: 0.0
           observation_persistence: 0.0
@@ -227,9 +245,9 @@ global_costmap:
           marking: false
           clearing: true
           max_z: 1.5
-          min_z: 0.3                  # do not clear from uncertain close-up readings
-          # ~10% narrower than the calibrated 48.5 x 39.3 deg, so the uncertain
-          # image edges never clear remembered obstacles
+          min_z: 0.15
+          # ~10% narrower than the calibrated 48.5 x 39.3 deg; the ToF node crops the
+          # same edges (crop_x_px/crop_y_px), so everything marked can be cleared
           vertical_fov_angle: 0.62      # 35.5 deg
           horizontal_fov_angle: 0.76    # 43.5 deg
           decay_acceleration: 1.0
@@ -237,10 +255,10 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: true
-        # Planner's view: keeps paths off walls in open space, but narrow enough that
-        # gaps a little wider than the robot still look passable (0.45 / 3 was too wide)
-        inflation_radius: 0.30
-        cost_scaling_factor: 5.0
+        # Planner's view: wide and gentle, so in open space paths keep off walls;
+        # a tight gap is expensive but never forbidden beyond the robot's half-width
+        inflation_radius: 0.35
+        cost_scaling_factor: 6.0
         inflate_unknown: false
         inflate_around_unknown: false
       always_send_full_costmap: True
@@ -258,7 +276,7 @@ local_costmap:
       height: 3
       resolution: 0.02
       footprint: "[[0.10, 0.07], [0.10, -0.07], [-0.09, -0.07], [-0.09, 0.07]]"
-      footprint_padding: 0.01
+      footprint_padding: 0.0   # the forbidden zone is exactly the robot's half-width
       plugins: ["obstacle_layer", "voxel_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
@@ -304,13 +322,13 @@ local_costmap:
         observation_sources: pointcloud_mark pointcloud_clear
         pointcloud_mark:
           data_type: PointCloud2
-          topic: /point_cloud
+          topic: /tof/obstacles       # floor-filtered in the ToF node
           marking: true
           clearing: false
           obstacle_range: 1.0
-          # Floor-aware: the calibrated floor reads within ~1-2 cm to 1 m, so points
-          # 3 cm above it are obstacles (scripts/calibrate_tof.py)
-          min_obstacle_height: 0.03
+          # The ToF node already keeps only obstacle points (2 cm up within 0.7 m,
+          # 3.5 cm beyond); this only guards against points below the floor
+          min_obstacle_height: 0.01
           max_obstacle_height: 0.16   # below the robot top; taller things pass overhead
           expected_update_rate: 0.0
           observation_persistence: 0.0
@@ -325,9 +343,9 @@ local_costmap:
           clearing: true
           # Clear only where the data is reliable: 0.1-1.5 m along the view
           max_z: 1.5
-          min_z: 0.3                  # do not clear from uncertain close-up readings
-          # ~10% narrower than the calibrated 48.5 x 39.3 deg, so the uncertain
-          # image edges never clear remembered obstacles
+          min_z: 0.15
+          # ~10% narrower than the calibrated 48.5 x 39.3 deg; the ToF node crops the
+          # same edges (crop_x_px/crop_y_px), so everything marked can be cleared
           vertical_fov_angle: 0.62      # 35.5 deg
           horizontal_fov_angle: 0.76    # 43.5 deg
           decay_acceleration: 1.0
@@ -335,9 +353,10 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: true
-        # Controller's view: thin and steep, so it can drive through tight gaps
-        inflation_radius: 0.18
-        cost_scaling_factor: 8.0
+        # Controller's view: steep, so the expensive zone drops off fast and does
+        # not fill narrow gaps
+        inflation_radius: 0.20
+        cost_scaling_factor: 10.0
         inflate_unknown: false
         inflate_around_unknown: false
       always_send_full_costmap: True
