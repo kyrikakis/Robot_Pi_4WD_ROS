@@ -71,7 +71,17 @@ The code you edit is the code the robot runs. Lessons learned:
   USB serial chip may have locked up (`dmesg`: `cp210x ... failed set request`).
   It is powered by the Pi, so a battery reset does not clear it; re-enumerate it:
   `echo 0 > /sys/bus/usb/devices/1-2/authorized; sleep 2; echo 1 > .../authorized`.
-  The agent reconnects by itself. Avoid restarting `rainbow_microros`.
+  The agent reconnects by itself. Avoid restarting `rainbow_microros`: after the
+  agent stops, the ESP itself needs a board reset (with the agent running).
+- The ToF is in both costmaps (STVL): marks 3-16 cm above the floor within 1 m,
+  flying-pixel filter in the node, clears only 0.3-1.5 m in the central ~90% of
+  the view, out-of-view voxels fade after 30 s.
+- Nav2 never reverses (vx_min 0, no BackUp in its behavior trees in
+  `rainbow_bringup/behavior_trees/`): nothing sees low obstacles behind.
+- Frames and IMU are verified: base_footprint -> base_link is a fixed joint, so
+  mixing them across configs is fine; the BNO055 remap (P2) is right on all axes.
+  Wheel odometry over-reports rotation ~16% (skid-steer slip); the EKF uses the
+  BNO055 for yaw.
 - After an ESP reset its servos go to the firmware's default position; the head
   node resends the pose every second so the head (and the calibrated ToF) return.
   Do not move the head without the owner watching.
@@ -121,11 +131,9 @@ when new work comes up, add it here.
 
 - Drive test with the ESP on (teleop, head directions, lidar/odometry, Nav2
   in a small room). The image rebuild of the refactor is done.
-- ToF is out of Nav2 (voxel_layer removed from both costmaps' plugin lists in
-  nav2.yaml). Calibration is done (floor flat to 1 m, ~3 cm obstacles
-  detectable). Next: floor-aware filtering, re-enable in Nav2, and the blind
-  zone of ~20-25 cm in front of the nose (head level); tilting the head down
-  fixes it, to be tried step by step with the owner watching.
+- ToF blind zone: ~20-25 cm in front of the nose and outside +-24 deg to the
+  sides (head level); obstacles there are only known from memory (30 s). A
+  head tilt down would shrink it; try step by step with the owner watching.
 - Battery node: warn around 7.0 V (log, eyes or speech) and cancel Nav2 goals /
   stop at the cutoff (~6.6-6.9 V, judged at rest). The firmware's own low-voltage
   behaviour is unknown.

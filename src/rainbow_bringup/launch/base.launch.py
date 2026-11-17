@@ -54,7 +54,9 @@ def generate_launch_description():
             remappings=[('odometry/filtered', 'odom')],
         ),
 
-        Node(package='rainbow_drivers', executable='cmd_vel_watchdog'),
+        # 20 Hz so commands reach the ESP as often as Nav2's controller sends them
+        Node(package='rainbow_drivers', executable='cmd_vel_watchdog',
+             parameters=[{'rate': 20.0}]),
         Node(package='rainbow_drivers', executable='head'),
         Node(package='rainbow_drivers', executable='eyes', respawn=True, respawn_delay=2.0),
         Node(package='rainbow_drivers', executable='ip_publisher'),

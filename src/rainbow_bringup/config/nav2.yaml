@@ -27,10 +27,10 @@ bt_navigator:
       plugin: "nav2_bt_navigator::NavigateToPoseNavigator"
     navigate_through_poses:
       plugin: "nav2_bt_navigator::NavigateThroughPosesNavigator"
-    # Default behavior trees (replanning + recoveries: clear costmaps, spin,
-    # wait, back up):
-    #   nav2_bt_navigator/navigate_to_pose_w_replanning_and_recovery.xml
-    #   nav2_bt_navigator/navigate_through_poses_w_replanning_and_recovery.xml
+    # Nav2's default trees minus the BackUp recovery (recoveries: clear costmaps,
+    # spin, wait): nothing sees low obstacles behind the robot
+    default_nav_to_pose_bt_xml: /workspaces/Robot_Pi_4WD_ROS/install/rainbow_bringup/share/rainbow_bringup/behavior_trees/navigate_to_pose_no_backup.xml
+    default_nav_through_poses_bt_xml: /workspaces/Robot_Pi_4WD_ROS/install/rainbow_bringup/share/rainbow_bringup/behavior_trees/navigate_through_poses_no_backup.xml
     error_code_names:
       - compute_path_error_code
       - follow_path_error_code
@@ -74,7 +74,7 @@ controller_server:
       vy_std: 0.0
       wz_std: 0.8               # sample faster turns; 0.4 rarely tried them
       vx_max: 0.26
-      vx_min: -0.15             # allows backing out of dead ends
+      vx_min: 0.0               # no reversing: nothing sees low obstacles behind
       vy_max: 0.0
       wz_max: 1.5               # rad/s; 1.0 made turns and corrections slow
       ax_max: 2.0
@@ -161,9 +161,7 @@ global_costmap:
       footprint_padding: 0.01
       resolution: 0.02
       track_unknown_space: true
-      # voxel_layer (ToF) disabled while its noise is debugged; to re-enable, add
-      # "voxel_layer" back before "inflation_layer"
-      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      plugins: ["static_layer", "obstacle_layer", "voxel_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
@@ -192,12 +190,13 @@ global_costmap:
       voxel_layer:
         plugin: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"
         enabled: true
-        voxel_decay: 1.0
+        # Same as the local costmap: cleared when seen empty, fades after 30 s out of view
+        voxel_decay: 30.0
         decay_model: 0
         voxel_size: 0.02              # match the costmap resolution
         track_unknown_space: true
         observation_persistence: 0.0
-        max_obstacle_height: 0.5
+        max_obstacle_height: 0.16
         unknown_threshold: 15
         mark_threshold: 0
         update_footprint_enabled: true
@@ -214,32 +213,34 @@ global_costmap:
           marking: true
           clearing: false
           obstacle_range: 1.0
-          min_obstacle_height: 0.04   # was 0.025: floor noise was marking phantom obstacles
-          max_obstacle_height: 0.20
+          min_obstacle_height: 0.03   # floor-aware, from the calibrated floor
+          max_obstacle_height: 0.16   # below the robot top; taller things pass overhead
           expected_update_rate: 0.0
           observation_persistence: 0.0
           inf_is_valid: false
           filter: "voxel"
-          voxel_min_points: 0
+          voxel_min_points: 3         # ignore isolated noisy points
           clear_after_reading: true
         pointcloud_clear:             # was referenced as pointcloud_Clear, so it never loaded
           data_type: PointCloud2
           topic: /point_cloud
           marking: false
           clearing: true
-          max_z: 7.0
-          min_z: 0.04
-          vertical_fov_angle: 0.8796    # 50.4 deg, Arducam ToF
-          horizontal_fov_angle: 1.1222  # 64.3 deg
+          max_z: 1.5
+          min_z: 0.3                  # do not clear from uncertain close-up readings
+          # ~10% narrower than the calibrated 48.5 x 39.3 deg, so the uncertain
+          # image edges never clear remembered obstacles
+          vertical_fov_angle: 0.62      # 35.5 deg
+          horizontal_fov_angle: 0.76    # 43.5 deg
           decay_acceleration: 1.0
           model_type: 0                 # depth camera frustum
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: true
-        # Planner's view: wide and gentle so paths keep to the middle of open
-        # space; gaps the robot fits through stay usable (only the footprint is lethal)
-        inflation_radius: 0.45
-        cost_scaling_factor: 3.0
+        # Planner's view: keeps paths off walls in open space, but narrow enough that
+        # gaps a little wider than the robot still look passable (0.45 / 3 was too wide)
+        inflation_radius: 0.30
+        cost_scaling_factor: 5.0
         inflate_unknown: false
         inflate_around_unknown: false
       always_send_full_costmap: True
@@ -258,9 +259,7 @@ local_costmap:
       resolution: 0.02
       footprint: "[[0.10, 0.07], [0.10, -0.07], [-0.09, -0.07], [-0.09, 0.07]]"
       footprint_padding: 0.01
-      # voxel_layer (ToF) disabled while its noise is debugged; to re-enable, add
-      # "voxel_layer" back before "inflation_layer"
-      plugins: ["obstacle_layer", "inflation_layer"]
+      plugins: ["obstacle_layer", "voxel_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
@@ -283,12 +282,16 @@ local_costmap:
       voxel_layer:
         plugin: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"
         enabled: true
-        voxel_decay: 1.0
+        # Voxels the ToF can see are cleared as soon as the spot is empty; voxels out
+        # of its view (the blind zone in front of the nose, beside the robot) fade
+        # after 30 s: long enough to pass a low obstacle, short enough that a hand
+        # seen while placing something does not stay as a phantom
+        voxel_decay: 30.0
         decay_model: 0
         voxel_size: 0.02              # match the costmap resolution
         track_unknown_space: true
         observation_persistence: 0.0
-        max_obstacle_height: 0.5
+        max_obstacle_height: 0.16
         unknown_threshold: 15
         mark_threshold: 0
         update_footprint_enabled: true
@@ -305,31 +308,36 @@ local_costmap:
           marking: true
           clearing: false
           obstacle_range: 1.0
-          min_obstacle_height: 0.04   # was 0.025: floor noise was marking phantom obstacles
-          max_obstacle_height: 0.20
+          # Floor-aware: the calibrated floor reads within ~1-2 cm to 1 m, so points
+          # 3 cm above it are obstacles (scripts/calibrate_tof.py)
+          min_obstacle_height: 0.03
+          max_obstacle_height: 0.16   # below the robot top; taller things pass overhead
           expected_update_rate: 0.0
           observation_persistence: 0.0
           inf_is_valid: false
           filter: "voxel"
-          voxel_min_points: 0
+          voxel_min_points: 3         # ignore isolated noisy points
           clear_after_reading: true
         pointcloud_clear:             # was referenced as pointcloud_Clear, so it never loaded
           data_type: PointCloud2
           topic: /point_cloud
           marking: false
           clearing: true
-          max_z: 7.0
-          min_z: 0.04
-          vertical_fov_angle: 0.8796    # 50.4 deg, Arducam ToF
-          horizontal_fov_angle: 1.1222  # 64.3 deg
+          # Clear only where the data is reliable: 0.1-1.5 m along the view
+          max_z: 1.5
+          min_z: 0.3                  # do not clear from uncertain close-up readings
+          # ~10% narrower than the calibrated 48.5 x 39.3 deg, so the uncertain
+          # image edges never clear remembered obstacles
+          vertical_fov_angle: 0.62      # 35.5 deg
+          horizontal_fov_angle: 0.76    # 43.5 deg
           decay_acceleration: 1.0
           model_type: 0                 # depth camera frustum
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: true
-        # Controller's view: moderate, so it keeps clear without creeping
-        inflation_radius: 0.25
-        cost_scaling_factor: 5.0
+        # Controller's view: thin and steep, so it can drive through tight gaps
+        inflation_radius: 0.18
+        cost_scaling_factor: 8.0
         inflate_unknown: false
         inflate_around_unknown: false
       always_send_full_costmap: True
@@ -417,7 +425,7 @@ velocity_smoother:
     feedback: "OPEN_LOOP"
     # Same limits as the MPPI controller
     max_velocity: [0.26, 0.0, 1.5]
-    min_velocity: [-0.15, 0.0, -1.5]
+    min_velocity: [0.0, 0.0, -1.5]
     max_accel: [2.0, 0.0, 3.2]
     max_decel: [-2.0, 0.0, -3.2]
     odom_topic: "odom"

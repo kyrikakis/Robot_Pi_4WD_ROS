@@ -7,7 +7,8 @@ Publishes:
 
 The sensor runs at a fixed ~25-30 fps; frames are published at frame_rate,
 and each output only when something subscribes to it. Pixels below the
-confidence threshold or outside [min_range, max_range] are dropped.
+confidence threshold, outside [min_range, max_range], or next to a depth jump
+larger than edge_threshold (flying pixels) are dropped.
 """
 
 import threading
@@ -34,6 +35,10 @@ class TofNode(Node):
         self.max_range = self.declare_parameter('max_range', 4.0).value
         self.hfov_deg = self.declare_parameter('horizontal_fov_deg', 64.3).value
         self.vfov_deg = self.declare_parameter('vertical_fov_deg', 50.4).value
+        # Flying pixels: at depth edges a ToF pixel mixes the near and far surface and
+        # reports a point in mid-air. Drop pixels whose depth differs from a neighbour
+        # by more than this (m); 0 disables the filter.
+        self.edge_threshold = self.declare_parameter('edge_threshold', 0.05).value
 
         qos = qos_profile_sensor_data
         self.cloud_pub = self.create_publisher(PointCloud2, 'point_cloud', qos)
@@ -101,6 +106,20 @@ class TofNode(Node):
             finally:
                 self.camera.releaseFrame(frame)
 
+    def flying_pixels(self, depth, valid):
+        """Pixels next to a depth jump larger than edge_threshold (8-neighbourhood)."""
+        d = np.where(valid, depth, np.nan)
+        h, w = d.shape
+        p = np.pad(d, 1, constant_values=np.nan)
+        jump = np.zeros((h, w), dtype=bool)
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                if dy or dx:
+                    nb = p[1 + dy:h + 1 + dy, 1 + dx:w + 1 + dx]
+                    with np.errstate(invalid='ignore'):
+                        jump |= np.abs(nb - d) > self.edge_threshold
+        return jump
+
     def publish(self, frame, want_cloud, want_image):
         """Publish one frame. Each output is only built when something subscribes."""
         # depth_data is float32 millimetres; convert to metres in one new array
@@ -108,6 +127,8 @@ class TofNode(Node):
         valid = frame.confidence_data >= self.confidence
         valid &= depth >= self.min_range
         valid &= depth <= self.max_range
+        if self.edge_threshold > 0:
+            valid &= ~self.flying_pixels(depth, valid)
         header = Header(frame_id=self.frame_id, stamp=self.get_clock().now().to_msg())
 
         if want_image:
