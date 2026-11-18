@@ -11,12 +11,27 @@ Obstacles are points between a floor-height threshold and obstacle_max_height
 above base_footprint: obstacle_min_height_near up to near_distance from the
 robot, where the calibrated floor is cleanest, obstacle_min_height_far beyond.
 
+The floor test is levelled with the IMU (imu_topic): when the body pitches or
+rolls (braking, accelerating, rocking after a turn) the floor ahead would
+otherwise look raised (1 deg is 1.7 cm at 1 m) and be marked as obstacles. The
+correction is the tilt relative to the robot's average attitude over
+tilt_time_constant, since the ToF calibration was made with the robot at rest.
+
+Isolated obstacle pixels are dropped: one is kept only if at least
+obstacle_min_fraction of its obstacle_window_px square neighbourhood in the
+image are obstacle pixels too. Specks on the floor (stains, reflections) cover
+a pixel or two; a real obstacle 2 cm wide covers ~6 pixels at 1 m.
+
+Subscribes:
+  bno055/imu            sensor_msgs/Imu          body orientation (imu_topic)
+
 The sensor runs at a fixed ~25-30 fps; frames are published at frame_rate,
 and each output only when something subscribes to it. Pixels below the
 confidence threshold, outside [min_range, max_range], or next to a depth jump
 larger than edge_threshold (flying pixels) are dropped.
 """
 
+import math
 import threading
 import time
 
@@ -24,7 +39,7 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
-from sensor_msgs.msg import Image, PointCloud2, PointField
+from sensor_msgs.msg import Image, Imu, PointCloud2, PointField
 from std_msgs.msg import Header
 from tf2_ros import Buffer, TransformException, TransformListener
 
@@ -57,6 +72,18 @@ class TofNode(Node):
         self.min_h_near = self.declare_parameter('obstacle_min_height_near', 0.02).value
         self.min_h_far = self.declare_parameter('obstacle_min_height_far', 0.035).value
         self.max_h = self.declare_parameter('obstacle_max_height', 0.16).value
+        # Speckle filter: majority of the neighbourhood must be obstacle pixels
+        self.obst_window = self.declare_parameter('obstacle_window_px', 5).value
+        self.obst_fraction = self.declare_parameter('obstacle_min_fraction', 0.5).value
+        # Level the floor test with the IMU; empty imu_topic disables it
+        imu_topic = self.declare_parameter('imu_topic', '/bno055/imu').value
+        self.tilt_tau = self.declare_parameter('tilt_time_constant', 5.0).value
+        self.imu_timeout = self.declare_parameter('imu_timeout', 0.5).value
+        self.rest_tilt = None       # (roll, pitch) averaged over tilt_tau
+        self.tilt = None            # (roll, pitch, monotonic time) of the latest sample
+        self.last_imu_time = None
+        if imu_topic:
+            self.create_subscription(Imu, imu_topic, self.on_imu, qos_profile_sensor_data)
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
@@ -142,6 +169,48 @@ class TofNode(Node):
                         jump |= np.abs(nb - d) > self.edge_threshold
         return jump
 
+    def on_imu(self, msg):
+        q = msg.orientation
+        roll = math.atan2(2 * (q.w * q.x + q.y * q.z), 1 - 2 * (q.x * q.x + q.y * q.y))
+        pitch = math.asin(max(-1.0, min(1.0, 2 * (q.w * q.y - q.z * q.x))))
+        now = time.monotonic()
+        if self.rest_tilt is None:
+            self.rest_tilt = (roll, pitch)
+        else:
+            a = min(1.0, (now - self.last_imu_time) / self.tilt_tau)
+            r0, p0 = self.rest_tilt
+            self.rest_tilt = (r0 + a * (roll - r0), p0 + a * (pitch - p0))
+        self.last_imu_time = now
+        self.tilt = (roll, pitch, now)
+
+    @staticmethod
+    def tilt_matrix(roll, pitch):
+        """Body-to-level rotation for roll and pitch (yaw left out)."""
+        cr, sr, cp, sp = math.cos(roll), math.sin(roll), math.cos(pitch), math.sin(pitch)
+        return np.array([[cp, sp * sr, sp * cr],
+                         [0.0, cr, -sr],
+                         [-sp, cp * sr, cp * cr]], dtype=np.float32)
+
+    def level_correction(self):
+        """Rotation from the tilted body to its rest attitude, or None if no fresh IMU."""
+        tilt, rest = self.tilt, self.rest_tilt
+        if tilt is None or rest is None or time.monotonic() - tilt[2] > self.imu_timeout:
+            return None
+        return self.tilt_matrix(*rest).T @ self.tilt_matrix(tilt[0], tilt[1])
+
+    def despeckle(self, mask_img):
+        """Keep obstacle pixels whose neighbourhood is mostly obstacle pixels."""
+        k = self.obst_window
+        if k <= 1:
+            return mask_img
+        r = k // 2
+        p = np.pad(mask_img.astype(np.int32), r)
+        integral = np.pad(p.cumsum(0).cumsum(1), ((1, 0), (1, 0)))
+        h, w = mask_img.shape
+        count = (integral[k:k + h, k:k + w] - integral[:h, k:k + w]
+                 - integral[k:k + h, :w] + integral[:h, :w])
+        return mask_img & (count >= self.obst_fraction * k * k)
+
     def obstacle_mask(self, points):
         """Which points are obstacles: above the floor threshold, below max height."""
         try:
@@ -155,6 +224,9 @@ class TofNode(Node):
                         [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]],
                        dtype=np.float32)
         base = points @ rot.T + np.array([tr.x, tr.y, tr.z], dtype=np.float32)
+        level = self.level_correction()
+        if level is not None:
+            base = base @ level.T
         height = base[:, 2]
         distance = np.hypot(base[:, 0], base[:, 1])
         min_h = np.where(distance <= self.near_distance, self.min_h_near, self.min_h_far)
@@ -202,6 +274,9 @@ class TofNode(Node):
             if want_obst:
                 mask = self.obstacle_mask(points)
                 if mask is not None:
+                    mask_img = np.zeros(valid.shape, dtype=bool)
+                    mask_img[valid] = mask
+                    mask = self.despeckle(mask_img)[valid]
                     self.obstacle_pub.publish(self.make_cloud(header, points[mask]))
 
     def stop(self):

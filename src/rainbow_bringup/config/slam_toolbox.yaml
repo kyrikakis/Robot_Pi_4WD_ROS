@@ -43,9 +43,11 @@ slam_toolbox:
     use_scan_matching: true
     use_scan_barycenter: true
     # A new scan is added after this much travel or turning. Small robot in
-    # small rooms: 10 cm / ~9 deg (was 0.5 m / ~29 deg, which barely mapped)
+    # small rooms: 10 cm (was 0.5 m, which barely mapped). Turning: ~29 deg,
+    # since scans taken while turning are bent (~5 deg per 80 ms sweep at
+    # 1 rad/s, no per-point timing) and at ~9 deg some were matched wrongly
     minimum_travel_distance: 0.1
-    minimum_travel_heading: 0.15
+    minimum_travel_heading: 0.5
     scan_buffer_size: 10
     scan_buffer_maximum_scan_distance: 10.0
     link_match_minimum_response_fine: 0.1  
@@ -68,7 +70,9 @@ slam_toolbox:
     loop_search_space_smear_deviation: 0.03
 
     # Scan Matcher Parameters
-    distance_variance_penalty: 0.5      
+    # Keep the defaults: 0.3 (trusting the scan match more) made wrong matches
+    # and worse maps, twice
+    distance_variance_penalty: 0.5
     angle_variance_penalty: 1.0    
 
     fine_search_angle_offset: 0.00349     

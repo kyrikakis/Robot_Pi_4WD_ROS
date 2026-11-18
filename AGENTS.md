@@ -79,24 +79,37 @@ The code you edit is the code the robot runs. Lessons learned:
 - The ToF is in both costmaps (STVL). The node does the floor filtering and
   publishes `/tof/obstacles` (2-16 cm above the floor within 0.7 m, 3.5-16 cm
   beyond; Nav2 marks only from this), after dropping flying pixels and the image
-  edges. Clearing uses `/point_cloud`, 0.15-1.5 m in the central ~90% of the view
+  edges. The floor test is levelled with the BNO055's roll/pitch (relative to a
+  5 s average), and obstacle pixels need half their 5x5 neighbourhood to be
+  obstacles too (floor specks were marked as ghosts). Clearing uses `/point_cloud`, 0.15-1.5 m in the central ~90% of the view
   (matching the edge crop); out-of-view voxels fade after 30 s.
-- Narrow passages: footprint padding 0 and MPPI's CostCritic with
-  `consider_footprint: true` (it collides only where the footprint touches an
-  obstacle cell). Planner inflation 0.35 m / factor 6 keeps paths off walls in
+- Narrow passages: footprint padding 0; the controller checks collisions with
+  the footprint (it collides only where the footprint touches an obstacle
+  cell). Planner inflation 0.35 m / factor 6 keeps paths off walls in
   open space; controller 0.20 m / factor 10 does not fill gaps. A 28 cm gap
   passes. Centre-only checking made it scrape the bed.
-- Turning: the robot responds ~160 ms late and turns at ~80-87% of the commanded
-  rate. The velocity watchdog multiplies turn rate by `angular_gain` 1.2, and a
-  rotation shim in front of MPPI rotates in place at 1.2 rad/s with
-  `closed_loop: false` (ramping from the measured speed made turns crawl).
-  Tune overshoot with `max_angular_accel` (1.6) first.
-- Nav2 never reverses (vx_min 0, no BackUp in its behavior trees in
+- Turning: commands reach the gyro ~0.3 s late (recorded) and the robot turns
+  at ~80-87% of the commanded rate. The velocity watchdog multiplies turn rate
+  by `angular_gain` 1.2. The controller is Nav2's graceful controller: it turns
+  in place with speed proportional to the angle left
+  (`rotation_scaling_factor` 0.6), so it slows into the heading. MPPI was
+  dropped: with the rotation shim it ping-ponged around every heading, alone it
+  drove in circles.
+- Nav2 never reverses (`allow_backward: false`, no BackUp in its behavior trees in
   `rainbow_bringup/behavior_trees/`): nothing sees low obstacles behind.
 - Frames and IMU are verified: base_footprint -> base_link is a fixed joint, so
   mixing them across configs is fine; the BNO055 remap (P2) is right on all axes.
-  Wheel odometry over-reports rotation ~16% (skid-steer slip); the EKF uses the
-  BNO055 for yaw.
+  Wheel odometry over-reports rotation ~16% (skid-steer slip); the EKF takes
+  only forward/sideways speed from the wheels, yaw and yaw rate from the BNO055.
+- Wheel slip (rugs grip the robot, wheels keep turning) fuses or rotates rooms
+  in the SLAM map. A lidar-vs-wheels "slip guard" was tried and dropped: its
+  crude lidar estimate zeroed real motion and broke the map in straight lines.
+  Do not loosen SLAM's trust in odometry (`distance_variance_penalty` 0.3,
+  search 0.8 m) either: tried twice, it made wrong matches and worse maps.
+- The lidar has no per-point timing; scans taken while turning are bent, so
+  SLAM adds one only every ~29 deg of turning (`minimum_travel_heading` 0.5).
+  Do not hold scans back from SLAM: its map->odom TF is stamped with the last
+  scan and goes stale, and Nav2 then aborts every goal.
 - After an ESP reset its servos go to the firmware's default position; the head
   node resends the pose every second so the head (and the calibrated ToF) return.
   Do not move the head without the owner watching.

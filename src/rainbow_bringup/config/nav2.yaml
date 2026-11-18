@@ -3,8 +3,8 @@
 # Tuned for tight spaces:
 #   - real polygon footprint instead of a 12 cm radius (+3 cm padding)
 #   - thin, steep inflation so doorways and gaps stay cheap away from walls
-#   - MPPI controller (differential drive, can reverse out of dead ends)
-#     instead of DWB with the rotation shim
+#   - Graceful controller: turns in place, slowing into the heading, then
+#     follows the path with a smooth control law; never reverses
 #   - Smac 2D planner, cost aware, may plan through unknown space
 #   - progress checker that accepts slow, turning progress
 #
@@ -37,8 +37,8 @@ bt_navigator:
 
 controller_server:
   ros__parameters:
-    # MPPI only reached 10-16 Hz at 20 on the Pi; 15 is plenty for 0.26 m/s
-    controller_frequency: 15.0
+    # Matches the velocity watchdog; the graceful controller is cheap
+    controller_frequency: 20.0
     costmap_update_timeout: 0.30
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
@@ -61,104 +61,40 @@ controller_server:
       xy_goal_tolerance: 0.15
       yaw_goal_tolerance: 0.25
 
+    # Graceful controller. MPPI (with or without the rotation shim) overshot
+    # every turn: the shim never brakes, and after its handover MPPI kept turning
+    # ~1 rad past the path, so the two ping-ponged (recorded 2026-11-17).
+    # Graceful turns in place at a speed proportional to the angle left
+    # (rotation_scaling_factor x angle x v_angular_max), so it slows into the
+    # heading; commands reach the robot ~0.3 s late, so the gain stays low.
     FollowPath:
-      # Rotation shim in front of MPPI: when the heading is off by more than
-      # angular_dist_threshold it rotates in place at a fixed speed and brakes
-      # early (the robot responds ~160 ms late and turns ~27% slower than
-      # commanded, which made MPPI turn slowly and overshoot), then hands over.
-      plugin: "nav2_rotation_shim_controller::RotationShimController"
-      primary_controller: "nav2_mppi_controller::MPPIController"
-      angular_dist_threshold: 0.6        # rad (~35 deg)
-      angular_disengage_threshold: 0.15  # rad: finish the turn itself, hand over below ~9 deg
-      forward_sampling_distance: 0.3
-      rotate_to_heading_angular_vel: 1.2
-      max_angular_accel: 1.6             # brake earlier: the robot responds ~160 ms late
-      simulate_ahead_time: 1.0
-      rotate_to_goal_heading: true
-      # Ramp from the last command, not the measured speed: the robot responds late
-      # and weakly, so ramping from measured speed made turns build up very slowly
-      closed_loop: false
-      motion_model: "DiffDrive"
-      # model_dt must be >= the control period (1/15 s); 40 x 0.07 s keeps the
-      # 2.8 s look-ahead of the default 56 x 0.05 s, with fewer steps to compute
-      time_steps: 40
-      model_dt: 0.07
-      batch_size: 600           # 2000 is the default; 1000 still missed 15 Hz on the Pi
-      iteration_count: 1
-      vx_std: 0.2
-      vy_std: 0.0
-      wz_std: 0.8               # sample faster turns; 0.4 rarely tried them
-      vx_max: 0.26
-      vx_min: 0.0               # no reversing: nothing sees low obstacles behind
-      vy_max: 0.0
-      wz_max: 1.5               # rad/s; 1.0 made turns and corrections slow
-      ax_max: 2.0
-      ax_min: -2.0
-      ay_max: 0.0
-      az_max: 3.2
-      temperature: 0.3
-      gamma: 0.015
-      prune_distance: 1.0
+      plugin: "nav2_graceful_controller::GracefulController"
       transform_tolerance: 0.2
-      enforce_path_inversion: false
-      visualize: false
-      critics: ["ConstraintCritic", "CostCritic", "GoalCritic", "GoalAngleCritic",
-                "PathAlignCritic", "PathFollowCritic", "PathAngleCritic",
-                "PreferForwardCritic"]
-      ConstraintCritic:
-        enabled: true
-        cost_power: 1
-        cost_weight: 4.0
-      CostCritic:
-        enabled: true
-        cost_power: 1
-        cost_weight: 3.0           # 2.0 hugged walls, 3.81 refused tight gaps
-        critical_cost: 300.0
-        # Footprint check: a trajectory only collides where the robot's footprint
-        # overlaps a real obstacle cell, so it can squeeze through gaps it fits
-        # without its corners touching (centre-only made it scrape the bed)
-        consider_footprint: true
-        collision_cost: 1000000.0
-        near_goal_distance: 0.5
-        trajectory_point_step: 2
-      GoalCritic:
-        enabled: true
-        cost_power: 1
-        cost_weight: 5.0
-        threshold_to_consider: 1.0
-      GoalAngleCritic:
-        enabled: true
-        cost_power: 1
-        cost_weight: 3.0
-        threshold_to_consider: 0.4
-      PathAlignCritic:
-        enabled: true
-        cost_power: 1
-        cost_weight: 14.0
-        max_path_occupancy_ratio: 0.05
-        trajectory_point_step: 4
-        threshold_to_consider: 0.4
-        offset_from_furthest: 20
-        use_path_orientations: false
-      PathFollowCritic:
-        enabled: true
-        cost_power: 1
-        cost_weight: 5.0
-        offset_from_furthest: 5
-        threshold_to_consider: 1.0
-      PathAngleCritic:
-        enabled: true
-        cost_power: 1
-        cost_weight: 2.0
-        offset_from_furthest: 4
-        threshold_to_consider: 0.4
-        max_angle_to_furthest: 1.0
-        mode: 0
-      PreferForwardCritic:
-        enabled: true
-        cost_power: 1
-        cost_weight: 5.0
-        threshold_to_consider: 0.4
+      # Steers towards a point on the path this far ahead
+      min_lookahead: 0.25
+      max_lookahead: 0.8
+      max_robot_pose_search_dist: 1.0
+      # Control law (Nav2 defaults)
+      k_phi: 2.0
+      k_delta: 1.0
+      beta: 0.4
+      lambda: 2.0
+      v_linear_min: 0.05
+      v_linear_max: 0.32        # was 0.26
+      v_angular_max: 0.8        # was 1.0; slower turns bend the lidar scans less
+      # The motors do not move below ~0.15-0.2 rad/s; keeps the last bit of a
+      # turn from stalling
+      v_angular_min_in_place: 0.25
+      slowdown_radius: 0.3      # slow down only close to the goal (was 0.5)
+      # Turn in place while the path is more than ~29 deg off, then drive and
+      # finish the turn on the move (0.3 waited for a near-exact heading)
+      initial_rotation: true
+      initial_rotation_tolerance: 0.5
+      prefer_final_rotation: true
+      # 0.6 x 0.8 rad/s per rad: 0.72 rad/s at 1.5 rad left, 0.24 at 0.5 rad
+      rotation_scaling_factor: 0.6
+      allow_backward: false     # no reversing: nothing sees low obstacles behind
+      in_place_collision_resolution: 0.1
 
 # Both costmaps use the same layers; keep them in sync when tuning.
 #   footprint:       in base_link, from rainbow_description: chassis and
@@ -442,10 +378,11 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: False
     feedback: "OPEN_LOOP"
-    # Same limits as the MPPI controller
-    max_velocity: [0.26, 0.0, 1.5]
-    min_velocity: [0.0, 0.0, -1.5]
-    max_accel: [2.0, 0.0, 3.2]
+    # Same limits as the controller
+    max_velocity: [0.32, 0.0, 0.8]
+    min_velocity: [0.0, 0.0, -0.8]
+    # turns spin up gently (less jerk) but brake hard (shorter overshoot)
+    max_accel: [2.0, 0.0, 2.0]
     max_decel: [-2.0, 0.0, -3.2]
     odom_topic: "odom"
     odom_duration: 0.1
