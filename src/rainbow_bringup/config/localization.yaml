@@ -1,0 +1,76 @@
+# Localization on a saved map: map_server serves the map image (read-only,
+# nothing can change it) and AMCL localizes the robot on it with the lidar.
+# Used by localization.launch.py (supervisor program rainbow_localization).
+#
+# The map comes from a slam_toolbox mapping session (rainbow_slam), saved
+# with map_saver_cli into maps/. To use another map, change yaml_filename.
+
+map_server:
+  ros__parameters:
+    yaml_filename: /workspaces/Robot_Pi_4WD_ROS/maps/home_live.yaml
+    topic_name: map
+    frame_id: map
+
+amcl:
+  ros__parameters:
+    global_frame_id: map
+    odom_frame_id: odom
+    base_frame_id: base_footprint
+    scan_topic: scan
+    map_topic: map
+    tf_broadcast: true
+    transform_tolerance: 0.5
+
+    robot_model_type: "nav2_amcl::DifferentialMotionModel"
+    # Odometry noise, set high for skid-steer: the wheels slip in turns and on
+    # rugs (yaw comes from the BNO055 through the EKF, so rotation is better
+    # than translation). alpha1 rot from rot, alpha2 rot from trans,
+    # alpha3 trans from trans, alpha4 trans from rot
+    alpha1: 0.2
+    alpha2: 0.2
+    alpha3: 0.4
+    alpha4: 0.4
+    alpha5: 0.2
+
+    # Update often: a small robot in small rooms (defaults 0.25 m / 0.2 rad).
+    # AMCL never updates standing still; the lidar (12.5 Hz) is the upper limit
+    update_min_d: 0.05
+    update_min_a: 0.05
+    resample_interval: 1
+
+    # Enough particles to cover the whole map for global localization; KLD
+    # sampling drops to near min_particles once AMCL has settled
+    min_particles: 500
+    max_particles: 5000
+    pf_err: 0.05
+    pf_z: 0.99
+    # Inject random particles when the scans stop matching, so AMCL can find
+    # the robot again after it got lost
+    recovery_alpha_slow: 0.001
+    recovery_alpha_fast: 0.1
+
+    laser_model_type: "likelihood_field"
+    laser_min_range: 0.12
+    laser_max_range: 8.0
+    max_beams: 90
+    laser_likelihood_max_dist: 2.0
+    sigma_hit: 0.2
+    z_hit: 0.5
+    z_short: 0.05
+    z_max: 0.05
+    z_rand: 0.5
+    do_beamskip: false
+
+    # No start pose: localization.launch.py calls global localization at start
+    # (guesses spread over the whole map), which settle once the robot drives
+    # or turns a little. A pose estimate (/initialpose) settles it at once.
+    set_initial_pose: false
+    always_reset_initial_pose: false
+    first_map_only: false
+    save_pose_rate: 0.5
+
+lifecycle_manager_localization:
+  ros__parameters:
+    autostart: true
+    node_names: ["map_server", "amcl"]
+    bond_timeout: 4.0

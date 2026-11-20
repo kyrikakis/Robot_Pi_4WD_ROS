@@ -33,13 +33,20 @@ unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
   so a power-on is a clean deployment. This is deliberate; do not bind-mount
   the repo. The image is built from the **Pi host's** checkout, not from inside
   the container.
-- Supervisor runs seven programs from `supervisor/rainbow.conf`, each a
+- Supervisor runs seven of its eight programs from `supervisor/rainbow.conf`, each a
   `rainbow_bringup` launch file via `scripts/rainbow_launch.sh`. The micro-ROS
   agent (`rainbow_microros`) and the ToF (`rainbow_tof`) are separate programs:
   restarting the base disconnects neither the ESP nor the ToF.
-- **Restarting `rainbow_base` restarts the EKF, which resets the odometry and
-  scrambles the SLAM map: restart `rainbow_slam` right after, and ask the owner
-  before restarting the base.** Restarting Nav2 or the ToF is safe for the map.
+- Localization is map_server + AMCL (`rainbow_localization`) on a saved map in
+  `maps/`, read-only. slam_toolbox (`rainbow_slam`, autostart off) is only for
+  mapping a new place; never run both (both publish map -> odom). Its
+  localization mode was dropped: it adds its scans to the map and damaged it
+  whenever it lost track. AMCL starts with global localization (no start
+  pose); the pose settles once the robot drives or turns a little.
+- **Restarting `rainbow_base` restarts the EKF, which resets the odometry: AMCL
+  then needs a pose estimate, and a SLAM mapping session gets scrambled
+  (restart `rainbow_slam` right after). Ask the owner before restarting the
+  base.** Restarting Nav2 or the ToF is safe.
 - Nav2 runs composed in one process (`nav2_container`); as separate processes
   its 11 servers cost ~66% of a core idle, composed ~38%.
 - `ROS_DOMAIN_ID=20` for the robot.
@@ -77,12 +84,16 @@ The code you edit is the code the robot runs. Lessons learned:
   The agent reconnects by itself. Avoid restarting `rainbow_microros`: after the
   agent stops, the ESP itself needs a board reset (with the agent running).
 - The ToF is in both costmaps (STVL). The node does the floor filtering and
-  publishes `/tof/obstacles` (2-16 cm above the floor within 0.7 m, 3.5-16 cm
+  publishes `/tof/obstacles` (2-16 cm above the floor within 0.7 m, 2.5-16 cm
   beyond; Nav2 marks only from this), after dropping flying pixels and the image
   edges. The floor test is levelled with the BNO055's roll/pitch (relative to a
   5 s average), and obstacle pixels need half their 5x5 neighbourhood to be
-  obstacles too (floor specks were marked as ghosts). Clearing uses `/point_cloud`, 0.15-1.5 m in the central ~90% of the view
-  (matching the edge crop); out-of-view voxels fade after 30 s.
+  obstacles too (floor specks were marked as ghosts). Frames have no SDK
+  timestamp: they are stamped on arrival minus `latency` (0.04 s, estimated);
+  late stamps smeared obstacles into ghosts while turning. Clearing uses
+  `/point_cloud`, 0.06-1.5 m in the central ~90% of the view (matching the edge
+  crop), where voxels fade within ~1-2 s (`decay_acceleration` 5); out-of-view
+  voxels fade after 30 s.
 - Narrow passages: footprint padding 0; the controller checks collisions with
   the footprint (it collides only where the footprint touches an obstacle
   cell). Planner inflation 0.35 m / factor 6 keeps paths off walls in

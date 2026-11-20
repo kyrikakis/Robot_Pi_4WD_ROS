@@ -15,16 +15,13 @@ slam_toolbox:
     base_frame: base_footprint
     scan_topic: /scan
     use_map_saver: true
-    # mapping: build the map as the robot drives. For localization against a
-    # saved map, set mode: localization and map_file_name / map_start_pose.
+    # mapping: build the map as the robot drives.
+    # Mapping only (rainbow_slam, off by default). Localization on a saved map
+    # is AMCL in localization.launch.py: slam_toolbox's localization mode adds
+    # its scans to the map and damaged it when it lost track.
+    # Save a finished map for AMCL with:
+    #   ros2 run nav2_map_server map_saver_cli -f maps/<name>
     mode: mapping
-
-    # if you'd like to immediately start continuing a map at a given pose
-    # or at the dock, but they are mutually exclusive, if pose is given
-    # will use pose
-    # map_file_name: maps/home_new
-    # map_start_pose: [-0.903546, 1.39144, 0.0]
-    #map_start_at_dock: true
 
     debug_logging: false
     throttle_scans: 1

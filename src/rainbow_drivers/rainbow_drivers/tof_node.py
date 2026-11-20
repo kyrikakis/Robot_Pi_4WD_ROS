@@ -37,6 +37,7 @@ import time
 
 import numpy as np
 import rclpy
+from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image, Imu, PointCloud2, PointField
@@ -55,6 +56,10 @@ class TofNode(Node):
         self.confidence = self.declare_parameter('confidence_threshold', 30).value
         self.min_range = self.declare_parameter('min_range', 0.05).value
         self.max_range = self.declare_parameter('max_range', 4.0).value
+        # Frames carry no timestamp: they are stamped on arrival minus this
+        # estimate of the sensor's exposure and depth computation (not measured).
+        # A late stamp puts obstacles in the wrong place while turning
+        self.latency = self.declare_parameter('latency', 0.04).value
         self.hfov_deg = self.declare_parameter('horizontal_fov_deg', 64.3).value
         self.vfov_deg = self.declare_parameter('vertical_fov_deg', 50.4).value
         # Flying pixels: at depth edges a ToF pixel mixes the near and far surface and
@@ -141,6 +146,7 @@ class TofNode(Node):
             frame = self.camera.requestFrame(200)
             if frame is None:
                 continue
+            stamp = self.get_clock().now() - Duration(seconds=self.latency)
             try:
                 now = time.monotonic()
                 if now < next_time:
@@ -151,7 +157,7 @@ class TofNode(Node):
                 want_image = self.depth_pub.get_subscription_count() > 0
                 want_obst = self.obstacle_pub.get_subscription_count() > 0
                 if isinstance(frame, DepthData) and (want_cloud or want_image or want_obst):
-                    self.publish(frame, want_cloud, want_image, want_obst)
+                    self.publish(frame, stamp, want_cloud, want_image, want_obst)
             finally:
                 self.camera.releaseFrame(frame)
 
@@ -239,7 +245,7 @@ class TofNode(Node):
         cloud.data = points.tobytes()
         return cloud
 
-    def publish(self, frame, want_cloud, want_image, want_obst=False):
+    def publish(self, frame, stamp, want_cloud, want_image, want_obst=False):
         """Publish one frame. Each output is only built when something subscribes."""
         # depth_data is float32 millimetres; convert to metres in one new array
         depth = np.multiply(frame.depth_data, 0.001, dtype=np.float32)
@@ -254,7 +260,7 @@ class TofNode(Node):
         if self.crop_y:
             valid[:self.crop_y, :] = False
             valid[-self.crop_y:, :] = False
-        header = Header(frame_id=self.frame_id, stamp=self.get_clock().now().to_msg())
+        header = Header(frame_id=self.frame_id, stamp=stamp.to_msg())
 
         if want_image:
             depth[~valid] = 0.0

@@ -18,9 +18,14 @@ def generate_launch_description():
             # voxel layers have to process. 15 fps: obstacles within ~70 ms.
             # FOV measured with scripts/calibrate_tof.py (camera height + lidar
             # corridor width); the spec sheet's 64.3 x 50.4 is too wide
+            # Far obstacle height lowered from 3.5 cm to pick up shorter bumps.
+            # Near stays 2 cm: at 1.5 cm floor points (read ~1-2 cm high) were
+            # marked as ghosts in the lowest voxel layer
             parameters=[{'frame_rate': 15,
                          'horizontal_fov_deg': 48.5,
-                         'vertical_fov_deg': 39.3}],
+                         'vertical_fov_deg': 39.3,
+                         'obstacle_min_height_near': 0.02,
+                         'obstacle_min_height_far': 0.025}],
             respawn=True,
             respawn_delay=5.0,
         ),

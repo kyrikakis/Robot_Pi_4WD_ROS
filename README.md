@@ -66,8 +66,11 @@ Supervisor starts these when the container starts (`supervisor/rainbow.conf`):
 
 | Program | Launch file | Contents |
 |---|---|---|
-| `rainbow_base` | `base.launch.py` | micro-ROS agent, description, BNO055, EKF, head, eyes, ToF, velocity watchdog, IP publisher |
-| `rainbow_slam` | `slam.launch.py` | slam_toolbox |
+| `rainbow_microros` | `microros.launch.py` | micro-ROS agent (ESP board) |
+| `rainbow_base` | `base.launch.py` | description, BNO055, EKF, head, eyes, velocity watchdog, IP publisher |
+| `rainbow_tof` | `tof.launch.py` | ToF camera |
+| `rainbow_localization` | `localization.launch.py` | map_server + AMCL on the saved map in `maps/` |
+| `rainbow_slam` | `slam.launch.py` | slam_toolbox, for mapping (not started by default) |
 | `rainbow_navigation` | `navigation.launch.py` | Nav2 |
 | `rainbow_foxglove` | `foxglove.launch.py` | Foxglove bridge on port 8765 |
 | `rainbow_voice` | `voice.launch.py` | Text to speech |
@@ -78,9 +81,14 @@ supervisorctl restart rainbow_navigation
 supervisorctl tail -f rainbow_base
 ```
 
+Mapping a new place: `supervisorctl stop rainbow_localization; supervisorctl
+start rainbow_slam`, drive around, save with `ros2 run nav2_map_server
+map_saver_cli -f maps/<name>`, set `yaml_filename` in
+`config/localization.yaml`, then swap the two programs back.
+
 To run everything by hand instead: `scripts/rainbow_launch.sh rainbow.launch.py`
-(arguments `slam`, `navigation`, `foxglove`, `voice`, `tof`, `microros`, all
-default `true`).
+(arguments `localization`, `navigation`, `foxglove`, `voice`, `tof`,
+`microros`, default `true`; `slam` default `false`).
 
 ### Talking to the robot
 

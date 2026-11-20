@@ -1,4 +1,8 @@
-"""SLAM with slam_toolbox (online async), using config/slam_toolbox.yaml."""
+"""SLAM with slam_toolbox (online async), using config/slam_toolbox.yaml.
+
+For mapping a new place only (rainbow_slam, autostart off): stop
+rainbow_localization first, both publish map -> odom.
+"""
 
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription

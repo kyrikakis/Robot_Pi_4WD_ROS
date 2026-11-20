@@ -80,7 +80,7 @@ controller_server:
       beta: 0.4
       lambda: 2.0
       v_linear_min: 0.05
-      v_linear_max: 0.32        # was 0.26
+      v_linear_max: 0.40        # was 0.32; faster in the open, collision monitor slows near obstacles
       v_angular_max: 0.8        # was 1.0; slower turns bend the lidar scans less
       # The motors do not move below ~0.15-0.2 rad/s; keeps the last bit of a
       # turn from stalling
@@ -181,12 +181,12 @@ global_costmap:
           marking: false
           clearing: true
           max_z: 1.5
-          min_z: 0.15
+          min_z: 0.06                   # was 0.15: marks from 5 cm up were never cleared up close
           # ~10% narrower than the calibrated 48.5 x 39.3 deg; the ToF node crops the
           # same edges (crop_x_px/crop_y_px), so everything marked can be cleared
           vertical_fov_angle: 0.62      # 35.5 deg
           horizontal_fov_angle: 0.76    # 43.5 deg
-          decay_acceleration: 1.0
+          decay_acceleration: 5.0       # in view, ghosts fade in ~1-2 s; real ones are re-marked every frame
           model_type: 0                 # depth camera frustum
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -279,12 +279,12 @@ local_costmap:
           clearing: true
           # Clear only where the data is reliable: 0.1-1.5 m along the view
           max_z: 1.5
-          min_z: 0.15
+          min_z: 0.06                   # was 0.15: marks from 5 cm up were never cleared up close
           # ~10% narrower than the calibrated 48.5 x 39.3 deg; the ToF node crops the
           # same edges (crop_x_px/crop_y_px), so everything marked can be cleared
           vertical_fov_angle: 0.62      # 35.5 deg
           horizontal_fov_angle: 0.76    # 43.5 deg
-          decay_acceleration: 1.0
+          decay_acceleration: 5.0       # in view, ghosts fade in ~1-2 s; real ones are re-marked every frame
           model_type: 0                 # depth camera frustum
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -379,11 +379,13 @@ velocity_smoother:
     scale_velocities: False
     feedback: "OPEN_LOOP"
     # Same limits as the controller
-    max_velocity: [0.32, 0.0, 0.8]
+    max_velocity: [0.40, 0.0, 0.8]
     min_velocity: [0.0, 0.0, -0.8]
-    # turns spin up gently (less jerk) but brake hard (shorter overshoot)
-    max_accel: [2.0, 0.0, 2.0]
-    max_decel: [-2.0, 0.0, -3.2]
+    # turns spin up gently (less jerk) but brake hard (shorter overshoot).
+    # Linear: smooth start (0 -> 0.4 m/s in ~1.1 s), soft braking (~10 cm from 0.4);
+    # turns spin up a bit softer too (1.5), braking for turns unchanged
+    max_accel: [0.35, 0.0, 1.5]
+    max_decel: [-0.8, 0.0, -3.2]
     odom_topic: "odom"
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]
