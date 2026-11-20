@@ -5,7 +5,7 @@
 #   - thin, steep inflation so doorways and gaps stay cheap away from walls
 #   - Graceful controller: turns in place, slowing into the heading, then
 #     follows the path with a smooth control law; never reverses
-#   - Smac 2D planner, cost aware, may plan through unknown space
+#   - Theta* planner (any-angle, straight lines), cost aware, may plan through unknown space
 #   - progress checker that accepts slow, turning progress
 #
 # Velocity output: velocity_smoother -> collision_monitor -> cmd_vel_stamped
@@ -77,19 +77,22 @@ controller_server:
       # Control law (Nav2 defaults)
       k_phi: 2.0
       k_delta: 1.0
-      beta: 0.4
+      # beta 0.1 (default 0.4): much less slowing in curves; at 0.4 it crawled
+      # in every bend. (RPP was tried 2026-11-20: steady, but its in-place turn
+      # never slows near the heading and overshot a lot with the 0.3 s delay)
+      beta: 0.1
       lambda: 2.0
       v_linear_min: 0.05
-      v_linear_max: 0.40        # was 0.32; faster in the open, collision monitor slows near obstacles
+      v_linear_max: 0.40        # was 0.32; faster in the open
       v_angular_max: 0.8        # was 1.0; slower turns bend the lidar scans less
       # The motors do not move below ~0.15-0.2 rad/s; keeps the last bit of a
       # turn from stalling
       v_angular_min_in_place: 0.25
       slowdown_radius: 0.3      # slow down only close to the goal (was 0.5)
-      # Turn in place while the path is more than ~29 deg off, then drive and
-      # finish the turn on the move (0.3 waited for a near-exact heading)
+      # Turn in place only while the path is more than ~46 deg off, then drive
+      # and finish the turn on the move (0.5 = 29 deg stopped at every corner)
       initial_rotation: true
-      initial_rotation_tolerance: 0.5
+      initial_rotation_tolerance: 0.8
       prefer_final_rotation: true
       # 0.6 x 0.8 rad/s per rad: 0.72 rad/s at 1.5 rad left, 0.24 at 0.5 rad
       rotation_scaling_factor: 0.6
@@ -309,22 +312,20 @@ planner_server:
     expected_planner_frequency: 5.0
     planner_plugins: ["GridBased"]
     costmap_update_timeout: 1.0
+    # Theta*: any-angle, so corridors and open rooms get straight lines. Smac 2D
+    # searched an 8-direction grid: a corridor at e.g. 20 deg became a 45 deg run
+    # plus a 0 deg run, and smoothing turned that bend into a curve
     GridBased:
-      plugin: "nav2_smac_planner::SmacPlanner2D"
-      tolerance: 0.15
-      downsample_costmap: false
-      downsampling_factor: 1
-      allow_unknown: true
-      max_iterations: 1000000
-      max_on_approach_iterations: 1000
-      max_planning_time: 1.0
-      cost_travel_multiplier: 2.0   # prefer the middle of corridors and doorways
+      plugin: "nav2_theta_star_planner::ThetaStarPlanner"
+      how_many_corners: 8
+      w_euc_cost: 1.0
+      # How much it minds costs against distance (costs unchanged): takes a
+      # longer way through open space when there is one; a narrow passage is
+      # never forbidden, so it is used when it is the only way
+      w_traversal_cost: 4.0
       use_final_approach_orientation: false
-      smoother:
-        max_iterations: 1000
-        w_smooth: 0.3
-        w_data: 0.2
-        tolerance: 1.0e-10
+      allow_unknown: true
+      terminal_checking_interval: 5000
 
 smoother_server:
   ros__parameters:
@@ -402,7 +403,12 @@ collision_monitor:
     source_timeout: 1.0
     base_shift_correction: False
     stop_pub_timeout: 2.0
-    # Present but disabled: the monitor passes commands straight through.
+    # Nav2 only (teleop does not pass through here). Approach mode: simulates
+    # the footprint along the current command and slows it so it never gets
+    # closer than 1.2 s to a collision, then stops. It acts after the velocity
+    # smoother, so the soft normal braking does not delay an emergency stop
+    # (from 0.4 m/s the smoother's 0.8 m/s^2 plus the ~0.3 s delay needed ~22 cm,
+    # and the robot ran into low obstacles it had seen)
     polygons: ["FootprintApproach"]
     FootprintApproach:
       type: "polygon"
@@ -410,16 +416,26 @@ collision_monitor:
       footprint_topic: "/local_costmap/published_footprint"
       time_before_collision: 1.2
       simulation_time_step: 0.1
-      min_points: 6
-      visualize: False
-      enabled: False
-    observation_sources: ["scan"]
+      min_points: 3             # a chair leg gives only a few lidar points
+      visualize: True
+      polygon_pub_topic: "collision_monitor_polygon"
+      enabled: True
+    observation_sources: ["scan", "tof"]
     scan:
       type: "scan"
       topic: "scan"
       min_height: 0.15
       max_height: 2.0
-      enabled: False
+      enabled: True
+    # The ToF's floor-filtered obstacles: live view only (no memory), so it
+    # slows the robot while a low obstacle is still in view, before it is under
+    # the nose
+    tof:
+      type: "pointcloud"
+      topic: "/tof/obstacles"
+      min_height: 0.02
+      max_height: 0.16
+      enabled: True
 
 docking_server:
   ros__parameters:

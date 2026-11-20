@@ -6,7 +6,8 @@ on the Pi while idle. component_container_isolated gives each server its own
 executor thread, so a slow planner cannot block the controller.
 
 Nav2's velocity output (collision monitor -> cmd_vel_stamped) goes through
-rainbow_drivers' cmd_vel_watchdog, started by base.launch.py.
+rainbow_drivers' cmd_vel_watchdog, started by base.launch.py. plan_viz
+republishes /plan as /plan_viz for Foxglove.
 """
 
 from launch import LaunchDescription
@@ -38,4 +39,6 @@ def generate_launch_description():
                 'container_name': 'nav2_container',
             }.items(),
         ),
+        # /plan with a frame on every pose, for Foxglove (Theta* leaves them empty)
+        Node(package='rainbow_drivers', executable='plan_viz'),
     ])

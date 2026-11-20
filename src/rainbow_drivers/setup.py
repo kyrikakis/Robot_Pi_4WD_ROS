@@ -23,6 +23,7 @@ setup(
             'tof = rainbow_drivers.tof_node:main',
             'cmd_vel_watchdog = rainbow_drivers.cmd_vel_watchdog:main',
             'ip_publisher = rainbow_drivers.ip_publisher:main',
+            'plan_viz = rainbow_drivers.plan_viz:main',
         ],
     },
 )

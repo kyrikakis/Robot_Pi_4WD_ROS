@@ -99,13 +99,30 @@ The code you edit is the code the robot runs. Lessons learned:
   cell). Planner inflation 0.35 m / factor 6 keeps paths off walls in
   open space; controller 0.20 m / factor 10 does not fill gaps. A 28 cm gap
   passes. Centre-only checking made it scrape the bed.
+- Planner: Theta* (any-angle). Smac 2D's 8-direction grid turned straight
+  corridors at odd angles into a bend that smoothing made a curve. Theta*
+  checks its lines along the centre only, so paths can pass close to corners;
+  the controller's footprint check and the collision monitor catch that. Its
+  path poses have no frame_id, which Foxglove rejects: view `/plan_viz`
+  (republished by `plan_viz`), not `/plan`.
 - Turning: commands reach the gyro ~0.3 s late (recorded) and the robot turns
   at ~80-87% of the commanded rate. The velocity watchdog multiplies turn rate
   by `angular_gain` 1.2. The controller is Nav2's graceful controller: it turns
   in place with speed proportional to the angle left
-  (`rotation_scaling_factor` 0.6), so it slows into the heading. MPPI was
+  (`rotation_scaling_factor` 0.6), so it slows into the heading. `beta` 0.1
+  (default 0.4 crawled in every curve) and in-place turns only above ~46 deg
+  (`initial_rotation_tolerance` 0.8; 0.5 stopped at every corner). MPPI was
   dropped: with the rotation shim it ping-ponged around every heading, alone it
-  drove in circles.
+  drove in circles. Regulated Pure Pursuit was tried and dropped: steady, but its
+  in-place turn never slows near the heading and overshot a lot.
+- Tight arcs (inner wheels below `min_inner_ratio` 0.15 of the outer) become
+  turns in place in the velocity watchdog: pivoting on one side scrubs both
+  sides and the wheel odometry reports motion that did not happen. At 0.3 slow
+  curves stopped too often.
+- Nav2's collision monitor (approach mode, footprint, lidar + `/tof/obstacles`)
+  slows Nav2's commands so the footprint stays >= 1.2 s from a collision, then
+  stops. It acts after the velocity smoother, so the soft normal braking (0.8
+  m/s^2) cannot delay an emergency stop. Teleop does not pass through it.
 - Nav2 never reverses (`allow_backward: false`, no BackUp in its behavior trees in
   `rainbow_bringup/behavior_trees/`): nothing sees low obstacles behind.
 - Frames and IMU are verified: base_footprint -> base_link is a fixed joint, so
