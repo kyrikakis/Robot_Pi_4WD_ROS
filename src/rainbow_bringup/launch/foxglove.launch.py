@@ -12,6 +12,8 @@ def generate_launch_description():
         IncludeLaunchDescription(
             AnyLaunchDescriptionSource(PathJoinSubstitution(
                 [FindPackageShare('foxglove_bridge'), 'launch', 'foxglove_bridge_launch.xml'])),
-            launch_arguments={'address': '0.0.0.0'}.items(),
+            # include_hidden: shows hidden topics and services too, e.g. Nav2's
+            # /navigate_to_pose/_action/cancel_goal for cancelling a goal
+            launch_arguments={'address': '0.0.0.0', 'include_hidden': 'true'}.items(),
         ),
     ])
