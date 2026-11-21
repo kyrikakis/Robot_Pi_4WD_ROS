@@ -379,9 +379,10 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: False
     feedback: "OPEN_LOOP"
-    # Same limits as the controller
+    # Same limits as the controller, except reverse: -0.05 lets the recovery's
+    # short BackUp through (the controller never reverses, allow_backward: false)
     max_velocity: [0.40, 0.0, 0.8]
-    min_velocity: [0.0, 0.0, -0.8]
+    min_velocity: [-0.05, 0.0, -0.8]
     # turns spin up gently (less jerk) but brake hard (shorter overshoot).
     # Linear: smooth start (0 -> 0.4 m/s in ~1.1 s), soft braking (~10 cm from 0.4);
     # turns spin up a bit softer too (1.5), braking for turns unchanged

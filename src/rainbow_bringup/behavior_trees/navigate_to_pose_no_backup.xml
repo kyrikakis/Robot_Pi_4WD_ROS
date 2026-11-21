@@ -1,5 +1,5 @@
-<!-- Rainbow: copy of nav2_bt_navigator's navigate_to_pose_w_replanning_and_recovery.xml without the BackUp recovery, and spinning both ways.
-     Nothing sees low obstacles behind the robot, so it never reverses. -->
+<!-- Rainbow: copy of nav2_bt_navigator's navigate_to_pose_w_replanning_and_recovery.xml with spins both ways and only a short
+     BackUp (10 cm) as a last resort: nothing sees low obstacles behind the robot. -->
 
 <!--
   This Behavior Tree replans the global path periodically at 1 Hz and it also has
@@ -45,6 +45,10 @@
                  costmap) where the other way is free -->
             <Spin name="SpinLeft" spin_dist="1.57" error_code_id="{spin_error_code}"/>
             <Spin name="SpinRight" spin_dist="-1.57" error_code_id="{spin_error_code}"/>
+            <!-- Nose against an obstacle (within ~2 cm) the front corners hit it
+                 turning either way: back up 10 cm, slowly, into the space it just
+                 drove through (BackUp checks the local costmap first) -->
+            <BackUp backup_dist="0.10" backup_speed="0.05" error_code_id="{backup_error_code}"/>
             <Wait wait_duration="5.0"/>
           </RoundRobin>
         </ReactiveFallback>

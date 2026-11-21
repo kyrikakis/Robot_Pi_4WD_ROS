@@ -125,8 +125,12 @@ The code you edit is the code the robot runs. Lessons learned:
   slows Nav2's commands so the footprint stays >= 1.2 s from a collision, then
   stops. It acts after the velocity smoother, so the soft normal braking (0.8
   m/s^2) cannot delay an emergency stop. Teleop does not pass through it.
-- Nav2 never reverses (`allow_backward: false`, no BackUp in its behavior trees in
-  `rainbow_bringup/behavior_trees/`): nothing sees low obstacles behind.
+- Nav2 does not drive backwards (`allow_backward: false`): nothing sees low
+  obstacles behind. The only exception is the recovery in
+  `rainbow_bringup/behavior_trees/`: spin left, spin right, then back up 10 cm
+  at 5 cm/s. With its nose within ~2 cm of an obstacle the 19 x 14 cm footprint's
+  front corners (12.2 cm from the centre) hit it turning either way, and the
+  ToF's 30 s memory keeps it after a costmap clear (blind zone).
 - Frames and IMU are verified: base_footprint -> base_link is a fixed joint, so
   mixing them across configs is fine; the BNO055 remap (P2) is right on all axes.
   Wheel odometry over-reports rotation ~16% (skid-steer slip); the EKF takes
