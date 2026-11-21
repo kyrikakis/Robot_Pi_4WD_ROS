@@ -200,13 +200,18 @@ when new work comes up, add it here.
 - ToF blind zone: ~20-25 cm in front of the nose and outside +-24 deg to the
   sides (head level); obstacles there are only known from memory (30 s). A
   head tilt down would shrink it; try step by step with the owner watching.
-- Battery node: warn around 7.0 V (log, eyes or speech) and cancel Nav2 goals /
+- Brain and voice: agreed design in `docs/brain.md` (local brain on the Pi,
+  agent with Whisper and memory on the owner's Mac, openWakeWord "Rainbow" on
+  the ReSpeaker, places on the map). Build in its order, discussing each step
+  with the owner first. "Stop" works without the wake word.
+- Battery: warn around 7.0 V (log, eyes or speech) and cancel Nav2 goals /
   stop at the cutoff (~6.6-6.9 V, judged at rest). The firmware's own low-voltage
-  behaviour is unknown.
+  behaviour is unknown. Not part of the brain work for now; later it becomes a
+  brain mode that refuses motion.
 - Calibrate the Camera Module 3 (the files in `calibration/` are for the IMX296).
-- Wake word "Hey Rainbow" (placeholder in `rainbow_voice`); speech to text is
-  planned with Whisper on the Hailo.
-- Hailo face recognition is currently disabled inside its container to save CPU.
+- Whisper on the Hailo (speech to text without the Mac): later, after the brain.
+- Hailo face recognition is disabled inside its container to save CPU; it is to
+  be re-enabled for the brain (stills and face names, see `docs/brain.md`).
 - Host: Hailo, kernel (6.6, contains the Hailo driver) and camera packages are
   held with apt-mark. Update them together later, with the Hailo container
   and a rebuild of the ALFA Wi-Fi driver (rtl8812au) for the new kernel.
