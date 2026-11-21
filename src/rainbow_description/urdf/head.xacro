@@ -41,7 +41,7 @@
     and <name>_optical_frame (z forward, x right, y down: the frame image
     and depth data are expressed in, per REP 103).
   -->
-  <xacro:macro name="ear_camera" params="name y roll:=0 pitch:=0">
+  <xacro:macro name="ear_camera" params="name y dx:=0 roll:=0 pitch:=0 yaw:=0">
     <link name="${name}_link">
       <visual>
         <origin rpy="0 ${pi / 2} 0"/>
@@ -52,7 +52,7 @@
     <joint name="${name}_joint" type="fixed">
       <parent link="head_tilt_link"/>
       <child link="${name}_link"/>
-      <origin xyz="${ear_dx} ${y} ${ear_dz}" rpy="${roll} ${pitch} 0"/>
+      <origin xyz="${ear_dx + dx} ${y} ${ear_dz}" rpy="${roll} ${pitch} ${yaw}"/>
     </joint>
 
     <link name="${name}_optical_frame"/>
@@ -78,6 +78,6 @@
   <xacro:ear_camera name="camera" y="${-ear_dy}"/>
 
   <!-- Left ear: Arducam ToF depth camera -->
-  <xacro:ear_camera name="tof" y="${ear_dy}" roll="${tof_roll}" pitch="${tof_pitch}"/>
+  <xacro:ear_camera name="tof" y="${ear_dy}" dx="${tof_dx}" roll="${tof_roll}" pitch="${tof_pitch}" yaw="${tof_yaw}"/>
 
 </robot>

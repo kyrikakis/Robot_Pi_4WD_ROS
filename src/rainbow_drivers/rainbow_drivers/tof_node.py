@@ -17,6 +17,15 @@ otherwise look raised (1 deg is 1.7 cm at 1 m) and be marked as obstacles. The
 correction is the tilt relative to the robot's average attitude over
 tilt_time_constant, since the ToF calibration was made with the robot at rest.
 
+Heights are then measured from the floor as seen in each frame: a plane is
+fitted to the points within floor_fit_band of zero height and closer than
+floor_fit_distance (a second pass keeps those within floor_fit_inlier of the
+first plane). Where the robot rests tilted (one side on a rug, a carpet edge)
+the floor otherwise reads 1-2 cm low and low obstacles, such as a desk foot
+3-4 cm high, fall below the threshold. The fit is used only with at least
+floor_fit_min_points inliers and a slope below floor_fit_max_slope_deg;
+otherwise heights stay relative to base_footprint.
+
 Isolated obstacle pixels are dropped: one is kept only if at least
 obstacle_min_fraction of its obstacle_window_px square neighbourhood in the
 image are obstacle pixels too. Specks on the floor (stains, reflections) cover
@@ -60,6 +69,10 @@ class TofNode(Node):
         # estimate of the sensor's exposure and depth computation (not measured).
         # A late stamp puts obstacles in the wrong place while turning
         self.latency = self.declare_parameter('latency', 0.04).value
+        # Added to every measured range (m, along the ray); 0 = as the SDK reports.
+        # Not the fix for the ToF reading far against the lidar: that is a position
+        # offset (tof_dx in dimensions.xacro), since a range offset also lifts the floor
+        self.range_offset = self.declare_parameter('range_offset', 0.0).value
         self.hfov_deg = self.declare_parameter('horizontal_fov_deg', 64.3).value
         self.vfov_deg = self.declare_parameter('vertical_fov_deg', 50.4).value
         # Flying pixels: at depth edges a ToF pixel mixes the near and far surface and
@@ -77,6 +90,13 @@ class TofNode(Node):
         self.min_h_near = self.declare_parameter('obstacle_min_height_near', 0.02).value
         self.min_h_far = self.declare_parameter('obstacle_min_height_far', 0.035).value
         self.max_h = self.declare_parameter('obstacle_max_height', 0.16).value
+        # Per-frame floor plane (see the module docstring)
+        self.fit_band = self.declare_parameter('floor_fit_band', 0.03).value
+        self.fit_inlier = self.declare_parameter('floor_fit_inlier', 0.01).value
+        self.fit_distance = self.declare_parameter('floor_fit_distance', 1.2).value
+        self.fit_min_points = self.declare_parameter('floor_fit_min_points', 300).value
+        self.fit_max_slope = math.tan(math.radians(
+            self.declare_parameter('floor_fit_max_slope_deg', 5.0).value))
         # Speckle filter: majority of the neighbourhood must be obstacle pixels
         self.obst_window = self.declare_parameter('obstacle_window_px', 5).value
         self.obst_fraction = self.declare_parameter('obstacle_min_fraction', 0.5).value
@@ -101,6 +121,9 @@ class TofNode(Node):
         info = self.camera.getCameraInfo()
         self.width, self.height = info.width, info.height
         self.rays_x, self.rays_y = self.make_rays(self.width, self.height)
+        # Depth change per metre of range along each pixel's ray
+        self.depth_per_range = (1.0 / np.sqrt(1.0 + self.rays_x ** 2 + self.rays_y ** 2)
+                                ).astype(np.float32)
         self.cloud_fields = [PointField(name=n, offset=4 * i, datatype=PointField.FLOAT32,
                                         count=1) for i, n in enumerate('xyz')]
 
@@ -217,6 +240,31 @@ class TofNode(Node):
                  - integral[k:k + h, :w] + integral[:h, :w])
         return mask_img & (count >= self.obst_fraction * k * k)
 
+    def fit_floor(self, base, sel):
+        """Plane height = c0 + c1 x + c2 y through base[sel], or None if unusable."""
+        if np.count_nonzero(sel) < self.fit_min_points:
+            return None
+        pts = base[sel]
+        a = np.column_stack((np.ones(len(pts), np.float32), pts[:, 0], pts[:, 1]))
+        c = np.linalg.lstsq(a, pts[:, 2], rcond=None)[0]
+        if abs(c[1]) > self.fit_max_slope or abs(c[2]) > self.fit_max_slope:
+            return None
+        return c
+
+    def floor_height(self, base, distance):
+        """Floor height under each point from a plane fitted to this frame, or 0."""
+        height = base[:, 2]
+        sel = (np.abs(height) < self.fit_band) & (distance < self.fit_distance)
+        c = self.fit_floor(base, sel)
+        if c is None:
+            return 0.0
+        # Second pass without the points far off the first plane (low objects)
+        sel &= np.abs(height - (c[0] + c[1] * base[:, 0] + c[2] * base[:, 1])) < self.fit_inlier
+        c = self.fit_floor(base, sel)
+        if c is None:
+            return 0.0
+        return c[0] + c[1] * base[:, 0] + c[2] * base[:, 1]
+
     def obstacle_mask(self, points):
         """Which points are obstacles: above the floor threshold, below max height."""
         try:
@@ -233,8 +281,8 @@ class TofNode(Node):
         level = self.level_correction()
         if level is not None:
             base = base @ level.T
-        height = base[:, 2]
         distance = np.hypot(base[:, 0], base[:, 1])
+        height = base[:, 2] - self.floor_height(base, distance)
         min_h = np.where(distance <= self.near_distance, self.min_h_near, self.min_h_far)
         return (height >= min_h) & (height <= self.max_h)
 
@@ -249,6 +297,8 @@ class TofNode(Node):
         """Publish one frame. Each output is only built when something subscribes."""
         # depth_data is float32 millimetres; convert to metres in one new array
         depth = np.multiply(frame.depth_data, 0.001, dtype=np.float32)
+        if self.range_offset:
+            depth += self.range_offset * self.depth_per_range
         valid = frame.confidence_data >= self.confidence
         valid &= depth >= self.min_range
         valid &= depth <= self.max_range
