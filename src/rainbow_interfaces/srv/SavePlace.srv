@@ -1,0 +1,14 @@
+# Save a named place on the current map; an existing place of that name is
+# replaced. The pose is the robot's current pose, or with from_pick the last
+# pose clicked in Foxglove on /places/pick (within the last few minutes).
+# A place named "home" is where "go home" goes.
+string name
+string description
+string room
+bool from_pick
+# True when the robot itself guesses this place: saved unconfirmed
+bool guess
+---
+bool success
+string message
+Place place

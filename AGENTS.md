@@ -33,7 +33,7 @@ unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
   so a power-on is a clean deployment. This is deliberate; do not bind-mount
   the repo. The image is built from the **Pi host's** checkout, not from inside
   the container.
-- Supervisor runs seven of its eight programs from `supervisor/rainbow.conf`, each a
+- Supervisor runs eight of its nine programs from `supervisor/rainbow.conf`, each a
   `rainbow_bringup` launch file via `scripts/rainbow_launch.sh`. The micro-ROS
   agent (`rainbow_microros`) and the ToF (`rainbow_tof`) are separate programs:
   restarting the base disconnects neither the ESP nor the ToF.
@@ -46,10 +46,14 @@ unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
 - **Restarting `rainbow_base` restarts the EKF, which resets the odometry: AMCL
   then needs a pose estimate, and a SLAM mapping session gets scrambled
   (restart `rainbow_slam` right after). Ask the owner before restarting the
-  base.** Restarting Nav2 or the ToF is safe.
+  base.** Restarting Nav2, the ToF or the brain is safe.
 - Nav2 runs composed in one process (`nav2_container`); as separate processes
   its 11 servers cost ~66% of a core idle, composed ~38%.
 - `ROS_DOMAIN_ID=20` for the robot.
+- Data the robot writes at runtime (places, later the link token) lives on the
+  `rainbow_data` Docker volume at `/data/rainbow`, never in the image or `maps/`.
+  Places are per map (`places/<map>.yaml`, map name taken from
+  `localization.yaml`): a new map needs new places.
 - All measurements live in `src/rainbow_description/urdf/dimensions.xacro`
   (measured values are marked). Nav2's footprint in `rainbow_bringup/config/nav2.yaml`
   must be kept in sync with it by hand.

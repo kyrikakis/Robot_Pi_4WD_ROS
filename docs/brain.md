@@ -128,7 +128,7 @@ A fixed phrase grammar for Vosk, kept small so it stays accurate:
 
 - "wait" (stop is separate, see above)
 - "go to the <place>" (place names come from the places file)
-- "come back" / "go home" (a configured home place)
+- "come back" / "go home" (the place named "home")
 
 ### Skills
 
@@ -146,8 +146,8 @@ Head skills (`look`) come later, with the head controller (see [Head](#head)).
 | `where_am_i()` | Pose in words: room, nearest place within ~1.5 m, heading, AMCL certainty |
 | `get_state()` | Pose, AMCL covariance, battery voltage, current goal, mode |
 | `list_places()` | Places with room, description and status |
-| `save_place(name, description, room)` | Save the current pose (or the last Foxglove pick) |
-| `rename_place`, `delete_place` | Edit places |
+| `save_place(name, description, room, guess)` | Save the current pose (or the last Foxglove pick); `guess` saves it unconfirmed |
+| `edit_place(name, new_name, description, room, confirm)`, `delete_place` | Rename, re-describe or confirm a place; delete it |
 | `capture_photo()` | A still JPEG from the RGB camera, with the pose it was taken at |
 | `turn(angle)`, `drive(distance)` | Corner cases: Nav2 Spin / DriveOnHeading (forward only) |
 | `say(text)` | espeak |
@@ -170,8 +170,7 @@ to one map: a new map needs new places.
 
 ```yaml
 map: home_live
-home: sofa                   # target of "come back" / "go home"
-places:
+places:                  # a place named "home" is where "go home" goes
   kitchen:
     pose: {x: 3.20, y: -1.10, yaw: 1.57}
     room: kitchen

@@ -1,0 +1,8 @@
+# Drive straight ahead with Nav2's DriveOnHeading. Metres, forward only, at
+# most the brain's max_drive.
+float64 distance
+---
+bool success
+string message
+---
+float32 driven

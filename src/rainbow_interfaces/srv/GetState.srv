@@ -1,0 +1,16 @@
+---
+# local (no agent) or remote (agent connected)
+string mode
+string map
+bool localized
+string certainty
+float64 x
+float64 y
+float64 yaw
+# AMCL standard deviations (m, rad); negative when unknown
+float64 position_std
+float64 yaw_std
+# Volts; 0 when no /battery message yet
+float32 battery_volts
+# What the brain is doing, e.g. "idle", "going to kitchen", "turning"
+string activity

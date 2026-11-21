@@ -1,0 +1,17 @@
+# The robot's position in words, from the places file and AMCL.
+---
+# False when there is no map -> base_footprint transform yet
+bool localized
+# How sure AMCL is: sure, roughly, lost, or unknown (no AMCL pose yet)
+string certainty
+# A sentence for speaking, e.g. "I'm in the kitchen, near the fridge, facing the sofa."
+string description
+string room
+# Nearest place within the brain's near_distance, or empty
+string nearest_place
+float64 nearest_distance
+# Place the robot is roughly facing, or empty
+string facing_place
+float64 x
+float64 y
+float64 yaw

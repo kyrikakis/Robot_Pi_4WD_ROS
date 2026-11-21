@@ -50,7 +50,8 @@ Rainbow's ROS 2 packages live in `src/`:
 | `rainbow_bringup` | Launch files and all configuration (EKF, BNO055, SLAM, Nav2) |
 | `rainbow_drivers` | Head, eyes, ToF depth camera, velocity watchdog, IP publisher |
 | `rainbow_voice` | Text to speech; wake word placeholder (`voice.launch.py wake_word:=true`) |
-| `rainbow_interfaces` | Service definitions |
+| `rainbow_brain` | Local brain: skills (go to a place, turn, drive, stop) and named places on the map ([design](docs/brain.md)) |
+| `rainbow_interfaces` | Service, action and message definitions |
 
 The ESP32 board runs the motors (with PID), the head servos, the lidar, battery
 monitoring and its own IMU. It talks to the Pi over micro-ROS (`/dev/ttyUSB_ROS`).
@@ -74,6 +75,7 @@ Supervisor starts these when the container starts (`supervisor/rainbow.conf`):
 | `rainbow_navigation` | `navigation.launch.py` | Nav2 |
 | `rainbow_foxglove` | `foxglove.launch.py` | Foxglove bridge on port 8765 |
 | `rainbow_voice` | `voice.launch.py` | Text to speech |
+| `rainbow_brain` | `brain.launch.py` | Local brain and places |
 
 ```
 supervisorctl status
@@ -88,7 +90,7 @@ map_saver_cli -f maps/<name>`, set `yaml_filename` in
 
 To run everything by hand instead: `scripts/rainbow_launch.sh rainbow.launch.py`
 (arguments `localization`, `navigation`, `foxglove`, `voice`, `tof`,
-`microros`, default `true`; `slam` default `false`).
+`microros`, `brain`, default `true`; `slam` default `false`).
 
 ### Talking to the robot
 
@@ -102,6 +104,16 @@ ros2 service call /eyes/set_expression rainbow_interfaces/srv/SetExpression "{ex
 
 # Speech
 ros2 service call /speech/say rainbow_interfaces/srv/Say "{text: 'Hello, I am Rainbow'}"
+
+# Places (stored per map on the rainbow_data volume, shown on /places/markers)
+ros2 service call /places/save rainbow_interfaces/srv/SavePlace "{name: kitchen, room: kitchen}"
+ros2 service call /places/list rainbow_interfaces/srv/ListPlaces
+ros2 service call /brain/where_am_i rainbow_interfaces/srv/WhereAmI
+
+# Skills (all through Nav2); /brain/stop cancels every Nav2 goal
+ros2 action send_goal /brain/go_to_place rainbow_interfaces/action/GoToPlace "{place: kitchen}" --feedback
+ros2 action send_goal /brain/turn rainbow_interfaces/action/Turn "{angle: 1.57}"
+ros2 service call /brain/stop std_srvs/srv/Trigger
 ```
 
 The old topics still work: `/head/z_rotation` and `/head/y_rotation` (degrees),
@@ -118,7 +130,8 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=cmd_
 
 Connect the Foxglove app to `ws://<robot-ip>:8765` (Foxglove WebSocket; the IP is
 published on `/rpi5_ip`), then import the layout `foxglove/rainbow.json`. It has the
-3D view (click to send a Nav2 goal), teleop, commanded vs actual speed, head and
+3D view (click to send a Nav2 goal), a Places tab (its pose tool picks a pose
+for `/places/save` with `from_pick: true`), teleop, commanded vs actual speed, head and
 eyes controls, the face-recognition camera and the log. The ToF cloud is heavy
 over Wi-Fi; hide `/point_cloud` in the 3D view if it lags.
 

@@ -8,6 +8,16 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SetHeadPose.srv"
   "srv/SetExpression.srv"
   "srv/Say.srv"
+  "msg/Place.msg"
+  "srv/SavePlace.srv"
+  "srv/EditPlace.srv"
+  "srv/DeletePlace.srv"
+  "srv/ListPlaces.srv"
+  "srv/WhereAmI.srv"
+  "srv/GetState.srv"
+  "action/GoToPlace.action"
+  "action/Turn.action"
+  "action/Drive.action"
 )
 
 ament_export_dependencies(rosidl_default_runtime)
