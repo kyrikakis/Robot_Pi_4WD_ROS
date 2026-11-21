@@ -167,8 +167,9 @@ The code you edit is the code the robot runs. Lessons learned:
 
 ## Conventions
 
-- Work happens on the `refactor` branch until the refactor is finished; do not
-  merge to `main` or suggest merging until the owner says so.
+- `main` is the finished robot. New work happens on a branch per feature
+  (currently `brain`, for `docs/brain.md`); do not merge to `main` or suggest
+  merging until the owner says so.
 - Python nodes: ament_python, one node per module, `ament_flake8 --linelength 100`
   clean. New services go in `rainbow_interfaces`. Keep the old topics
   (`/head/*_rotation`, `/eyes`, `/speech/*`) working.
