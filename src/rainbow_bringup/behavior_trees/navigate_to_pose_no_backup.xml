@@ -1,4 +1,4 @@
-<!-- Rainbow: copy of nav2_bt_navigator's navigate_to_pose_w_replanning_and_recovery.xml without the BackUp recovery.
+<!-- Rainbow: copy of nav2_bt_navigator's navigate_to_pose_w_replanning_and_recovery.xml without the BackUp recovery, and spinning both ways.
      Nothing sees low obstacles behind the robot, so it never reverses. -->
 
 <!--
@@ -41,7 +41,10 @@
               <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
               <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
             </Sequence>
-            <Spin spin_dist="1.57" error_code_id="{spin_error_code}"/>
+            <!-- Both ways: a turn one way can be blocked (collision monitor or the
+                 costmap) where the other way is free -->
+            <Spin name="SpinLeft" spin_dist="1.57" error_code_id="{spin_error_code}"/>
+            <Spin name="SpinRight" spin_dist="-1.57" error_code_id="{spin_error_code}"/>
             <Wait wait_duration="5.0"/>
           </RoundRobin>
         </ReactiveFallback>
