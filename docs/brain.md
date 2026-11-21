@@ -40,7 +40,7 @@ simple commands and safety itself, and keeps going when the Mac or Wi-Fi is down
           │ WebSocket, LAN only, token auth
  ┌────────▼──────────────── MacBook ────────────────────────────────────┐
  │ rainbow-agent (plain Python)                                         │
- │   Whisper (MLX / whisper.cpp) → local VLM with tool calling          │
+ │   Whisper (mlx-whisper) → Qwen3-VL on llama-server, with tools       │
  │   memory: SQLite + embeddings, rolling sessions                      │
  │   replies are text; the Pi speaks them with espeak                   │
  └──────────────────────────────────────────────────────────────────────┘
@@ -231,14 +231,23 @@ anything about, so the robot does not chatter.
 
 ## Agent on the Mac (`rainbow-agent`)
 
-Plain Python, no ROS. It lives in this repo under `agent/` (the link protocol
-is then defined in one place), and runs on the Mac outside Docker as a launchd
-service, so it is up whenever the Mac is.
+Plain Python, no ROS. The code lives in this repo under `agent/` (the link
+protocol is then defined in one place); see `agent/README.md` to install and
+run it.
+
+Not in Docker: containers on macOS get no GPU (Docker Desktop's Linux VM has
+no Metal), so the model and Whisper would run on the CPU, several times
+slower. Docker Model Runner runs models on the host GPU but has no speech to
+text. Instead, everything the agent installs lives in one folder,
+`~/.rainbow-agent` (llama.cpp's server, the model files, Python and the
+dependencies from `uv.lock`, uv's cache, memory, logs), plus one launchd file
+once the agent runs as a service; `agent/uninstall.sh` removes both. Every
+download is pinned and checked against its SHA-256 (`agent/install.sh`).
 
 ### Processes
 
 ```
- launchd
+ launchd (once the link exists)
  ├─ rainbow-agent      (one asyncio process, ours)
  │   ├─ link client       WebSocket to the Pi, reconnects, heartbeat
  │   ├─ stt               Whisper, in process
@@ -246,13 +255,12 @@ service, so it is up whenever the Mac is.
  │   ├─ events policy     which brain events/questions reach the model
  │   ├─ memory            SQLite + vectors
  │   └─ places matcher    image embeddings for localization (step 6)
- └─ model server       (Ollama or LM Studio; OpenAI-compatible HTTP on localhost)
-     ├─ main model        chat + tools + vision
-     └─ embedding model   for memory search
+ ├─ llama-server :8180  main model: chat + tools + vision (OpenAI-compatible, localhost)
+ └─ llama-server :8181  embedding model, for memory search
 ```
 
-The model runs in its own server, reached through the OpenAI-compatible chat
-API with `tools`. Swapping models is then a config change, and a model crash
+The models run in llama.cpp's own server (a prebuilt macOS binary with Metal,
+pinned release), reached through the OpenAI-compatible chat API with `tools`. Swapping models is then a config change, and a model crash
 does not take down the link. Speech to text and image embeddings run inside the
 agent (small, and called on every utterance).
 
@@ -287,8 +295,8 @@ The choice must be confirmed by tests with this robot's real tool calls (below).
 | Role | First choice | Alternative | Notes |
 |---|---|---|---|
 | Speech to text | Whisper large-v3-turbo (mlx-whisper) | Parakeet TDT (parakeet-mlx) | Whisper is the more accurate and multilingual; ~1 s per short utterance on an M4. Parakeet is several times faster but was clearly less accurate in an independent test; worth a try only if latency hurts |
-| Main model (chat, tools, vision) | Qwen3-VL 30B-A3B (MoE, ~3B active), 4-bit | Same at 8-bit, or Qwen3-VL 32B dense (better, slower) | One model for conversation, tool calls and photos keeps memory use and latency down. The MoE answers fast because few weights are active per token |
-| Text embeddings (memory) | Qwen3-Embedding 0.6B | nomic-embed-text | Small; served by the model server |
+| Main model (chat, tools, vision) | Qwen3-VL 30B-A3B (MoE, ~3B active), Q4_K_M GGUF + F16 vision projector | Same at 8-bit, or Qwen3-VL 32B dense (better, slower) | One model for conversation, tool calls and photos keeps memory use and latency down. The MoE answers fast because few weights are active per token |
+| Text embeddings (memory) | Qwen3-Embedding 0.6B (Q8_0 GGUF) | nomic-embed-text | Small; its own llama-server |
 | Image embeddings (places) | DINOv2 (ViT-S/B) | SigLIP 2 | DINOv2 is good at "same place" matching; SigLIP adds text search ("photo of a kitchen") |
 
 The Mac has 64 GB, of which macOS lets the GPU use ~48 GB by default; it is

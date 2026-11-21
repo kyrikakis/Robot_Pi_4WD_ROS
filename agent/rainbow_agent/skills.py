@@ -1,0 +1,63 @@
+"""The robot's skills as tools for the model (OpenAI function-calling format).
+
+One to one with rainbow_brain's skills (docs/brain.md), worded for the model:
+angles in degrees here, converted to radians when sent to the brain.
+"""
+
+
+def _tool(name, description, properties=None, required=()):
+    return {
+        'type': 'function',
+        'function': {
+            'name': name,
+            'description': description,
+            'parameters': {
+                'type': 'object',
+                'properties': properties or {},
+                'required': list(required),
+            },
+        },
+    }
+
+
+_TEXT = {'type': 'string'}
+
+TOOLS = [
+    _tool('go_to_place',
+          'Drive to a named place on the map (use list_places for the names; "home" is '
+          'the place named home). Returns at once with "started"; arriving or failing '
+          'comes later as a robot event. A new move replaces the one running.',
+          {'place': {'type': 'string', 'description': 'name of a known place'}},
+          ['place']),
+    _tool('turn',
+          'Turn in place. Positive turns left, negative right.',
+          {'degrees': {'type': 'number', 'description': '-360 to 360'}},
+          ['degrees']),
+    _tool('drive_forward',
+          'Drive straight ahead a short distance. The robot cannot drive backwards.',
+          {'meters': {'type': 'number', 'description': '0.05 to 1.0'}},
+          ['meters']),
+    _tool('stop', 'Stop moving at once and cancel any move.'),
+    _tool('where_am_i',
+          'Where the robot is, in words: room, nearest known place, what it faces, and '
+          'how sure it is.'),
+    _tool('get_state',
+          "The robot's state: what it is doing, battery voltage, whether it knows where "
+          'it is.'),
+    _tool('list_places', 'The named places on the map, with rooms and descriptions.'),
+    _tool('save_place',
+          "Remember the robot's current position as a named place. Use guess=true when "
+          'it is your own guess (for example from what a photo shows), not something '
+          'the user told you.',
+          {'name': _TEXT, 'description': _TEXT, 'room': _TEXT, 'guess': {'type': 'boolean'}},
+          ['name']),
+    _tool('edit_place',
+          'Rename a place, change its description or room, or confirm one of your '
+          'guesses (confirm=true) after the user agreed.',
+          {'name': _TEXT, 'new_name': _TEXT, 'description': _TEXT, 'room': _TEXT,
+           'confirm': {'type': 'boolean'}},
+          ['name']),
+    _tool('delete_place', 'Forget a named place.', {'name': _TEXT}, ['name']),
+]
+
+NAMES = [t['function']['name'] for t in TOOLS]
