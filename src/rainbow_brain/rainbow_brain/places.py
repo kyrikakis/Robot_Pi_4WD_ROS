@@ -41,7 +41,7 @@ class Place:
 
 
 def normalize_name(name):
-    """Lower case, single spaces, no leading "the"; raises ValueError if unusable."""
+    """Normalize to lower case, single spaces, no leading "the"; ValueError if unusable."""
     name = ' '.join(str(name).lower().split())
     name = re.sub(r'^the ', '', name)
     if not name:
@@ -54,7 +54,7 @@ def normalize_name(name):
 
 
 def angle_diff(a, b):
-    """Smallest signed difference a - b, in (-pi, pi]."""
+    """Return the smallest signed difference a - b, in (-pi, pi]."""
     d = (a - b) % (2 * math.pi)
     return d - 2 * math.pi if d > math.pi else d
 
@@ -113,12 +113,13 @@ class PlaceStore:
 
     # Changes (each raises ValueError with a speakable reason)
 
-    def save(self, name, x, y, yaw, room='', description='', source='owner'):
+    def save(self, name, x, y, yaw, room='', description='', source='owner', confirmed=None):
+        """Save (or replace) a place; unconfirmed if source is robot, unless told."""
         if source not in SOURCES:
             raise ValueError(f'unknown source {source}')
         place = Place(normalize_name(name), float(x), float(y), float(yaw),
                       room.strip(), description.strip(), source,
-                      confirmed=(source != 'robot'))
+                      confirmed=(source != 'robot') if confirmed is None else confirmed)
         self.places[place.name] = place
         self.save_file()
         return place
@@ -159,7 +160,7 @@ class PlaceStore:
         return sorted(self.places.values(), key=lambda p: p.name)
 
     def nearest(self, x, y, max_distance):
-        """(place, distance) of the nearest place within max_distance, or (None, inf)."""
+        """Return (place, distance) of the nearest place within max_distance, or (None, inf)."""
         best, best_d = None, math.inf
         for p in self.places.values():
             d = math.hypot(p.x - x, p.y - y)
@@ -168,7 +169,7 @@ class PlaceStore:
         return best, best_d
 
     def facing(self, x, y, yaw, max_angle=math.radians(30), min_distance=0.5):
-        """The nearest place roughly ahead (within max_angle of the heading), or None."""
+        """Return the nearest place roughly ahead (within max_angle of the heading), or None."""
         best, best_d = None, math.inf
         for p in self.places.values():
             d = math.hypot(p.x - x, p.y - y)
@@ -180,7 +181,7 @@ class PlaceStore:
         return best
 
     def describe(self, x, y, yaw, near_distance, certainty='sure'):
-        """A speakable sentence about where (x, y, yaw) is. Returns (sentence, near, facing)."""
+        """Describe where (x, y, yaw) is in a sentence. Returns (sentence, near, facing)."""
         near, d = self.nearest(x, y, near_distance)
         ahead = self.facing(x, y, yaw)
         if ahead is not None and near is not None and ahead.name == near.name:

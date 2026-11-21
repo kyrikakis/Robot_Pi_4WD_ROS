@@ -204,27 +204,41 @@ The Foxglove layout gets this layer.
 
 A WebSocket server in the brain process (asyncio in its own thread), so the
 brain knows the moment the Mac disconnects. The Mac connects to the Pi.
+Pi side: `rainbow_brain/link.py` (no ROS, tested on the Mac); Mac side:
+`agent/rainbow_agent/link.py` (`LinkRobot`, same interface as the simulated
+robot); `agent/tests/test_link.py` runs both ends against each other.
 
-- The Mac connects to `rainbow.local`, falling back to `192.168.1.172`
-  (configurable).
-- LAN only, shared token in the first message (stored on the data volume, not
-  in the repo; copied to the Mac once). Anything that can reach this socket
-  can drive the robot.
-- Heartbeat both ways every 1 s; 3 s without one means disconnected.
-- JSON text frames; utterance audio and photos as binary frames referenced by
-  id.
+- Port 8766 (8765 is Foxglove). The Mac connects to `rainbow.local`, falling
+  back to `192.168.1.172` (configurable).
+- One agent at a time: a new connection replaces the old one.
+- LAN only. The brain creates a random token on first start
+  (`/data/rainbow/link_token`, owner-only); `rainbow-agent pair` copies it to
+  the Mac over SSH. A wrong token is refused. Anything with the token can
+  drive the robot.
+- The agent pings every 1 s; 3 s without a message means disconnected and the
+  brain goes back to LOCAL mode.
+- The link speaks the agent's units (degrees, metres); the brain converts.
+  Results of turn and drive_forward include `now`, where_am_i's sentence, so
+  the model reports facts.
+- JSON text frames (utterance audio and photos will be binary frames,
+  referenced by id).
 
-Messages:
+Messages (built: hello to state; the rest comes with later steps):
 
 | Direction | Type | Content |
 |---|---|---|
-| Pi → Mac | `utterance` | audio id, Vosk result, whether it was handled locally |
-| Pi → Mac | `event` | goal reached / failed / stuck, stopped by voice, startup, face seen, link restored (with offline summary) |
-| Pi → Mac | `question` | a decision the brain wants (e.g. "goal failed twice, what now?"), with a timeout and the local default it will take |
-| Pi → Mac | `result` | result of a tool call |
+| Mac → Pi | `hello` | the token; answered by `welcome` (robot, map, protocol) or `error` |
+| Mac → Pi | `ping` | heartbeat; answered by `pong` |
 | Mac → Pi | `call` | a skill call with id and arguments |
-| Mac → Pi | `answer` | answer to a `question` |
-| both | `ping` | heartbeat |
+| Pi → Mac | `result` | result of a call, same id |
+| Mac → Pi | `say` | text for espeak |
+| Pi → Mac | `event` | arrived / failed / cancelled; link_restored (with the events missed while away, last 10) |
+| Pi → Mac | `state` | activity, battery, places, mode; on changes and every 5 s |
+| Pi → Mac | `utterance` | (step 3) audio, Vosk result, whether it was handled locally |
+| Pi → Mac | `question` | (later) a decision the brain wants, with a timeout and its local default |
+| Mac → Pi | `answer` | (later) answer to a `question` |
+
+In REMOTE mode the brain no longer says failures itself; the agent decides.
 
 Events are rate-limited, and the agent decides whether an event is worth saying
 anything about, so the robot does not chatter.

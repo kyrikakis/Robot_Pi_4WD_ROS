@@ -35,8 +35,11 @@ class Config:
     temperature: float = 0.2
     max_reply_tokens: int = 120
 
-    # The robot (used from build step 2, the link)
+    # The robot: rainbow_brain's link (docs/brain.md)
     robot_hosts: list = field(default_factory=lambda: ['rainbow.local', '192.168.1.172'])
+    robot_port: int = 8766
+    robot_ssh: str = 'pi@192.168.1.172'      # for `rainbow-agent pair`
+    link_token: Path = ROOT / 'data' / 'link_token'
 
     @property
     def chat_url(self):

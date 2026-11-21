@@ -8,6 +8,7 @@ dependencies = [
     "mlx-whisper>=0.4",
     "numpy>=1.26",
     "pyyaml>=6",
+    "websockets>=12",
 ]
 
 [project.scripts]

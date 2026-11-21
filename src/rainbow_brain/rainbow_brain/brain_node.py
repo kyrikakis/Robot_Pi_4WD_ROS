@@ -1,7 +1,8 @@
-"""Rainbow's local brain: skills, places, and (later) the link to the Mac agent.
+"""Rainbow's local brain: skills, places, and the link to the Mac agent.
 
-Design: docs/brain.md. This is build step 1: LOCAL mode only, no link or voice
-yet; the skills are called as ROS services and actions.
+Design: docs/brain.md. Build steps 1-2: skills as ROS services and actions,
+and the same skills for the Mac agent over the link (rainbow_brain.link). The
+mode is remote while an agent is connected, local otherwise.
 
 Every move goes through Nav2 (NavigateToPose, Spin, DriveOnHeading), so it
 passes the velocity smoother and the collision monitor; the brain never
@@ -20,17 +21,21 @@ Topics:
   /places/pick        geometry_msgs/PoseStamped    Foxglove's pose tool (Places tab)
   /places/markers     visualization_msgs/MarkerArray  places on the map (latched)
 Reads: TF map -> base_footprint, /amcl_pose, /battery
+Link: WebSocket on link_port (8766); token in <data_dir>/link_token.
 
 Places are stored in <data_dir>/places/<map_name>.yaml (rainbow_brain.places).
 """
 
+import asyncio
 import math
+import os
 import threading
 
 from action_msgs.msg import GoalStatus
 from action_msgs.srv import CancelGoal
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav2_msgs.action import DriveOnHeading, NavigateToPose, Spin
+from rainbow_brain.link import LinkServer, load_token
 from rainbow_brain.places import PlaceStore
 from rainbow_interfaces.action import Drive, GoToPlace, Turn
 from rainbow_interfaces.msg import Place as PlaceMsg
@@ -51,7 +56,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
                      reliability=ReliabilityPolicy.RELIABLE)
 
-# Nav2 actions cancelled by /brain/stop
+# Nav2 actions cancelled by stop
 NAV2_ACTIONS = ['navigate_to_pose', 'navigate_through_poses', 'follow_path', 'spin',
                 'drive_on_heading', 'backup', 'assisted_teleop', 'wait']
 
@@ -64,6 +69,11 @@ def to_msg(place):
     return PlaceMsg(name=place.name, x=place.x, y=place.y, yaw=place.yaw, room=place.room,
                     description=place.description, source=place.source,
                     confirmed=place.confirmed)
+
+
+def to_dict(place):
+    return {'name': place.name, 'room': place.room, 'description': place.description,
+            'confirmed': place.confirmed}
 
 
 class BrainNode(Node):
@@ -81,13 +91,16 @@ class BrainNode(Node):
         self.drive_speed = self.declare_parameter('drive_speed', 0.15).value
         # A Foxglove pick older than this is not used by /places/save (s)
         self.pick_max_age = self.declare_parameter('pick_max_age', 300.0).value
+        # The link to the Mac agent; 0 turns it off
+        self.link_port = self.declare_parameter('link_port', 8766).value
         if not self.map_name:
             raise RuntimeError('map_name is not set (brain.launch.py takes it from the '
                                'localization config)')
 
-        # local: no agent. remote comes with the link (build step 2).
+        # local: no agent connected; remote: the agent decides
         self.mode = 'local'
         self.places = PlaceStore(self.data_dir, self.map_name, self.get_logger().warning)
+        self.places_lock = threading.Lock()
         self.get_logger().info(
             f'{len(self.places.places)} places for map {self.map_name} in {self.places.path}')
 
@@ -104,7 +117,8 @@ class BrainNode(Node):
         self.create_subscription(PoseStamped, '/places/pick', self.on_pick, 10)
         self.markers_pub = self.create_publisher(MarkerArray, '/places/markers', LATCHED)
 
-        # The running move: {'label', 'handle' (ours), 'nav' (Nav2's), 'replaced'}
+        # The running move: {'label', 'handle' (ours, or None from the link),
+        # 'nav' (Nav2's), 'replaced'}
         self.lock = threading.Lock()
         self.current = None
 
@@ -132,6 +146,29 @@ class BrainNode(Node):
         self.create_service(ListPlaces, '/places/list', self.on_list_places, **g)
 
         self.publish_markers()
+
+        self.link = None
+        if self.link_port:
+            token = load_token(os.path.join(self.data_dir, 'link_token'))
+            self.link = LinkServer(LinkHandler(self), token, port=self.link_port,
+                                   info={'robot': 'rainbow', 'map': self.map_name},
+                                   log=self.get_logger().info)
+            self.link.start()
+            self.get_logger().info(f'link listening on port {self.link_port}')
+
+    def destroy_node(self):
+        if self.link is not None:
+            self.link.stop()
+        super().destroy_node()
+
+    def emit(self, event):
+        """Send an event to the agent (kept for later if none is connected)."""
+        if self.link is not None:
+            self.link.send_event(event)
+
+    def state_changed(self):
+        if self.link is not None:
+            self.link.send_state()
 
     # Inputs
 
@@ -176,6 +213,43 @@ class BrainNode(Node):
             return 'roughly', pos_std, yaw_std
         return 'lost', pos_std, yaw_std
 
+    def where_am_i(self):
+        """Return where the robot is, for the agent and the WhereAmI service."""
+        pose = self.pose()
+        word = self.certainty()[0]
+        if pose is None:
+            return {'ok': True, 'localized': False, 'certainty': word,
+                    'description': "I don't know where I am: there is no map position yet."}
+        x, y, yaw = pose
+        with self.places_lock:
+            sentence, near, ahead = self.places.describe(x, y, yaw, self.near_distance, word)
+        out = {'ok': True, 'localized': True, 'certainty': word, 'description': sentence,
+               'x': round(x, 2), 'y': round(y, 2), 'yaw': round(yaw, 2)}
+        if near is not None:
+            out['nearest_place'] = near.name
+            out['nearest_distance'] = round(math.hypot(near.x - x, near.y - y), 2)
+            out['room'] = near.room
+        if ahead is not None:
+            out['facing_place'] = ahead.name
+        return out
+
+    def state(self):
+        """Return the state, for the agent and the GetState service."""
+        pose = self.pose()
+        word, pos_std, yaw_std = self.certainty()
+        with self.lock:
+            current = self.current
+        with self.places_lock:
+            names = [p.name for p in self.places.sorted_places()]
+        out = {'ok': True, 'mode': self.mode, 'map': self.map_name,
+               'localized': pose is not None, 'certainty': word,
+               'position_std': round(pos_std, 2), 'yaw_std': round(yaw_std, 2),
+               'battery_volts': round(float(self.battery or 0.0), 1),
+               'activity': current['label'] if current else 'idle', 'places': names}
+        if pose is not None:
+            out['x'], out['y'], out['yaw'] = (round(v, 2) for v in pose)
+        return out
+
     # Moves
 
     def on_cancel_request(self, goal_handle):
@@ -185,8 +259,8 @@ class BrainNode(Node):
             current['nav'].cancel_goal_async()
         return CancelResponse.ACCEPT
 
-    async def run_nav2(self, label, client, goal, goal_handle, feedback=None):
-        """Run one Nav2 action for one of our goals; returns (success, message)."""
+    async def run_nav2(self, label, client, goal, goal_handle=None, feedback=None):
+        """Run one Nav2 action; returns (success, message). goal_handle: our action's, or None."""
         if not client.wait_for_server(timeout_sec=1.0):
             return False, 'navigation is not running'
         entry = {'label': label, 'handle': goal_handle, 'nav': None, 'replaced': False}
@@ -196,18 +270,20 @@ class BrainNode(Node):
             previous['replaced'] = True
             if previous['nav']:
                 previous['nav'].cancel_goal_async()
+        self.state_changed()
         try:
             nav = await client.send_goal_async(goal, feedback_callback=feedback)
             if not nav.accepted:
                 return False, 'navigation refused the goal'
             entry['nav'] = nav
-            if entry['replaced'] or goal_handle.is_cancel_requested:
+            if entry['replaced'] or (goal_handle is not None and goal_handle.is_cancel_requested):
                 nav.cancel_goal_async()
             response = await nav.get_result_async()
         finally:
             with self.lock:
                 if self.current is entry:
                     self.current = None
+            self.state_changed()
         if response.status == GoalStatus.STATUS_SUCCEEDED:
             return True, 'done'
         if entry['replaced']:
@@ -216,6 +292,121 @@ class BrainNode(Node):
             return False, 'cancelled'
         result = response.result
         return False, result.error_msg or f'navigation error {result.error_code}'
+
+    def find_place(self, name):
+        with self.places_lock:
+            return self.places.get(name)
+
+    async def go_to(self, place, goal_handle=None, feedback=None):
+        """Drive to a place; tell the agent (event) or, without one, say failures."""
+        if self.pose() is None:
+            message = f"could not get to {place.name}: I don't know where I am"
+            self.get_logger().info(message)
+            self.emit({'kind': 'failed', 'place': place.name, 'message': message})
+            return False, message
+        goal = NavigateToPose.Goal()
+        goal.pose.header.frame_id = self.map_frame
+        goal.pose.header.stamp = self.get_clock().now().to_msg()
+        goal.pose.pose.position.x = place.x
+        goal.pose.pose.position.y = place.y
+        goal.pose.pose.orientation.z = math.sin(place.yaw / 2.0)
+        goal.pose.pose.orientation.w = math.cos(place.yaw / 2.0)
+        self.get_logger().info(f'going to {place.name}')
+        ok, reason = await self.run_nav2(
+            f'going to {place.name}', self.nav_client, goal, goal_handle, feedback)
+        if ok:
+            message = f'arrived at {place.name}'
+            self.emit({'kind': 'arrived', 'place': place.name})
+        else:
+            message = f'could not get to {place.name}: {reason}'
+            if reason == 'cancelled':
+                self.emit({'kind': 'cancelled', 'place': place.name})
+            elif reason != 'replaced by a new goal':
+                self.emit({'kind': 'failed', 'place': place.name, 'message': message})
+                if self.mode == 'local':
+                    self.say(f"I couldn't get to the {place.name}.")
+        self.get_logger().info(message)
+        return ok, message
+
+    async def turn(self, angle, goal_handle=None, feedback=None):
+        """Turn in place by angle (rad, positive left); returns (success, message)."""
+        if not 0.0 < abs(angle) <= 2.0 * math.pi:
+            return False, 'the angle must be non-zero and at most one full turn'
+        goal = Spin.Goal(target_yaw=float(angle))
+        goal.time_allowance.sec = int(abs(angle) / 0.3) + 5
+        return await self.run_nav2('turning', self.spin_client, goal, goal_handle, feedback)
+
+    async def drive(self, distance, goal_handle=None, feedback=None):
+        """Drive straight ahead (m, forward only); returns (success, message)."""
+        if not 0.0 < distance <= self.max_drive:
+            return False, f'I only drive forwards, at most {self.max_drive:.1f} m'
+        goal = DriveOnHeading.Goal(speed=float(self.drive_speed))
+        goal.target.x = float(distance)
+        goal.time_allowance.sec = int(2.0 * distance / self.drive_speed) + 5
+        return await self.run_nav2('driving', self.drive_client, goal, goal_handle, feedback)
+
+    def stop(self):
+        with self.lock:
+            current = self.current
+        if current is not None and current['nav']:
+            current['nav'].cancel_goal_async()
+        # Zero goal id and stamp: cancel every goal of that action
+        for client in self.cancel_clients:
+            if client.service_is_ready():
+                client.call_async(CancelGoal.Request())
+        self.get_logger().info('stop: cancelled all Nav2 goals')
+
+    def say(self, text):
+        if text and self.say_client.service_is_ready():
+            self.say_client.call_async(Say.Request(text=text))
+
+    # Places (each raises ValueError or OSError with a speakable reason)
+
+    def save_place(self, name, description='', room='', from_pick=False, guess=False):
+        if from_pick:
+            age = None if self.pick_time is None else \
+                (self.get_clock().now() - self.pick_time).nanoseconds * 1e-9
+            if age is None or age > self.pick_max_age:
+                raise ValueError('no recent pick: click a pose in the Places panel first')
+            p = self.pick.pose
+            x, y, yaw = p.position.x, p.position.y, yaw_of(p.orientation)
+            source = 'foxglove'
+            self.pick = self.pick_time = None  # one pick, one place
+        else:
+            pose = self.pose()
+            if pose is None:
+                raise ValueError("I don't know where I am, so I can't save this place")
+            if self.certainty()[0] == 'lost':
+                raise ValueError("I'm not sure where I am yet, so I can't save this place")
+            x, y, yaw = pose
+            source = 'robot' if guess else 'owner'
+        with self.places_lock:
+            place = self.places.save(name, x, y, yaw, room, description, source,
+                                     confirmed=not guess)
+        self.places_changed()
+        self.get_logger().info(f'saved {place.name} at ({x:.2f}, {y:.2f}) [{source}'
+                               f'{", guess" if guess else ""}]')
+        return place
+
+    def edit_place(self, name, new_name='', description='', room='', confirm=False):
+        with self.places_lock:
+            place = self.places.edit(name, new_name, room, description, confirm)
+        self.places_changed()
+        self.get_logger().info(f'edited {name} -> {place.name}')
+        return place
+
+    def delete_place(self, name):
+        with self.places_lock:
+            place = self.places.delete(name)
+        self.places_changed()
+        self.get_logger().info(f'deleted {place.name}')
+        return place
+
+    def places_changed(self):
+        self.publish_markers()
+        self.state_changed()
+
+    # ROS actions and services
 
     @staticmethod
     def finish(goal_handle, result, success, message):
@@ -232,16 +423,9 @@ class BrainNode(Node):
     async def execute_go_to_place(self, goal_handle):
         result = GoToPlace.Result()
         try:
-            place = self.places.get(goal_handle.request.place)
+            place = self.find_place(goal_handle.request.place)
         except ValueError as e:
             return self.finish(goal_handle, result, False, str(e))
-        goal = NavigateToPose.Goal()
-        goal.pose.header.frame_id = self.map_frame
-        goal.pose.header.stamp = self.get_clock().now().to_msg()
-        goal.pose.pose.position.x = place.x
-        goal.pose.pose.position.y = place.y
-        goal.pose.pose.orientation.z = math.sin(place.yaw / 2.0)
-        goal.pose.pose.orientation.w = math.cos(place.yaw / 2.0)
 
         def feedback(msg):
             t = msg.feedback.estimated_time_remaining
@@ -249,153 +433,74 @@ class BrainNode(Node):
                 distance_remaining=msg.feedback.distance_remaining,
                 seconds_remaining=t.sec + t.nanosec * 1e-9))
 
-        self.get_logger().info(f'going to {place.name}')
-        ok, message = await self.run_nav2(
-            f'going to {place.name}', self.nav_client, goal, goal_handle, feedback)
-        if ok:
-            message = f'arrived at {place.name}'
-        else:
-            message = f'could not get to {place.name}: {message}'
-            if self.mode == 'local' and not message.endswith(('cancelled', 'new goal')):
-                self.say(f"I couldn't get to the {place.name}.")
-        self.get_logger().info(message)
+        ok, message = await self.go_to(place, goal_handle, feedback)
         return self.finish(goal_handle, result, ok, message)
 
     async def execute_turn(self, goal_handle):
-        result = Turn.Result()
-        angle = goal_handle.request.angle
-        if not 0.0 < abs(angle) <= 2.0 * math.pi:
-            return self.finish(goal_handle, result, False,
-                               'the angle must be non-zero and at most one full turn')
-        goal = Spin.Goal(target_yaw=float(angle))
-        goal.time_allowance.sec = int(abs(angle) / 0.3) + 5
-
         def feedback(msg):
             goal_handle.publish_feedback(
                 Turn.Feedback(turned=msg.feedback.angular_distance_traveled))
 
-        ok, message = await self.run_nav2(
-            'turning', self.spin_client, goal, goal_handle, feedback)
-        return self.finish(goal_handle, result, ok, message)
+        ok, message = await self.turn(goal_handle.request.angle, goal_handle, feedback)
+        return self.finish(goal_handle, Turn.Result(), ok, message)
 
     async def execute_drive(self, goal_handle):
-        result = Drive.Result()
-        distance = goal_handle.request.distance
-        if not 0.0 < distance <= self.max_drive:
-            return self.finish(goal_handle, result, False,
-                               f'I only drive forwards, at most {self.max_drive:.1f} m')
-        goal = DriveOnHeading.Goal(speed=float(self.drive_speed))
-        goal.target.x = float(distance)
-        goal.time_allowance.sec = int(2.0 * distance / self.drive_speed) + 5
-
         def feedback(msg):
             goal_handle.publish_feedback(Drive.Feedback(driven=msg.feedback.distance_traveled))
 
-        ok, message = await self.run_nav2(
-            'driving', self.drive_client, goal, goal_handle, feedback)
-        return self.finish(goal_handle, result, ok, message)
+        ok, message = await self.drive(goal_handle.request.distance, goal_handle, feedback)
+        return self.finish(goal_handle, Drive.Result(), ok, message)
 
     def on_stop(self, request, response):
-        with self.lock:
-            current = self.current
-        if current is not None and current['nav']:
-            current['nav'].cancel_goal_async()
-        # Zero goal id and stamp: cancel every goal of that action
-        for client in self.cancel_clients:
-            if client.service_is_ready():
-                client.call_async(CancelGoal.Request())
-        self.get_logger().info('stop: cancelled all Nav2 goals')
+        self.stop()
         response.success = True
         response.message = 'stopping'
         return response
 
-    def say(self, text):
-        if self.say_client.service_is_ready():
-            self.say_client.call_async(Say.Request(text=text))
-
-    # Questions
-
     def on_where_am_i(self, request, response):
-        pose = self.pose()
-        word, _, _ = self.certainty()
-        response.certainty = word
-        if pose is None:
-            response.localized = False
-            response.description = "I don't know where I am: there is no map position yet."
-            return response
-        x, y, yaw = pose
-        sentence, near, ahead = self.places.describe(x, y, yaw, self.near_distance, word)
-        response.localized = True
-        response.description = sentence
-        response.x, response.y, response.yaw = x, y, yaw
-        if near is not None:
-            response.nearest_place = near.name
-            response.nearest_distance = math.hypot(near.x - x, near.y - y)
-            response.room = near.room
-        if ahead is not None:
-            response.facing_place = ahead.name
+        w = self.where_am_i()
+        response.localized = w['localized']
+        response.certainty = w['certainty']
+        response.description = w['description']
+        response.x, response.y, response.yaw = w.get('x', 0.0), w.get('y', 0.0), w.get('yaw', 0.0)
+        response.nearest_place = w.get('nearest_place', '')
+        response.nearest_distance = float(w.get('nearest_distance', 0.0))
+        response.room = w.get('room', '')
+        response.facing_place = w.get('facing_place', '')
         return response
 
     def on_get_state(self, request, response):
-        pose = self.pose()
-        word, pos_std, yaw_std = self.certainty()
-        with self.lock:
-            current = self.current
-        response.mode = self.mode
-        response.map = self.map_name
-        response.localized = pose is not None
-        response.certainty = word
-        if pose is not None:
-            response.x, response.y, response.yaw = pose
-        response.position_std = pos_std
-        response.yaw_std = yaw_std
-        response.battery_volts = float(self.battery or 0.0)
-        response.activity = current['label'] if current else 'idle'
+        s = self.state()
+        response.mode = s['mode']
+        response.map = s['map']
+        response.localized = s['localized']
+        response.certainty = s['certainty']
+        response.x, response.y, response.yaw = s.get('x', 0.0), s.get('y', 0.0), s.get('yaw', 0.0)
+        response.position_std = float(s['position_std'])
+        response.yaw_std = float(s['yaw_std'])
+        response.battery_volts = float(s['battery_volts'])
+        response.activity = s['activity']
         return response
 
-    # Places
-
     def on_save_place(self, request, response):
-        if request.from_pick:
-            age = None if self.pick_time is None else \
-                (self.get_clock().now() - self.pick_time).nanoseconds * 1e-9
-            if age is None or age > self.pick_max_age:
-                response.message = 'no recent pick: click a pose in the Places panel first'
-                return response
-            p = self.pick.pose
-            x, y, yaw = p.position.x, p.position.y, yaw_of(p.orientation)
-            source = 'foxglove'
-        else:
-            pose = self.pose()
-            if pose is None:
-                response.message = "I don't know where I am, so I can't save this place"
-                return response
-            if self.certainty()[0] == 'lost':
-                response.message = "I'm not sure where I am yet, so I can't save this place"
-                return response
-            x, y, yaw = pose
-            source = 'robot' if request.guess else 'owner'
         try:
-            place = self.places.save(request.name, x, y, yaw, request.room,
-                                     request.description, source)
+            place = self.save_place(request.name, request.description, request.room,
+                                    request.from_pick, request.guess)
         except (ValueError, OSError) as e:
             response.message = str(e)
             return response
-        self.publish_markers()
         response.success = True
         response.message = f'saved {place.name}'
         response.place = to_msg(place)
-        self.get_logger().info(f'{response.message} at ({x:.2f}, {y:.2f}) [{source}]')
         return response
 
     def on_edit_place(self, request, response):
         try:
-            place = self.places.edit(request.name, request.new_name, request.room,
-                                     request.description, request.confirm)
+            place = self.edit_place(request.name, request.new_name, request.description,
+                                    request.room, request.confirm)
         except (ValueError, OSError) as e:
             response.message = str(e)
             return response
-        self.publish_markers()
         response.success = True
         response.message = f'updated {place.name}'
         response.place = to_msg(place)
@@ -403,25 +508,27 @@ class BrainNode(Node):
 
     def on_delete_place(self, request, response):
         try:
-            place = self.places.delete(request.name)
+            place = self.delete_place(request.name)
         except (ValueError, OSError) as e:
             response.message = str(e)
             return response
-        self.publish_markers()
         response.success = True
         response.message = f'deleted {place.name}'
         return response
 
     def on_list_places(self, request, response):
         response.map = self.map_name
-        response.places = [to_msg(p) for p in self.places.sorted_places()]
+        with self.places_lock:
+            response.places = [to_msg(p) for p in self.places.sorted_places()]
         return response
 
     def publish_markers(self):
-        """An arrow and a label per place: green confirmed, orange the robot's guesses."""
+        """Publish an arrow and a label per place: green confirmed, orange guesses."""
         msg = MarkerArray()
         msg.markers.append(Marker(action=Marker.DELETEALL))
-        for i, place in enumerate(self.places.sorted_places()):
+        with self.places_lock:
+            places = self.places.sorted_places()
+        for i, place in enumerate(places):
             color = (0.2, 0.8, 0.3) if place.confirmed else (1.0, 0.6, 0.1)
             for kind in (Marker.ARROW, Marker.TEXT_VIEW_FACING):
                 m = Marker(ns='places', id=2 * i + (kind == Marker.TEXT_VIEW_FACING),
@@ -441,6 +548,119 @@ class BrainNode(Node):
                     m.text = place.name if place.confirmed else f'{place.name}?'
                 msg.markers.append(m)
         self.markers_pub.publish(msg)
+
+
+class LinkHandler:
+    """The skills as the Mac agent calls them (rainbow_agent/skills.py, one to one).
+
+    Calls arrive on the link's asyncio loop; each skill runs on the ROS executor
+    (where the Nav2 clients and the TF buffer live) and the result comes back.
+    Units are the agent's: degrees and metres.
+    """
+
+    def __init__(self, node):
+        self.node = node
+
+    def on_connected(self, connected):
+        node = self.node
+        node.mode = 'remote' if connected else 'local'
+        node.get_logger().info(f'mode: {node.mode}')
+
+    def state(self):
+        s = self.node.state()
+        s.pop('ok', None)
+        return s
+
+    def say(self, text):
+        self.node.executor.create_task(self.node.say, text)
+
+    async def call(self, skill, args):
+        handler = getattr(self, f'skill_{skill}', None)
+        if handler is None:
+            return {'ok': False, 'message': f'unknown skill {skill}'}
+        return await self._in_ros(skill, handler, **args)
+
+    def _in_ros(self, skill, fn, **kwargs):
+        """Run fn (sync or async) on the ROS executor; an asyncio future for its result."""
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
+
+        async def run():
+            try:
+                result = fn(**kwargs)
+                if asyncio.iscoroutine(result):
+                    result = await result
+                outcome = (result, None)
+            except TypeError:
+                outcome = ({'ok': False, 'message': f'wrong arguments for {skill}'}, None)
+            except (ValueError, OSError) as e:
+                outcome = ({'ok': False, 'message': str(e)}, None)
+            except Exception as e:  # report, do not lose the call
+                outcome = (None, e)
+            loop.call_soon_threadsafe(self._settle, future, outcome)
+
+        self.node.executor.create_task(run)
+        return future
+
+    @staticmethod
+    def _settle(future, outcome):
+        if future.done():
+            return
+        result, error = outcome
+        if error is not None:
+            future.set_exception(error)
+        else:
+            future.set_result(result)
+
+    # Skills (on the ROS executor)
+
+    def skill_go_to_place(self, place):
+        node = self.node
+        target = node.find_place(place)
+        node.executor.create_task(node.go_to, target)
+        return {'ok': True, 'message': f'started going to {target.name}'}
+
+    async def skill_turn(self, degrees):
+        ok, message = await self.node.turn(math.radians(float(degrees)))
+        out = {'ok': ok, 'message': f'turned {float(degrees):.0f} degrees' if ok else message}
+        if ok:
+            out['now'] = self.node.where_am_i()['description']
+        return out
+
+    async def skill_drive_forward(self, meters):
+        ok, message = await self.node.drive(float(meters))
+        out = {'ok': ok, 'message': f'drove {float(meters):.2f} m' if ok else message}
+        if ok:
+            out['now'] = self.node.where_am_i()['description']
+        return out
+
+    def skill_stop(self):
+        self.node.stop()
+        return {'ok': True, 'message': 'stopped'}
+
+    def skill_where_am_i(self):
+        return self.node.where_am_i()
+
+    def skill_get_state(self):
+        return self.node.state()
+
+    def skill_list_places(self):
+        node = self.node
+        with node.places_lock:
+            places = [to_dict(p) for p in node.places.sorted_places()]
+        return {'ok': True, 'places': places}
+
+    def skill_save_place(self, name, description='', room='', guess=False):
+        place = self.node.save_place(name, description, room, guess=bool(guess))
+        return {'ok': True, 'message': f'saved {place.name}'}
+
+    def skill_edit_place(self, name, new_name='', description='', room='', confirm=False):
+        place = self.node.edit_place(name, new_name, description, room, bool(confirm))
+        return {'ok': True, 'message': f'updated {place.name}'}
+
+    def skill_delete_place(self, name):
+        place = self.node.delete_place(name)
+        return {'ok': True, 'message': f'deleted {place.name}'}
 
 
 def main(args=None):

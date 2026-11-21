@@ -50,7 +50,10 @@ unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
 - Nav2 runs composed in one process (`nav2_container`); as separate processes
   its 11 servers cost ~66% of a core idle, composed ~38%.
 - `ROS_DOMAIN_ID=20` for the robot.
-- Data the robot writes at runtime (places, later the link token) lives on the
+- The brain's link to the Mac agent (`agent/`) is a WebSocket on port 8766;
+  its token is `/data/rainbow/link_token` (`rainbow-agent pair` copies it).
+  `agent/tests/test_link.py` runs both ends against each other on the Mac.
+- Data the robot writes at runtime (places, the link token) lives on the
   `rainbow_data` Docker volume at `/data/rainbow`, never in the image or `maps/`.
   Places are per map (`places/<map>.yaml`, map name taken from
   `localization.yaml`): a new map needs new places.

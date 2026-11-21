@@ -75,7 +75,7 @@ Supervisor starts these when the container starts (`supervisor/rainbow.conf`):
 | `rainbow_navigation` | `navigation.launch.py` | Nav2 |
 | `rainbow_foxglove` | `foxglove.launch.py` | Foxglove bridge on port 8765 |
 | `rainbow_voice` | `voice.launch.py` | Text to speech |
-| `rainbow_brain` | `brain.launch.py` | Local brain and places |
+| `rainbow_brain` | `brain.launch.py` | Local brain, places, link to the Mac agent (port 8766) |
 
 ```
 supervisorctl status

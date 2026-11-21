@@ -56,6 +56,11 @@ def describe_event(event):
         return f"arrived at the {event['place']}"
     if kind == 'failed':
         return event.get('message') or f"could not get to the {event.get('place')}"
+    if kind == 'cancelled':
+        return f"the trip to the {event.get('place')} was cancelled"
+    if kind == 'link_restored':
+        away = '; '.join(describe_event(e) for e in event.get('while_away') or [])
+        return 'reconnected to my body' + (f'; while I was away: {away}' if away else '')
     return json.dumps(event)
 
 

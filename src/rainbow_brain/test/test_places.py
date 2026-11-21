@@ -1,4 +1,4 @@
-"""Tests for the places file (no ROS needed): python3 -m pytest src/rainbow_brain/test"""
+"""Tests for the places file (no ROS needed): python3 -m pytest src/rainbow_brain/test."""
 
 import math
 import os
@@ -85,3 +85,8 @@ def test_describe(store):
                         'facing the kitchen.')
     sentence, _, _ = store.describe(9, 9, 0, 1.5, 'lost')
     assert sentence.startswith("I'm not sure where I am yet. My best guess: I'm not near")
+
+
+def test_guess_from_a_pick_stays_unconfirmed(store):
+    p = store.save('nook', 1, 1, 0, source='foxglove', confirmed=False)
+    assert (p.source, p.confirmed) == ('foxglove', False)

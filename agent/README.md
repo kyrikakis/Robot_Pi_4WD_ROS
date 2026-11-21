@@ -2,7 +2,8 @@
 
 Rainbow's agent on the Mac (design: [docs/brain.md](../docs/brain.md)): Whisper
 for speech to text, Qwen3-VL with the robot's skills as tools, and later memory
-and the link to the robot. For now it talks to a simulated robot.
+and the link to the robot (rainbow_brain, port 8766). Without `--robot` it talks
+to a simulated robot.
 
 Needs a Mac with Apple Silicon (built for an M4 Max with 64 GB) and
 [uv](https://docs.astral.sh/uv/).
@@ -22,7 +23,9 @@ change its pin in `install.sh` and rerun `rainbow-agent eval`.
 ## Use
 
 ```
-~/.rainbow-agent/venv/bin/rainbow-agent chat              # type to Rainbow
+~/.rainbow-agent/venv/bin/rainbow-agent chat              # type to Rainbow (simulated robot)
+~/.rainbow-agent/venv/bin/rainbow-agent pair              # once: link token from the robot (SSH)
+~/.rainbow-agent/venv/bin/rainbow-agent chat --robot      # the real robot; it speaks the replies
 ~/.rainbow-agent/venv/bin/rainbow-agent transcribe a.wav  # Whisper, with timing
 ~/.rainbow-agent/venv/bin/rainbow-agent eval              # score the model (eval/cases.yaml)
 ```

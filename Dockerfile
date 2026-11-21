@@ -86,6 +86,9 @@ RUN apt-get update && apt-get install -y \
     ros-$ROS_DISTRO-nav2-bringup \
     ros-$ROS_DISTRO-spatio-temporal-voxel-layer
 
+# rainbow_brain's link to the Mac agent (WebSocket server)
+RUN apt-get update && apt-get install -y --no-install-recommends python3-websockets
+
 # Eyes LED matrix (adafruit) and GPIO
 # Blinka and gpiod are pinned too: an unpinned Blinka upgrade once needed gpiod
 # on the Pi 5 and broke the eyes
