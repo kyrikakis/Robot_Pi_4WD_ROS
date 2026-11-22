@@ -39,7 +39,7 @@ class Listener:
     def __init__(self, scores, vad, wake_word, stop_word=None, wake_threshold=0.5,
                  stop_threshold=0.5, end_silence=0.8, max_seconds=10.0, no_speech=4.0,
                  follow_up=8.0, preroll=0.4, cooldown=2.0, skip_after_wake=0.0,
-                 clock=time.monotonic):
+                 follow_up_start=0.48, max_follow_ups=2, clock=time.monotonic):
         """Set up. scores: chunk -> {word: score} (WakeWords.process); vad: chunk -> bool."""
         self.scores, self.vad, self.clock = scores, vad, clock
         self.wake_word, self.stop_word = wake_word, stop_word
@@ -50,6 +50,12 @@ class Listener:
         self.follow_up, self.cooldown = follow_up, cooldown
         # Chunks dropped right after the wake word (the wake beep, heard by the mic)
         self.skip_after_wake = round(skip_after_wake / SECONDS)
+        # A follow-up needs this much continuous speech to start (background talk
+        # and noise kept a conversation going forever), and at most max_follow_ups
+        # follow-ups in a row; then the wake word is needed again
+        self.follow_up_start = max(1, round(follow_up_start / SECONDS))
+        self.max_follow_ups = max_follow_ups
+        self.follow_ups = 0
         self.preroll = deque(maxlen=max(1, int(preroll / SECONDS)))
         self.state = 'listening'
         self.muted = False
@@ -63,7 +69,8 @@ class Listener:
         was_muted, self.muted = self.muted, on
         if on:
             self.voiced_run = 0
-        elif was_muted:  # only after real speech, not "not speaking" at startup
+        elif was_muted and self.follow_ups < self.max_follow_ups:
+            # only after real speech (not "not speaking" at startup), and not forever
             self.follow_up_until = self.clock() + self.follow_up
 
     def feed(self, chunk):
@@ -82,11 +89,13 @@ class Listener:
             voiced = self.vad(chunk)
             if scores.get(self.wake_word, 0.0) >= self.wake_threshold and now >= self.quiet_until:
                 self.quiet_until = now + self.cooldown
+                self.follow_ups = 0
                 self._start(follow_up=False, preroll=[])
                 events.append(('wake', False))
             elif now < self.follow_up_until:
                 self.voiced_run = self.voiced_run + 1 if voiced else 0
-                if self.voiced_run >= 2:  # 160 ms of speech
+                if self.voiced_run >= self.follow_up_start:
+                    self.follow_ups += 1
                     self._start(follow_up=True, preroll=list(self.preroll) + [chunk])
                     self._recording['spoke'] = True
                     events.append(('wake', True))
@@ -120,5 +129,7 @@ class Listener:
             return [('nothing',)]
         if done:
             self.state, self._recording = 'listening', None
+            if r['follow_up'] and r['time'] >= self.max_chunks:
+                return [('nothing',)]  # talk that never pauses: background, not a question
             return [('utterance', np.concatenate(r['chunks']), r['follow_up'])]
         return []

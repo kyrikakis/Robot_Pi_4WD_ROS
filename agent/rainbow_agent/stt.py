@@ -5,6 +5,7 @@ ffmpeg, which we do not install. The robot sends 16 kHz mono PCM anyway;
 read_wav reads such files for testing.
 """
 
+import re
 import time
 import wave
 
@@ -18,9 +19,16 @@ HALLUCINATIONS = {'', 'you', 'thank you', 'thank you.', 'thanks for watching!',
 
 
 def is_speech(text):
-    """Return False for empty text and Whisper's usual silence hallucinations."""
+    """Return False for empty text, Whisper's silence hallucinations and its loops.
+
+    On background noise Whisper repeats itself ("You can make it very special.
+    You can make it very special. ..."): a sentence three times means noise.
+    """
     t = ' '.join(text.lower().split())
-    return len(t) > 1 and t not in HALLUCINATIONS
+    if len(t) <= 1 or t in HALLUCINATIONS:
+        return False
+    sentences = [x.strip() for x in re.split(r'[.!?]+', t) if x.strip()]
+    return not any(sentences.count(x) >= 3 for x in set(sentences))
 
 
 def pcm16_to_float(data):

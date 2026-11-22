@@ -226,6 +226,8 @@ def test_whisper_silence_hallucinations_are_dropped():
     from rainbow_agent.stt import is_speech
     assert not is_speech(' Thank you. ') and not is_speech('') and not is_speech('you')
     assert is_speech('Go to the kitchen.')
+    assert not is_speech('You can make it very special. You can make it very special. '
+                         'You can make it very special.')
 
 
 class FakeMemory:

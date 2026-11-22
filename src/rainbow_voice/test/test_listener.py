@@ -79,7 +79,8 @@ def test_follow_up_without_wake_word():
     s.feed(LOUD, 5)                                      # the robot's own voice: ignored
     s.listener.speaking(False)
     assert kinds(s.feed(QUIET, 3)) == []
-    assert kinds(s.feed(LOUD, 2)) == ['wake']            # 160 ms of speech starts it
+    assert kinds(s.feed(LOUD, 5)) == []                  # 400 ms: not enough
+    assert kinds(s.feed(LOUD, 1)) == ['wake']            # 480 ms of speech starts it
     events = s.feed(LOUD, 5) + s.feed(QUIET, 12)
     assert kinds(events) == ['utterance']
     assert events[0][2] is True
@@ -106,3 +107,26 @@ def test_wake_beep_is_skipped_but_follow_ups_are_not():
     s.feed(LOUD, 3)
     events = s.feed(QUIET, 12)
     assert len(events[0][1]) == CHUNK * (3 + 10)
+
+
+def test_follow_ups_stop_after_two_and_endless_talk_is_dropped():
+    s = Script(follow_up=8.0, max_seconds=2.0)
+    s.feed(QUIET, wake=0.9)
+    s.feed(LOUD, 3)
+    s.feed(QUIET, 12)                                    # the question
+    for n in range(2):                                   # two follow-ups are fine
+        s.listener.speaking(True)
+        s.listener.speaking(False)
+        events = s.feed(LOUD, 6) + s.feed(QUIET, 12)
+        assert kinds(events) == ['wake', 'utterance'], n
+    s.listener.speaking(True)
+    s.listener.speaking(False)
+    assert kinds(s.feed(LOUD, 10)) == []                 # a third: wake word needed
+    s.t += 3
+    s.feed(QUIET, wake=0.9)                              # the wake word resets it
+    s.feed(LOUD, 2)
+    s.feed(QUIET, 12)
+    s.listener.speaking(True)
+    s.listener.speaking(False)
+    events = s.feed(LOUD, 40)                            # talk that never stops
+    assert kinds(events) == ['wake', 'nothing']

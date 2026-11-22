@@ -79,13 +79,15 @@ class VoiceNode(Node):
         self.wake = WakeWords(words, models / 'melspectrogram.onnx',
                               models / 'embedding_model.onnx')
         self.listener = Listener(
-            self.wake.process, Vad(p('vad_aggressiveness', 2).value), 'wake',
+            self.wake.process, Vad(p('vad_aggressiveness', 3).value), 'wake',
             'stop' if stop_model else None,
             wake_threshold=p('wake_threshold', 0.5).value,
             stop_threshold=p('stop_threshold', 0.5).value,
             end_silence=p('end_silence', 0.8).value,
             max_seconds=p('max_seconds', 10.0).value,
             follow_up=p('follow_up', 8.0).value,
+            follow_up_start=p('follow_up_start', 0.48).value,
+            max_follow_ups=p('max_follow_ups', 2).value,
             skip_after_wake=0.32 if self.wake_beep else 0.0)
         self.commands = CommandRecognizer(
             models / p('vosk_model', 'vosk-model-small-en-us-0.15').value)
