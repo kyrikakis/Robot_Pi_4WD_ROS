@@ -78,18 +78,21 @@
           "colorMap": "turbo"
         },
         "/plan": {
-          "visible": true,
-          "lineWidth": 0.02,
-          "gradient": [
-            "#00ff00ff",
-            "#00ff00ff"
-          ]
+          "visible": false
         },
         "/local_costmap/published_footprint": {
           "visible": false
         },
         "/places/markers": {
           "visible": true
+        },
+        "/plan_viz": {
+          "visible": true,
+          "lineWidth": 0.02,
+          "gradient": [
+            "#00ff00ff",
+            "#00ff00ff"
+          ]
         }
       },
       "layers": {
