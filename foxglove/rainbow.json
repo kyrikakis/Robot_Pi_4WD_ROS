@@ -2,10 +2,10 @@
   "configById": {
     "3D!rainbow": {
       "cameraState": {
-        "distance": 2.5,
-        "perspective": true,
-        "phi": 55,
-        "thetaOffset": 45,
+        "distance": 4,
+        "perspective": false,
+        "phi": 0,
+        "thetaOffset": 0,
         "targetOffset": [
           0,
           0,
