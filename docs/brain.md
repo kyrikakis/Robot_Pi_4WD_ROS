@@ -77,6 +77,18 @@ runs a state machine (`listener.py`) on every 80 ms chunk:
    model, change `wake_model` (and a `stop_model`) in the node's parameters.
    A one-word wake word triggers falsely more often than a phrase; tune its
    threshold on recordings made with the motors running.
+   **Training (not done yet)**: openWakeWord's training notebook
+   (`notebooks/automatic_model_training.ipynb`) is Linux-only and pinned to
+   Python 3.9-era packages (tensorflow-cpu 2.8.1 has no Apple Silicon build;
+   TensorFlow is only for the optional .tflite export, we use .onnx). It
+   generates the positive clips with piper-sample-generator
+   (`en_US-libritts_r-medium.pt`, 204 MB, sha256 e95ee537...0ff6), downloads
+   ~20 GB of negatives and noise (ACAV100M features, MIT room impulse
+   responses, part of AudioSet, FMA) and needs 20,000+ clips for a good model:
+   hours of full CPU load on the Mac. Options: a Linux container on the Mac,
+   or the notebook on Google Colab (free GPU, under an hour). Output:
+   `<output_dir>/<model_name>.onnx`, copied to `/opt/rainbow/voice` via the
+   repo and set as `wake_model` / `stop_model`.
    **"Stop" without the wake word** needs a trained "stop" model too (another
    openWakeWord model on the same features, so it costs little); it is
    listened for even while the robot talks, and a false "stop" only stops the
