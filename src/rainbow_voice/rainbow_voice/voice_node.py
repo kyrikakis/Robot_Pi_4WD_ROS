@@ -12,8 +12,8 @@ until a "Rainbow" model is trained; there is no stop model yet, so "stop" only
 works after the wake word (as a local command). The capture device can only be
 opened by one process: nothing else may record from it.
 
-On the wake word it plays a short quiet beep on the same card (wake_beep,
-beep_volume); the recording skips the beep's 0.16 s, since the mic hears it.
+On the wake word it plays a short soft hum, a rising "hmm?", on the same card
+(wake_beep, beep_volume); the recording skips its 0.32 s, since the mic hears it.
 
 Publishes:  /voice/wake (std_msgs/Empty), /voice/stop (std_msgs/Empty),
             /voice/utterance (rainbow_interfaces/Utterance), /eyes (std_msgs/String)
@@ -44,11 +44,17 @@ EYES = QoSProfile(reliability=ReliabilityPolicy.RELIABLE, history=HistoryPolicy.
                   depth=1)
 
 
-def beep_samples(volume, seconds=0.12, hz=880):
-    """Return a short sine beep (16 kHz mono PCM bytes) with soft 10 ms edges."""
+def beep_samples(volume, seconds=0.3, start_hz=180.0, end_hz=240.0):
+    """Return a soft rising hum, "hmm?" (16 kHz mono PCM bytes).
+
+    A low tone gliding up, with a second harmonic so it sounds voiced, fading
+    in over 60 ms and out over 100 ms.
+    """
     t = np.arange(int(16000 * seconds)) / 16000.0
-    wave = np.sin(2 * np.pi * hz * t)
-    edge = np.minimum(1.0, np.minimum(t, seconds - t) / 0.01)
+    hz = start_hz + (end_hz - start_hz) * t / seconds
+    phase = 2 * np.pi * np.cumsum(hz) / 16000.0
+    wave = (np.sin(phase) + 0.35 * np.sin(2 * phase)) / 1.35
+    edge = np.minimum(1.0, np.minimum(t / 0.06, (seconds - t) / 0.10))
     return (wave * edge * volume * 32767).astype('<i2').tobytes()
 
 
@@ -65,7 +71,7 @@ class VoiceNode(Node):
         stop_model = p('stop_model', '').value
 
         self.wake_beep = p('wake_beep', True).value
-        self.beep = beep_samples(p('beep_volume', 0.15).value)
+        self.beep = beep_samples(p('beep_volume', 0.2).value)
 
         words = {'wake': models / wake_model}
         if stop_model:
@@ -80,7 +86,7 @@ class VoiceNode(Node):
             end_silence=p('end_silence', 0.8).value,
             max_seconds=p('max_seconds', 10.0).value,
             follow_up=p('follow_up', 8.0).value,
-            skip_after_wake=0.16 if self.wake_beep else 0.0)
+            skip_after_wake=0.32 if self.wake_beep else 0.0)
         self.commands = CommandRecognizer(
             models / p('vosk_model', 'vosk-model-small-en-us-0.15').value)
         self.lock = threading.Lock()
@@ -131,7 +137,7 @@ class VoiceNode(Node):
         self.eyes_pub.publish(String(data=expression))
 
     def play_beep(self):
-        """Play the wake beep without waiting; skipped if the card is busy (espeak)."""
+        """Play the wake hum without waiting; skipped if the card is busy (espeak)."""
         def play():
             try:
                 subprocess.run(['aplay', '-q', '-D', self.device, '-f', 'S16_LE', '-r', '16000',
