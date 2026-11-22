@@ -2,7 +2,7 @@
   "configById": {
     "3D!rainbow": {
       "cameraState": {
-        "distance": 4,
+        "distance": 16,
         "perspective": false,
         "phi": 0,
         "thetaOffset": 0,
@@ -12,8 +12,8 @@
           0
         ],
         "target": [
-          0,
-          0,
+          1.571,
+          -3.9,
           0
         ],
         "targetOrientation": [
@@ -26,8 +26,8 @@
         "near": 0.01,
         "far": 1000
       },
-      "followMode": "follow-pose",
-      "followTf": "base_link",
+      "followMode": "follow-none",
+      "followTf": "map",
       "scene": {
         "transforms": {
           "labelSize": 0.04,
