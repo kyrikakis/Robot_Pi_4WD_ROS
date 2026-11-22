@@ -13,7 +13,7 @@ works after the wake word (as a local command). The capture device can only be
 opened by one process: nothing else may record from it.
 
 On the wake word it plays a short soft hum, a rising "hmm?", on the same card
-(wake_beep, beep_volume); the recording skips its 0.32 s, since the mic hears it.
+(wake_beep, beep_volume 0.35); the recording skips its 0.32 s, since the mic hears it.
 
 Publishes:  /voice/wake (std_msgs/Empty), /voice/stop (std_msgs/Empty),
             /voice/utterance (rainbow_interfaces/Utterance), /eyes (std_msgs/String)
@@ -71,7 +71,7 @@ class VoiceNode(Node):
         stop_model = p('stop_model', '').value
 
         self.wake_beep = p('wake_beep', True).value
-        self.beep = beep_samples(p('beep_volume', 0.2).value)
+        self.beep = beep_samples(p('beep_volume', 0.35).value)
 
         words = {'wake': models / wake_model}
         if stop_model:
