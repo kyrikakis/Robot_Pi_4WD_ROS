@@ -255,6 +255,33 @@
           "layout": "3D!places"
         }
       ]
+    },
+    "CallService!stop": {
+      "serviceName": "/brain/stop",
+      "requestPayload": "{}",
+      "layout": "vertical",
+      "editingMode": false,
+      "buttonText": "Stop",
+      "buttonTooltip": "Stop in place and cancel every Nav2 goal",
+      "buttonColor": "#d32f2f"
+    },
+    "CallService!relocalize": {
+      "serviceName": "/reinitialize_global_localization",
+      "requestPayload": "{}",
+      "layout": "vertical",
+      "editingMode": false,
+      "buttonText": "Relocalize",
+      "buttonTooltip": "AMCL forgets its pose and searches the whole map again (then drive or turn a little)",
+      "buttonColor": "#ef6c00"
+    },
+    "CallService!place": {
+      "serviceName": "/places/save",
+      "requestPayload": "{\n  \"name\": \"kitchen\",\n  \"description\": \"\",\n  \"room\": \"\",\n  \"from_pick\": true,\n  \"guess\": false\n}",
+      "layout": "vertical",
+      "editingMode": true,
+      "buttonText": "Save place",
+      "buttonTooltip": "Click a pose in the Places tab first, edit the name, then press",
+      "buttonColor": "#2e7d32"
     }
   },
   "globalVariables": {},
@@ -268,10 +295,25 @@
     "second": {
       "direction": "column",
       "first": {
-        "direction": "row",
-        "first": "Teleop!rainbow",
-        "second": "Gauge!battery",
-        "splitPercentage": 45
+        "direction": "column",
+        "first": {
+          "direction": "row",
+          "first": "Teleop!rainbow",
+          "second": "Gauge!battery",
+          "splitPercentage": 45
+        },
+        "second": {
+          "direction": "row",
+          "first": "CallService!stop",
+          "second": {
+            "direction": "row",
+            "first": "CallService!relocalize",
+            "second": "CallService!place",
+            "splitPercentage": 40
+          },
+          "splitPercentage": 30
+        },
+        "splitPercentage": 55
       },
       "second": {
         "direction": "column",
@@ -279,7 +321,7 @@
         "second": "RosOut!log",
         "splitPercentage": 55
       },
-      "splitPercentage": 40
+      "splitPercentage": 55
     },
     "splitPercentage": 62
   }
