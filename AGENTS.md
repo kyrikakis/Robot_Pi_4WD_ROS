@@ -146,7 +146,11 @@ The code you edit is the code the robot runs. Lessons learned:
 - Nav2 does not drive backwards (`allow_backward: false`): nothing sees low
   obstacles behind. The only exception is the recovery in
   `rainbow_bringup/behavior_trees/`: spin left, spin right, then back up 10 cm
-  at 5 cm/s. With its nose within ~2 cm of an obstacle the 19 x 14 cm footprint's
+  at 5 cm/s. The recovery spins use `free_spin` (a second behavior server,
+  `free_spin_server` in nav2.yaml): no collision check and past the smoother and
+  collision monitor, so an obstacle at the nose (the owner's case: obstacle in
+  front, free to the sides and behind) cannot keep the robot from turning away;
+  the corners may scrape it. The back-up keeps its costmap check. With its nose within ~2 cm of an obstacle the 19 x 14 cm footprint's
   front corners (12.2 cm from the centre) hit it turning either way, and the
   ToF's 30 s memory keeps it after a costmap clear (blind zone).
 - Frames and IMU are verified: base_footprint -> base_link is a fixed joint, so

@@ -363,6 +363,32 @@ behavior_server:
     min_rotational_vel: 0.4
     rotational_acc_lim: 3.2
 
+# The recovery spins only (behavior trees: Spin server_name="free_spin"): a
+# spin that nothing stops, to get the robot free, e.g. with an obstacle at the
+# nose and free space to the sides and behind. No collision check of its own
+# (simulate_ahead_time 0) and its commands bypass the velocity smoother and the
+# collision monitor (navigation.launch.py remaps it straight to cmd_vel_stamped).
+# The front corners may scrape an obstacle right at the nose; it turns slowly.
+# Everything else (driving, the back-up, the brain's turn/drive) keeps all checks.
+free_spin_server:
+  ros__parameters:
+    local_costmap_topic: local_costmap/costmap_raw
+    global_costmap_topic: global_costmap/costmap_raw
+    local_footprint_topic: local_costmap/published_footprint
+    global_footprint_topic: global_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: ["free_spin"]
+    free_spin:
+      plugin: "nav2_behaviors::Spin"
+    local_frame: odom
+    global_frame: map
+    robot_base_frame: base_link
+    transform_tolerance: 0.1
+    simulate_ahead_time: 0.0
+    max_rotational_vel: 1.0
+    min_rotational_vel: 0.4
+    rotational_acc_lim: 3.2
+
 waypoint_follower:
   ros__parameters:
     loop_rate: 20
