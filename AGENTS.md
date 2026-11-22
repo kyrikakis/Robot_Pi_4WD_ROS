@@ -92,8 +92,12 @@ The code you edit is the code the robot runs. Lessons learned:
 - **ESP connection**: if `/scan`, `/odom_raw` and `/battery` stop, the ESP's CP2102
   USB serial chip may have locked up (`dmesg`: `cp210x ... failed set request`).
   It is powered by the Pi, so a battery reset does not clear it; re-enumerate it:
-  `echo 0 > /sys/bus/usb/devices/1-2/authorized; sleep 2; echo 1 > .../authorized`.
-  The agent reconnects by itself. Avoid restarting `rainbow_microros`: after the
+  `echo 0 > /sys/bus/usb/devices/3-2/authorized; sleep 2; echo 1 > .../authorized`
+  (the USB path was 1-2 before; check `cat /sys/bus/usb/devices/*/product`).
+  The agent reconnects by itself. Switching to a new image (`docker compose up
+  -d`) restarts the agent: the CP2102 locked up ~2 min later, and after
+  re-enumerating, a restart of rainbow_microros plus an ESP board reset brought
+  the ESP back. Avoid restarting `rainbow_microros`: after the
   agent stops, the ESP itself needs a board reset (with the agent running).
 - The ToF is in both costmaps (STVL). The node does the floor filtering and
   publishes `/tof/obstacles` (2-16 cm above the floor within 0.7 m, 2.5-16 cm
