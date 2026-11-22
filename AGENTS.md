@@ -97,7 +97,9 @@ The code you edit is the code the robot runs. Lessons learned:
   The agent reconnects by itself. Switching to a new image (`docker compose up
   -d`) restarts the agent: the CP2102 locked up ~2 min later, and after
   re-enumerating, a restart of rainbow_microros plus an ESP board reset brought
-  the ESP back. Avoid restarting `rainbow_microros`: after the
+  the ESP back. Nav2 started meanwhile without a `map` frame (no lidar) and
+  aborted its bringup ("Action server is inactive. Rejecting the goal."):
+  restart rainbow_navigation once the ESP is back. Avoid restarting `rainbow_microros`: after the
   agent stops, the ESP itself needs a board reset (with the agent running).
 - The ToF is in both costmaps (STVL). The node does the floor filtering and
   publishes `/tof/obstacles` (2-16 cm above the floor within 0.7 m, 2.5-16 cm
