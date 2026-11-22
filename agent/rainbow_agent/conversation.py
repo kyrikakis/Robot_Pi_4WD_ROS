@@ -6,8 +6,10 @@ the tools. The model may call skills (at most max_tool_calls per turn); each
 result goes back to it, and its final text is the reply, to be spoken.
 
 Turns run one at a time. After session_idle seconds without a turn, a new
-session starts (the old one is dropped for now; summaries come with memory,
-build step 5).
+session starts. With a memory (rainbow_agent.memory), the finished session is
+summarised and stored in the background, and a new session starts by
+recalling what is relevant to its first words; memory failures are logged and
+never break the conversation.
 
 Robot events: a failure starts a turn (the robot should tell someone); other
 events are noted and the model sees them with the next turn.
@@ -68,7 +70,7 @@ def describe_event(event):
 
 class Conversation:
 
-    def __init__(self, llm, model, robot, cfg, on_tool=None):
+    def __init__(self, llm, model, robot, cfg, on_tool=None, memory=None, log=print):
         self.llm = llm                  # an openai.AsyncOpenAI (or a fake in tests)
         self.model = model
         self.robot = robot
@@ -78,15 +80,56 @@ class Conversation:
         self.messages = []
         self.pending_events = []
         self.last_turn = 0.0
+        self.memory = memory
+        self.log = log
+        self.memories = []              # recalled for this session
+        self.session_started = time.time()
+        self._storing = set()
 
     def new_session(self):
+        """Start afresh; the finished session goes to memory in the background."""
+        if self.memory is not None and self.messages:
+            task = asyncio.ensure_future(self._store(self.messages, self.session_started))
+            self._storing.add(task)
+            task.add_done_callback(self._storing.discard)
         self.messages = []
         self.pending_events = []
+        self.memories = []
+        self.session_started = time.time()
+
+    async def _store(self, messages, started):
+        try:
+            stored = await self.memory.store_session(messages, started)
+            if stored:
+                self.log(f'remembered: {stored[0]} facts: {stored[1]}')
+        except Exception as e:  # memory must never break the conversation
+            self.log(f'could not store the session: {type(e).__name__}: {e}')
+
+    async def close(self):
+        """End the session now (shutdown) and wait until it is stored."""
+        self.new_session()
+        if self._storing:
+            await asyncio.gather(*self._storing, return_exceptions=True)
+
+    def close_if_idle(self):
+        """End the session if it has been idle long enough (call now and then)."""
+        if self.messages and time.monotonic() - self.last_turn > self.cfg.session_idle:
+            self.new_session()
+
+    async def _recall(self, text):
+        if self.memory is None:
+            return
+        try:
+            self.memories = await self.memory.recall(text)
+        except Exception as e:
+            self.log(f'could not recall: {type(e).__name__}: {e}')
 
     async def user_says(self, text):
         """The user's words (already transcribed). Returns the reply text."""
         async with self.lock:
             self._maybe_new_session()
+            if not self.messages:
+                await self._recall(text)
             for note in self.pending_events:
                 self.messages.append({'role': 'user', 'content': EVENT_PREFIX + note})
             self.pending_events = []
@@ -122,7 +165,8 @@ class Conversation:
         return ' '.join(said[-n:])
 
     async def _complete(self, tools=True, extra=()):
-        system = {'role': 'system', 'content': system_prompt(self.robot.snapshot())}
+        system = {'role': 'system',
+                  'content': system_prompt(self.robot.snapshot(), self.memories)}
         kwargs = {'tools': TOOLS} if tools else {}
         response = await self.llm.chat.completions.create(
             model=self.model, messages=[system, *self.messages, *extra],

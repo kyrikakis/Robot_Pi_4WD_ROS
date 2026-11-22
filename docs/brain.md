@@ -370,16 +370,31 @@ the system prompt for now; refine it later.
 
 ### Memory and sessions
 
-Stored on the Mac only (SQLite + embeddings); the Pi never needs it.
+Stored on the Mac only (`~/.rainbow-agent/data/memory.db`, SQLite +
+embeddings from Qwen3-Embedding on the second llama-server); the Pi never
+needs it. Code: `agent/rainbow_agent/memory.py`.
 
-- **Session**: starts at a wake word, ends after ~2 min without speech. The
-  model keeps the full turns of the current session.
-- **At session end**: the model writes a short summary, stored with an
-  embedding, and extracts lasting facts (people, preferences, places, things
-  the owner asked it to remember).
-- **At session start**: the context gets the relevant facts and summaries
-  (embedding search on the first utterance), the robot's state and the place
-  list.
+- **Session**: starts at a wake word, ends after 2 min without a turn (checked
+  every 30 s) or when the agent stops. The model keeps the full turns of the
+  current session.
+- **At session end** (in the background; the next reply never waits): the
+  model writes a 1-3 sentence summary, stored with an embedding, and lists
+  lasting facts (names, preferences, places, things someone asked it to
+  remember). Sessions where nobody spoke are not stored.
+- **Facts must have been said by a person.** The model turns its own guesses
+  into "facts" (it invented a cat's habits and stored them) and the prompt
+  alone does not stop it, so a fact is kept only if it has 3+ words and most of
+  its meaningful words were said by a person in that session. A fact nearly
+  the same as a known one (cosine 0.9) replaces it.
+- **At session start**: the first words are embedded; the closest facts and
+  episodes (cosine 0.35 or more), plus the last episode, go into the system
+  prompt as "things you remember", with the rule never to tell them to
+  strangers.
+- Memory failures (a server down) are logged and never break a conversation.
+
+Tested with the real models: a new session remembered a child's name,
+favourite dinosaur and cat; nothing the robot made up was stored.
+Forgetting ("clean memory") is not built yet.
 
 ## Camera and faces
 

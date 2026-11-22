@@ -224,3 +224,57 @@ def test_whisper_silence_hallucinations_are_dropped():
     from rainbow_agent.stt import is_speech
     assert not is_speech(' Thank you. ') and not is_speech('') and not is_speech('you')
     assert is_speech('Go to the kitchen.')
+
+
+class FakeMemory:
+
+    def __init__(self):
+        self.stored = []
+        self.recalled = []
+
+    async def store_session(self, messages, started):
+        self.stored.append([m['content'] for m in messages if m['role'] == 'user'])
+        return 'summary', []
+
+    async def recall(self, text):
+        self.recalled.append(text)
+        return ['Fact: Mia likes dinosaurs.']
+
+
+def test_memory_recall_at_start_and_store_at_end():
+    async def scenario():
+        memory = FakeMemory()
+        llm = FakeLLM(message('Hi Mia!'), message('T-Rex!'), message('Hello again!'))
+        conv = Conversation(llm, 'm', SimRobot(time_scale=0.0), Config(), memory=memory,
+                            log=lambda m: None)
+        await conv.user_says('Hi, I am Mia')
+        await conv.user_says('Favourite dinosaur?')
+        assert memory.recalled == ['Hi, I am Mia']          # only at the session start
+        assert 'Mia likes dinosaurs' in llm.requests[0]['messages'][0]['content']
+        conv.last_turn -= 1000
+        conv.close_if_idle()
+        await conv.close()
+        assert memory.stored == [['Hi, I am Mia', 'Favourite dinosaur?']]
+        await conv.user_says('Hello')                         # a new session recalls again
+        assert memory.recalled[-1] == 'Hello'
+    run(scenario())
+
+
+def test_memory_failures_do_not_break_the_conversation():
+    class Broken(FakeMemory):
+        async def recall(self, text):
+            raise RuntimeError('embeddings server down')
+
+        async def store_session(self, messages, started):
+            raise RuntimeError('model down')
+
+    async def scenario():
+        logs = []
+        conv = Conversation(FakeLLM(message('Hi!')), 'm', SimRobot(time_scale=0.0), Config(),
+                            memory=Broken(), log=logs.append)
+        assert await conv.user_says('Hello') == 'Hi!'
+        await conv.close()
+        return logs
+    logs = run(scenario())
+    assert any('could not recall' in m for m in logs)
+    assert any('could not store' in m for m in logs)

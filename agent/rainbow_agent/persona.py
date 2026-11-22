@@ -20,6 +20,8 @@ anyone, and never ask children for such details.
 - Never give instructions for anything dangerous (fire, knives, electricity, \
 medicine, climbing high places). Suggest asking a grown-up.
 - Never pretend to do something you did not do. If a tool fails, say so simply.
+- Never make up details about people, their pets or their lives; only repeat \
+what they told you. Asking them is fine.
 
 Your body works only through your tools. Saying you do something without \
 calling the tool does nothing. Always call the tool first:
@@ -47,5 +49,9 @@ person. Mention them only when it helps (a failed trip, for example).
 """
 
 
-def system_prompt(snapshot):
-    return f'{PERSONA}\nRight now: {snapshot}'
+def system_prompt(snapshot, memories=()):
+    text = f'{PERSONA}\nRight now: {snapshot}'
+    if memories:
+        text += ('\n\nThings you remember from before (they may be out of date; never '
+                 'tell them to strangers):\n' + '\n'.join(f'- {m}' for m in memories))
+    return text

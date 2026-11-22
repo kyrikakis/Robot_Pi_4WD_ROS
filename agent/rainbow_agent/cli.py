@@ -50,6 +50,26 @@ def llm_client(cfg):
     return AsyncOpenAI(base_url=cfg.chat_url, api_key='local')
 
 
+def open_memory(cfg):
+    """The long-term memory in <root>/data/memory.db (needs the embeddings server)."""
+    from openai import AsyncOpenAI
+    from rainbow_agent.memory import llama_embedder, Memory
+    cfg.data.mkdir(parents=True, exist_ok=True)
+    embedder = llama_embedder(AsyncOpenAI(base_url=cfg.embed_url, api_key='local'),
+                              cfg.embed_alias)
+    return Memory(cfg.data / 'memory.db', llm_client(cfg), cfg.chat_alias, embedder)
+
+
+def log_line(text):
+    print(f'{DIM}  [memory] {text}{RESET}')
+
+
+async def idle_sessions(conversation):
+    while True:
+        await asyncio.sleep(30)
+        conversation.close_if_idle()
+
+
 def show_tool(name, args, result):
     args_text = ', '.join(f'{k}={v!r}' for k, v in (args or {}).items())
     status = result.get('message') or ('ok' if result.get('ok') else 'failed')
@@ -78,7 +98,9 @@ async def chat(cfg, real=False):
         if real:
             await robot.say(reply)
 
-    conversation = Conversation(llm_client(cfg), cfg.chat_alias, robot, cfg, show_tool)
+    memory = open_memory(cfg)
+    conversation = Conversation(llm_client(cfg), cfg.chat_alias, robot, cfg, show_tool,
+                                memory=memory, log=log_line)
     whisper = None
 
     async def events():
@@ -92,6 +114,7 @@ async def chat(cfg, real=False):
             print('you> ', end='', flush=True)
 
     event_task = asyncio.ensure_future(events())
+    idle_task = asyncio.ensure_future(idle_sessions(conversation))
     print(f'Talk to Rainbow ({"the real robot" if real else "simulated robot"}). Ctrl-D to '
           'quit, /new for a new session, /hear FILE.wav to speak a recording.')
     try:
@@ -119,6 +142,9 @@ async def chat(cfg, real=False):
             print(f'  {DIM}({time.monotonic() - start:.1f} s){RESET}')
     finally:
         event_task.cancel()
+        idle_task.cancel()
+        await conversation.close()
+        memory.close()
         if real:
             await robot.close()
 
@@ -129,7 +155,9 @@ async def run_agent(cfg):
     whisper = Whisper(cfg.whisper_model)
     await asyncio.to_thread(whisper.transcribe, pcm16_to_float(bytes(32000)))  # load it
     robot = make_robot(cfg, real=True)
-    conversation = Conversation(llm_client(cfg), cfg.chat_alias, robot, cfg, show_tool)
+    memory = open_memory(cfg)
+    conversation = Conversation(llm_client(cfg), cfg.chat_alias, robot, cfg, show_tool,
+                                memory=memory, log=log_line)
     await robot.start()
     print('agent running; Ctrl-C to stop')
 
@@ -161,8 +189,10 @@ async def run_agent(cfg):
             await robot.say(reply)
 
     try:
-        await asyncio.gather(events(), utterances())
+        await asyncio.gather(events(), utterances(), idle_sessions(conversation))
     finally:
+        await conversation.close()
+        memory.close()
         await robot.close()
 
 
@@ -239,12 +269,12 @@ def main(argv=None):
 
     try:
         if args.command == 'chat':
-            with servers(cfg):
+            with servers(cfg, embed=True):
                 asyncio.run(chat(cfg, real=args.robot))
         elif args.command == 'pair':
             pair(cfg)
         elif args.command == 'run':
-            with servers(cfg):
+            with servers(cfg, embed=True):
                 asyncio.run(run_agent(cfg))
         elif args.command == 'transcribe':
             transcribe(cfg, args.wav)
