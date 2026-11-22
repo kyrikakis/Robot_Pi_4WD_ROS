@@ -12,6 +12,9 @@ until a "Rainbow" model is trained; there is no stop model yet, so "stop" only
 works after the wake word (as a local command). The capture device can only be
 opened by one process: nothing else may record from it.
 
+On the wake word it plays a short quiet beep on the same card (wake_beep,
+beep_volume); the recording skips the beep's 0.16 s, since the mic hears it.
+
 Publishes:  /voice/wake (std_msgs/Empty), /voice/stop (std_msgs/Empty),
             /voice/utterance (rainbow_interfaces/Utterance), /eyes (std_msgs/String)
 Subscribes: /speech/speaking (std_msgs/Bool, latched): no listening while talking
@@ -41,6 +44,14 @@ EYES = QoSProfile(reliability=ReliabilityPolicy.RELIABLE, history=HistoryPolicy.
                   depth=1)
 
 
+def beep_samples(volume, seconds=0.12, hz=880):
+    """Return a short sine beep (16 kHz mono PCM bytes) with soft 10 ms edges."""
+    t = np.arange(int(16000 * seconds)) / 16000.0
+    wave = np.sin(2 * np.pi * hz * t)
+    edge = np.minimum(1.0, np.minimum(t, seconds - t) / 0.01)
+    return (wave * edge * volume * 32767).astype('<i2').tobytes()
+
+
 class VoiceNode(Node):
 
     def __init__(self):
@@ -52,6 +63,9 @@ class VoiceNode(Node):
         models = Path(p('models_dir', '/opt/rainbow/voice').value)
         wake_model = p('wake_model', 'hey_jarvis_v0.1.onnx').value
         stop_model = p('stop_model', '').value
+
+        self.wake_beep = p('wake_beep', True).value
+        self.beep = beep_samples(p('beep_volume', 0.15).value)
 
         words = {'wake': models / wake_model}
         if stop_model:
@@ -65,7 +79,8 @@ class VoiceNode(Node):
             stop_threshold=p('stop_threshold', 0.5).value,
             end_silence=p('end_silence', 0.8).value,
             max_seconds=p('max_seconds', 10.0).value,
-            follow_up=p('follow_up', 8.0).value)
+            follow_up=p('follow_up', 8.0).value,
+            skip_after_wake=0.16 if self.wake_beep else 0.0)
         self.commands = CommandRecognizer(
             models / p('vosk_model', 'vosk-model-small-en-us-0.15').value)
         self.lock = threading.Lock()
@@ -115,6 +130,17 @@ class VoiceNode(Node):
     def eyes(self, expression):
         self.eyes_pub.publish(String(data=expression))
 
+    def play_beep(self):
+        """Play the wake beep without waiting; skipped if the card is busy (espeak)."""
+        def play():
+            try:
+                subprocess.run(['aplay', '-q', '-D', self.device, '-f', 'S16_LE', '-r', '16000',
+                                '-c', '1', '-t', 'raw'], input=self.beep, timeout=2,
+                               capture_output=True)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        threading.Thread(target=play, daemon=True).start()
+
     # Audio
 
     def audio_loop(self):
@@ -147,6 +173,8 @@ class VoiceNode(Node):
         for event in events:
             kind = event[0]
             if kind == 'wake':
+                if self.wake_beep and not event[1]:
+                    self.play_beep()
                 self.engaged, self.engaged_since = True, time.monotonic()
                 self.wake_pub.publish(Empty())
                 self.eyes('open')

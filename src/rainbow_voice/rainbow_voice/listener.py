@@ -1,7 +1,8 @@
 r"""The listening state machine (no ROS, no audio device).
 
 Fed one 80 ms chunk (1280 samples) at a time, it returns events:
-  ('wake',)                        the wake word: recording starts
+  ('wake', follow_up)              recording starts: the wake word (follow_up False)
+                                   or speech in the follow-up window (True)
   ('stop',)                        the stop word (any time, even while the robot talks)
   ('utterance', samples, follow_up)  a finished utterance (int16); follow_up: no wake word
   ('nothing',)                     woke, but nobody spoke
@@ -37,7 +38,8 @@ class Listener:
 
     def __init__(self, scores, vad, wake_word, stop_word=None, wake_threshold=0.5,
                  stop_threshold=0.5, end_silence=0.8, max_seconds=10.0, no_speech=4.0,
-                 follow_up=8.0, preroll=0.4, cooldown=2.0, clock=time.monotonic):
+                 follow_up=8.0, preroll=0.4, cooldown=2.0, skip_after_wake=0.0,
+                 clock=time.monotonic):
         """Set up. scores: chunk -> {word: score} (WakeWords.process); vad: chunk -> bool."""
         self.scores, self.vad, self.clock = scores, vad, clock
         self.wake_word, self.stop_word = wake_word, stop_word
@@ -46,6 +48,8 @@ class Listener:
         self.end_silence, self.max_chunks, self.no_speech = (
             round(end_silence / SECONDS), round(max_seconds / SECONDS), round(no_speech / SECONDS))
         self.follow_up, self.cooldown = follow_up, cooldown
+        # Chunks dropped right after the wake word (the wake beep, heard by the mic)
+        self.skip_after_wake = round(skip_after_wake / SECONDS)
         self.preroll = deque(maxlen=max(1, int(preroll / SECONDS)))
         self.state = 'listening'
         self.muted = False
@@ -79,13 +83,13 @@ class Listener:
             if scores.get(self.wake_word, 0.0) >= self.wake_threshold and now >= self.quiet_until:
                 self.quiet_until = now + self.cooldown
                 self._start(follow_up=False, preroll=[])
-                events.append(('wake',))
+                events.append(('wake', False))
             elif now < self.follow_up_until:
                 self.voiced_run = self.voiced_run + 1 if voiced else 0
                 if self.voiced_run >= 2:  # 160 ms of speech
                     self._start(follow_up=True, preroll=list(self.preroll) + [chunk])
                     self._recording['spoke'] = True
-                    events.append(('wake',))
+                    events.append(('wake', True))
                     return events
             self.preroll.append(chunk)
             return events
@@ -96,12 +100,16 @@ class Listener:
         self.voiced_run = 0
         self.follow_up_until = 0.0
         self._recording = {'chunks': list(preroll), 'follow_up': follow_up, 'spoke': False,
-                           'silence': 0, 'time': 0}
+                           'silence': 0, 'time': 0,
+                           'skip': 0 if follow_up else self.skip_after_wake}
 
     def _record(self, chunk):
         r = self._recording
-        r['chunks'].append(chunk)
         r['time'] += 1
+        if r['skip']:
+            r['skip'] -= 1
+            return []
+        r['chunks'].append(chunk)
         if self.vad(chunk):
             r['spoke'], r['silence'] = True, 0
         else:

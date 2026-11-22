@@ -97,3 +97,12 @@ def test_no_follow_up_window_without_speech_first():
     s = Script(follow_up=8.0)
     s.listener.speaking(False)      # the speech node starts: "not speaking"
     assert kinds(s.feed(LOUD, 5)) == []
+
+
+def test_wake_beep_is_skipped_but_follow_ups_are_not():
+    s = Script(skip_after_wake=0.16)
+    assert s.feed(QUIET, wake=0.9) == [('wake', False)]
+    s.feed(LOUD, 2)                      # the beep: dropped, not "speech"
+    s.feed(LOUD, 3)
+    events = s.feed(QUIET, 12)
+    assert len(events[0][1]) == CHUNK * (3 + 10)
