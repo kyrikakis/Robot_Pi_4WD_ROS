@@ -91,3 +91,9 @@ def test_follow_up_without_wake_word():
 def test_no_stop_word_configured():
     s = Script(stop_word=None)
     assert kinds(s.feed(QUIET, stop=0.9)) == []
+
+
+def test_no_follow_up_window_without_speech_first():
+    s = Script(follow_up=8.0)
+    s.listener.speaking(False)      # the speech node starts: "not speaking"
+    assert kinds(s.feed(LOUD, 5)) == []

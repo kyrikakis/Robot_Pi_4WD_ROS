@@ -56,10 +56,10 @@ class Listener:
 
     def speaking(self, on):
         """Tell the listener the robot started (True) or stopped (False) talking."""
-        self.muted = on
+        was_muted, self.muted = self.muted, on
         if on:
             self.voiced_run = 0
-        else:
+        elif was_muted:  # only after real speech, not "not speaking" at startup
             self.follow_up_until = self.clock() + self.follow_up
 
     def feed(self, chunk):
