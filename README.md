@@ -49,7 +49,7 @@ Rainbow's ROS 2 packages live in `src/`:
 | `rainbow_description` | URDF of the robot: chassis, sensors and the pan/tilt head |
 | `rainbow_bringup` | Launch files and all configuration (EKF, BNO055, SLAM, Nav2) |
 | `rainbow_drivers` | Head, eyes, ToF depth camera, velocity watchdog, IP publisher |
-| `rainbow_voice` | Text to speech; wake word placeholder (`voice.launch.py wake_word:=true`) |
+| `rainbow_voice` | Text to speech; the ears: wake word, utterances, local commands on the ReSpeaker Lite |
 | `rainbow_brain` | Local brain: skills (go to a place, turn, drive, stop) and named places on the map ([design](docs/brain.md)) |
 | `rainbow_interfaces` | Service, action and message definitions |
 
@@ -74,7 +74,7 @@ Supervisor starts these when the container starts (`supervisor/rainbow.conf`):
 | `rainbow_slam` | `slam.launch.py` | slam_toolbox, for mapping (not started by default) |
 | `rainbow_navigation` | `navigation.launch.py` | Nav2 |
 | `rainbow_foxglove` | `foxglove.launch.py` | Foxglove bridge on port 8765 |
-| `rainbow_voice` | `voice.launch.py` | Text to speech |
+| `rainbow_voice` | `voice.launch.py` | Text to speech, wake word and listening (ReSpeaker Lite) |
 | `rainbow_brain` | `brain.launch.py` | Local brain, places, link to the Mac agent (port 8766) |
 
 ```

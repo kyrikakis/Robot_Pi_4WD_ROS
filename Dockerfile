@@ -8,6 +8,13 @@ ARG HAILO_TAPPAS_ROS2_COMMIT=f50f2a329c4766103e98cf455e58fa67d8289e65
 ARG MICRO_ROS_SETUP_COMMIT=b1b18bc64b02da9f1745d111f37fe10f3107cef4
 ARG MICRO_ROS_AGENT_COMMIT=af007872b034d1ed31de4815377031350ab0034b
 ARG MICRO_ROS_MSGS_COMMIT=4594d9db17db735b1e655141fb4afb4cdcfc5789
+# Voice (rainbow_voice): pip packages and model files, each checked by SHA-256
+ARG ONNXRUNTIME_VERSION=1.32.0
+ARG WEBRTCVAD_WHEELS_VERSION=2.0.14.post1
+ARG VOSK_VERSION=0.3.44
+ARG SRT_VERSION=3.5.3
+ARG OPENWAKEWORD_MODELS=https://github.com/dscripka/openWakeWord/releases/download/v0.5.1
+ARG VOSK_MODEL=vosk-model-small-en-us-0.15
 
 ENV ROS_DISTRO=jazzy
 ENV LANG=en_US.UTF-8
@@ -88,6 +95,26 @@ RUN apt-get update && apt-get install -y \
 
 # rainbow_brain's link to the Mac agent (WebSocket server)
 RUN apt-get update && apt-get install -y --no-install-recommends python3-websockets
+
+# Voice (rainbow_voice): arecord for the ReSpeaker; wake words on onnxruntime with
+# openWakeWord's models (not its package: it wants scipy, scikit-learn and a
+# tflite-runtime without a Python 3.12 build); webrtcvad; Vosk for local commands.
+# All pip installs are --no-deps (their dependencies come from apt, numpy too), so
+# pip cannot upgrade anything underneath ROS.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        alsa-utils curl python3-cffi python3-requests python3-tqdm unzip && \
+    pip3 install --break-system-packages --no-deps onnxruntime==$ONNXRUNTIME_VERSION \
+        webrtcvad-wheels==$WEBRTCVAD_WHEELS_VERSION vosk==$VOSK_VERSION srt==$SRT_VERSION
+RUN mkdir -p /opt/rainbow/voice && cd /opt/rainbow/voice && \
+    curl -fsSLO $OPENWAKEWORD_MODELS/melspectrogram.onnx && \
+    curl -fsSLO $OPENWAKEWORD_MODELS/embedding_model.onnx && \
+    curl -fsSLO $OPENWAKEWORD_MODELS/hey_jarvis_v0.1.onnx && \
+    curl -fsSLO https://alphacephei.com/vosk/models/$VOSK_MODEL.zip && \
+    echo "ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f  melspectrogram.onnx" > sums && \
+    echo "70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f  embedding_model.onnx" >> sums && \
+    echo "94a13cfe60075b132f6a472e7e462e8123ee70861bc3fb58434a73712ee0d2cb  hey_jarvis_v0.1.onnx" >> sums && \
+    echo "30f26242c4eb449f948e42cb302dd7a686cb29a3423a8367f99ff41780942498  $VOSK_MODEL.zip" >> sums && \
+    sha256sum -c sums && unzip -q $VOSK_MODEL.zip && rm $VOSK_MODEL.zip sums
 
 # Eyes LED matrix (adafruit) and GPIO
 # Blinka and gpiod are pinned too: an unpinned Blinka upgrade once needed gpiod

@@ -50,6 +50,11 @@ unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
 - Nav2 runs composed in one process (`nav2_container`); as separate processes
   its 11 servers cost ~66% of a core idle, composed ~38%.
 - `ROS_DOMAIN_ID=20` for the robot.
+- The voice node (`rainbow_voice`, program `rainbow_voice`) owns the ReSpeaker
+  Lite's microphone (single owner: stop the program before recording from it).
+  It reads it with `arecord`; its models are in `/opt/rainbow/voice` (pinned
+  downloads in the Dockerfile). Test it without the mic by putting a stand-in
+  `arecord` that streams a raw 16 kHz stereo file first on its PATH.
 - The brain's link to the Mac agent (`agent/`) is a WebSocket on port 8766;
   its token is `/data/rainbow/link_token` (`rainbow-agent pair` copies it).
   `agent/tests/test_link.py` runs both ends against each other on the Mac.
@@ -208,10 +213,12 @@ when new work comes up, add it here.
 - ToF blind zone: ~20-25 cm in front of the nose and outside +-24 deg to the
   sides (head level); obstacles there are only known from memory (30 s). A
   head tilt down would shrink it; try step by step with the owner watching.
-- Brain and voice: agreed design in `docs/brain.md` (local brain on the Pi,
-  agent with Whisper and memory on the owner's Mac, openWakeWord "Rainbow" on
-  the ReSpeaker, places on the map). Build in its order, discussing each step
-  with the owner first. "Stop" works without the wake word.
+- Brain and voice (`docs/brain.md`, branch `brain`): steps 1-3 built and tested
+  on the Pi on domain 77 (no driving yet). Still to do: the image rebuild and a
+  test with the owner watching (driving through the link, speaking); train
+  "Rainbow" and "stop" wake word models (the wake word is the placeholder
+  "hey Jarvis" until then, and "stop" only works after it); memory, photos and
+  faces, startup localization, the head controller.
 - Battery: warn around 7.0 V (log, eyes or speech) and cancel Nav2 goals /
   stop at the cutoff (~6.6-6.9 V, judged at rest). The firmware's own low-voltage
   behaviour is unknown. Not part of the brain work for now; later it becomes a

@@ -11,15 +11,16 @@ setup(
         ('share/' + package_name, ['package.xml']),
     ],
     install_requires=['setuptools'],
+    tests_require=['pytest'],
     zip_safe=True,
     maintainer='Stefanos Kyrikakis',
     maintainer_email='kirikakis@gmail.com',
-    description="Rainbow's voice: text to speech.",
+    description="Rainbow's voice: text to speech, wake word, utterances, local commands.",
     license='Apache-2.0',
     entry_points={
         'console_scripts': [
             'speech = rainbow_voice.speech_node:main',
-            'wake_word = rainbow_voice.wake_word_node:main',
+            'voice = rainbow_voice.voice_node:main',
         ],
     },
 )

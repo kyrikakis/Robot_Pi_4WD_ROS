@@ -8,6 +8,8 @@ replaces the old one. Protocol, JSON text messages (docs/brain.md):
   ping                                pong
   call {id, skill, args}              result {id, result}
   say {text}                          event {event}      state {state}
+                                      utterance {audio (base64 16-bit PCM), rate,
+                                                 follow_up} or {handled, text, action}
 
 The agent must say hello with the right token first, then ping at least every
 heartbeat_timeout seconds; otherwise it is dropped and the brain goes back to
@@ -87,6 +89,15 @@ class LinkServer:
         """Send an event to the agent, or keep it for when one connects (thread-safe)."""
         if self.loop is not None:
             self.loop.call_soon_threadsafe(self._event, event)
+
+    def send(self, msg):
+        """Send a message to the agent if one is connected; dropped otherwise (thread-safe)."""
+        if self.loop is not None:
+            self.loop.call_soon_threadsafe(self._send_now, msg)
+
+    def _send_now(self, msg):
+        if self.ws is not None:
+            asyncio.ensure_future(self._send(self.ws, msg))
 
     def send_state(self):
         if self.loop is not None:

@@ -56,6 +56,8 @@ def describe_event(event):
         return f"arrived at the {event['place']}"
     if kind == 'failed':
         return event.get('message') or f"could not get to the {event.get('place')}"
+    if kind == 'stopped_by_voice':
+        return 'someone said stop, so I stopped'
     if kind == 'cancelled':
         return f"the trip to the {event.get('place')} was cancelled"
     if kind == 'link_restored':
@@ -90,6 +92,15 @@ class Conversation:
             self.pending_events = []
             self.messages.append({'role': 'user', 'content': text})
             return await self._turn(text)
+
+    async def handled_locally(self, text, action):
+        """The robot understood a simple command itself; keep the session in step."""
+        async with self.lock:
+            self._maybe_new_session()
+            self.messages.append({'role': 'user', 'content': text})
+            self.messages.append({'role': 'user', 'content': EVENT_PREFIX +
+                                  f'I understood that myself and {action}; already answered.'})
+            self.last_turn = time.monotonic()
 
     async def robot_event(self, event):
         """An event from the robot. Returns a reply to speak, or None."""

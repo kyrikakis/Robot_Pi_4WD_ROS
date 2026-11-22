@@ -1,8 +1,13 @@
 """Rainbow's local brain: skills, places, and the link to the Mac agent.
 
-Design: docs/brain.md. Build steps 1-2: skills as ROS services and actions,
-and the same skills for the Mac agent over the link (rainbow_brain.link). The
-mode is remote while an agent is connected, local otherwise.
+Design: docs/brain.md. Skills as ROS services and actions, the same skills
+for the Mac agent over the link (rainbow_brain.link), and the voice router.
+The mode is remote while an agent is connected, local otherwise.
+
+Voice (from rainbow_voice's voice node): /voice/stop stops at once; an
+utterance whose command phrase Vosk matched confidently is handled here
+(rainbow_brain.commands) and the agent is told; any other utterance goes to
+the agent, or, without one, the robot says it can only do simple things.
 
 Every move goes through Nav2 (NavigateToPose, Spin, DriveOnHeading), so it
 passes the velocity smoother and the collision monitor; the brain never
@@ -18,6 +23,8 @@ Services:
   /brain/get_state    rainbow_interfaces/srv/GetState
   /places/save, /places/edit, /places/delete, /places/list
 Topics:
+  /voice/utterance    rainbow_interfaces/Utterance in; /voice/stop std_msgs/Empty in
+  /voice/grammar      std_msgs/String (latched) out: JSON list of command phrases
   /places/pick        geometry_msgs/PoseStamped    Foxglove's pose tool (Places tab)
   /places/markers     visualization_msgs/MarkerArray  places on the map (latched)
 Reads: TF map -> base_footprint, /amcl_pose, /battery
@@ -27,6 +34,8 @@ Places are stored in <data_dir>/places/<map_name>.yaml (rainbow_brain.places).
 """
 
 import asyncio
+import base64
+import json
 import math
 import os
 import threading
@@ -35,10 +44,11 @@ from action_msgs.msg import GoalStatus
 from action_msgs.srv import CancelGoal
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav2_msgs.action import DriveOnHeading, NavigateToPose, Spin
+from rainbow_brain.commands import parse, phrases
 from rainbow_brain.link import LinkServer, load_token
 from rainbow_brain.places import PlaceStore
 from rainbow_interfaces.action import Drive, GoToPlace, Turn
-from rainbow_interfaces.msg import Place as PlaceMsg
+from rainbow_interfaces.msg import Place as PlaceMsg, Utterance
 from rainbow_interfaces.srv import (DeletePlace, EditPlace, GetState, ListPlaces,
                                     SavePlace, Say, WhereAmI)
 import rclpy
@@ -48,7 +58,7 @@ from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, qos_profile_sensor_data, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
-from std_msgs.msg import UInt16
+from std_msgs.msg import Empty, String, UInt16
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformException, TransformListener
 from visualization_msgs.msg import Marker, MarkerArray
@@ -93,6 +103,8 @@ class BrainNode(Node):
         self.pick_max_age = self.declare_parameter('pick_max_age', 300.0).value
         # The link to the Mac agent; 0 turns it off
         self.link_port = self.declare_parameter('link_port', 8766).value
+        # A local voice command needs at least this Vosk confidence
+        self.command_confidence = self.declare_parameter('command_confidence', 0.8).value
         if not self.map_name:
             raise RuntimeError('map_name is not set (brain.launch.py takes it from the '
                                'localization config)')
@@ -116,6 +128,11 @@ class BrainNode(Node):
         self.create_subscription(UInt16, '/battery', self.on_battery, qos_profile_sensor_data)
         self.create_subscription(PoseStamped, '/places/pick', self.on_pick, 10)
         self.markers_pub = self.create_publisher(MarkerArray, '/places/markers', LATCHED)
+        self.grammar_pub = self.create_publisher(String, '/voice/grammar', LATCHED)
+        self.create_subscription(Utterance, '/voice/utterance', self.on_utterance, 10,
+                                 callback_group=self.group)
+        self.create_subscription(Empty, '/voice/stop', self.on_voice_stop, 10,
+                                 callback_group=self.group)
 
         # The running move: {'label', 'handle' (ours, or None from the link),
         # 'nav' (Nav2's), 'replaced'}
@@ -146,6 +163,7 @@ class BrainNode(Node):
         self.create_service(ListPlaces, '/places/list', self.on_list_places, **g)
 
         self.publish_markers()
+        self.publish_grammar()
 
         self.link = None
         if self.link_port:
@@ -303,6 +321,8 @@ class BrainNode(Node):
             message = f"could not get to {place.name}: I don't know where I am"
             self.get_logger().info(message)
             self.emit({'kind': 'failed', 'place': place.name, 'message': message})
+            if self.mode == 'local':
+                self.say("I don't know where I am yet, so I can't go there.")
             return False, message
         goal = NavigateToPose.Goal()
         goal.pose.header.frame_id = self.map_frame
@@ -357,7 +377,10 @@ class BrainNode(Node):
         self.get_logger().info('stop: cancelled all Nav2 goals')
 
     def say(self, text):
-        if text and self.say_client.service_is_ready():
+        if not text:
+            return
+        self.get_logger().info(f'say: {text}')
+        if self.say_client.service_is_ready():
             self.say_client.call_async(Say.Request(text=text))
 
     # Places (each raises ValueError or OSError with a speakable reason)
@@ -404,7 +427,58 @@ class BrainNode(Node):
 
     def places_changed(self):
         self.publish_markers()
+        self.publish_grammar()
         self.state_changed()
+
+    def place_names(self):
+        with self.places_lock:
+            return [p.name for p in self.places.sorted_places()]
+
+    def publish_grammar(self):
+        self.grammar_pub.publish(String(data=json.dumps(phrases(self.place_names()))))
+
+    # Voice
+
+    def on_voice_stop(self, msg):
+        self.get_logger().info('stop (voice)')
+        self.stop()
+        self.emit({'kind': 'stopped_by_voice'})
+
+    def on_utterance(self, msg):
+        command = None
+        if msg.command and msg.command_confidence >= self.command_confidence:
+            command = parse(msg.command, self.place_names())
+        if command is not None:
+            self.local_command(msg.command, command)
+        elif self.mode == 'remote':
+            audio = base64.b64encode(bytes(msg.samples.tobytes())).decode('ascii')
+            self.link.send({'type': 'utterance', 'audio': audio,
+                            'rate': msg.sample_rate, 'follow_up': msg.follow_up})
+        elif not msg.follow_up:
+            self.say("I'm offline right now. I can only go to places I know, "
+                     'come back, or wait.')
+
+    def local_command(self, text, command):
+        """Do a recognised voice command; tell the agent it was done."""
+        self.get_logger().info(f'voice command: {text}')
+        if command['action'] == 'stop':
+            self.stop()
+            done = 'stopped'
+            self.say('Okay.')
+        else:
+            try:
+                place = self.find_place(command['place'])
+            except ValueError:
+                done = f"did not go: I don't know a place called {command['place']}"
+                self.say(f"I don't know where {command['place']} is yet.")
+            else:
+                self.executor.create_task(self.go_to, place)
+                done = f'started going to {place.name}'
+                self.say('Going home.' if place.name == 'home' else
+                         f'Going to the {place.name}.')
+        if self.link is not None:
+            self.link.send({'type': 'utterance', 'handled': True, 'text': text,
+                            'action': done})
 
     # ROS actions and services
 

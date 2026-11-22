@@ -209,3 +209,18 @@ def test_one_move_per_turn_and_invented_args_dropped():
     results = [json.loads(m['content']) for m in conv.messages if m['role'] == 'tool']
     assert not results[1]['ok'] and 'one move' in results[1]['message']
     assert 'note' in results[2]
+
+
+def test_handled_locally_keeps_the_session_in_step():
+    conv, llm, _ = make(message('Sure!'))
+    run(conv.handled_locally('go to the kitchen', 'started going to kitchen'))
+    run(conv.user_says('thanks'))
+    contents = [m['content'] for m in llm.requests[0]['messages']]
+    assert 'go to the kitchen' in contents
+    assert any('understood that myself' in c for c in contents)
+
+
+def test_whisper_silence_hallucinations_are_dropped():
+    from rainbow_agent.stt import is_speech
+    assert not is_speech(' Thank you. ') and not is_speech('') and not is_speech('you')
+    assert is_speech('Go to the kitchen.')

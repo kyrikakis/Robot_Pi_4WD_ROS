@@ -18,6 +18,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/GoToPlace.action"
   "action/Turn.action"
   "action/Drive.action"
+  "msg/Utterance.msg"
+  DEPENDENCIES builtin_interfaces
 )
 
 ament_export_dependencies(rosidl_default_runtime)

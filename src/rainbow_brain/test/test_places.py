@@ -90,3 +90,16 @@ def test_describe(store):
 def test_guess_from_a_pick_stays_unconfirmed(store):
     p = store.save('nook', 1, 1, 0, source='foxglove', confirmed=False)
     assert (p.source, p.confirmed) == ('foxglove', False)
+
+
+def test_command_phrases_and_parsing():
+    from rainbow_brain.commands import parse, phrases
+    places = ['kitchen', 'kids room', 'home']
+    p = phrases(places)
+    assert 'go to the kids room' in p and 'stop' in p and 'come back' in p
+    assert parse('stop', places) == {'action': 'stop'}
+    assert parse('Come back', places) == {'action': 'go_to', 'place': 'home'}
+    assert parse('go to the kids room', places) == {'action': 'go_to', 'place': 'kids room'}
+    assert parse('go to kitchen', places) == {'action': 'go_to', 'place': 'kitchen'}
+    assert parse('go to the garage', places) is None
+    assert parse('', places) is None

@@ -189,3 +189,21 @@ def test_token_file_is_created_private(tmp_path):
     token = load_token(str(path))
     assert len(token) == 32 and load_token(str(path)) == token
     assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+
+
+def test_utterances_reach_the_agent(server):
+    link, _ = server
+
+    async def scenario():
+        robot = robot_for(link)
+        await robot.start()
+        assert await robot.wait_connected(3.0)
+        link.send({'type': 'utterance', 'audio': 'AAA=', 'rate': 16000, 'follow_up': False})
+        link.send({'type': 'utterance', 'handled': True, 'text': 'stop', 'action': 'stopped'})
+        first = await asyncio.wait_for(robot.utterances.get(), 2.0)
+        second = await asyncio.wait_for(robot.utterances.get(), 2.0)
+        await robot.close()
+        return first, second
+
+    first, second = asyncio.run(scenario())
+    assert first['audio'] == 'AAA=' and second['handled'] is True

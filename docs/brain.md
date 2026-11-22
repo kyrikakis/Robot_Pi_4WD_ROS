@@ -52,44 +52,57 @@ provides still photos and recognised faces (see [Camera and faces](#camera-and-f
 ## Voice (`rainbow_voice`)
 
 Hardware: the ReSpeaker Lite (USB, 2 mics, speaker output) is both microphone
-and speaker (espeak plays on `plughw:2,0`, as before and in v0-legacy). Select
-the card by name, not number, which can change between boots. The Lite does
-echo cancellation and noise suppression on the board; check what its USB
-channels carry before relying on it. English only for now.
+and speaker. ALSA card "Lite": 16 kHz, 16-bit, 2 channels; espeak plays on it
+(`plughw:2,0`, as before). The voice node records by card name
+(`plughw:CARD=Lite,DEV=0`, channel 0), since card numbers can change between
+boots. Its two USB channels carry the same stream (measured: bit-identical);
+the quiet-room noise floor is about -38 dBFS. English only for now.
 
-One node, `voice_node` (replacing the `wake_word_node` placeholder), opens the
-microphone. Capture devices are single-owner, so nothing else may open it.
+Measured on the Pi: the wake word costs 3.8 ms per 80 ms chunk and the voice
+node about 8% of one core while listening; Vosk takes ~80 ms per command; from
+the wake word to the agent's spoken reply 2.6 s (0.8 s of it waiting for the
+end of speech, Whisper 0.27 s, the model 0.3 s).
 
-1. **Wake word**: openWakeWord with a custom-trained "Rainbow" model. A
-   one-word wake word triggers falsely more often than a phrase; tune its
-   threshold on recordings made with the motors running. Trained on
-   synthetic voices for now; recordings on the robot can improve it later.
-   **"Stop" needs no wake word**: a second custom openWakeWord model for "stop"
-   runs on the same audio (openWakeWord shares the feature extraction between
-   models, so it costs little). It stays active even while espeak is speaking
-   and during the follow-up window. A false "stop" only stops the robot, which
-   is the safe direction, so its threshold can be lower than the wake word's.
-2. **Recording**: after the wake word, a VAD (Silero or webrtcvad) cuts the
-   utterance (end after ~0.8 s of silence, 10 s maximum). This replaces
-   v0-legacy's fixed loudness threshold, which breaks with motor noise.
-3. **Local transcript**: Vosk with a fixed phrase grammar (see
-   [Local commands](#local-commands)) runs on every utterance and returns the
-   matched phrase and its confidence.
-4. **Follow-up window**: for ~8 s after the robot finishes speaking, speech is
+One node, `voice` (`voice_node.py`), owns the microphone (capture devices are
+single-owner). It reads the card with `arecord` (no Python audio library) and
+runs a state machine (`listener.py`) on every 80 ms chunk:
+
+1. **Wake word**: openWakeWord's models, run on onnxruntime by our own
+   `wakeword.py`. The openWakeWord package itself is not installed: it pulls in
+   scipy and scikit-learn and wants a tflite-runtime that has no Python 3.12
+   build. Its inference is small and reimplemented with the same models; the
+   scores match the package's to 0.0001 (checked on test clips).
+   **Placeholder:** the wake word is openWakeWord's pretrained "hey Jarvis"
+   until a "Rainbow" model is trained (on the Mac, later). With a trained
+   model, change `wake_model` (and a `stop_model`) in the node's parameters.
+   A one-word wake word triggers falsely more often than a phrase; tune its
+   threshold on recordings made with the motors running.
+   **"Stop" without the wake word** needs a trained "stop" model too (another
+   openWakeWord model on the same features, so it costs little); it is
+   listened for even while the robot talks, and a false "stop" only stops the
+   robot. Until it exists, "stop" works after the wake word, as a local
+   command.
+2. **Recording**: after the wake word, webrtcvad cuts the utterance (end
+   after 0.8 s of silence, 10 s maximum; 4 s without speech gives up). This
+   replaces v0-legacy's fixed loudness threshold, which breaks with motor noise.
+3. **Local commands**: Vosk (small English model) with the brain's phrase list
+   (`/voice/grammar`) runs on each finished utterance (a few ms) and returns the
+   matched phrase and its confidence. Anything else maps to "[unk]".
+4. **Follow-up window**: for 8 s after the robot finishes speaking, speech is
    recorded without the wake word, so a conversation flows.
-5. **Echo**: wake word and recording are muted while espeak is speaking (same
-   card, the mic hears the speaker), unless the Lite's echo cancellation
-   proves good enough. `speech_node` publishes when it starts and
-   stops talking.
+5. **Echo**: while espeak is speaking (`/speech/speaking`, latched, from
+   `speech_node`) only the stop word is listened for, since the mic hears the
+   speaker. The Lite cancels echo on the board; check what its two channels
+   carry before relying on it.
 
-The node publishes each utterance (16 kHz mono PCM, the Vosk result, a
-timestamp) to the brain. The audio is not compressed: a 10 s clip is 320 kB,
-fine on the LAN.
+The node publishes each utterance (`rainbow_interfaces/Utterance`: 16 kHz
+samples, the Vosk phrase and confidence, follow-up or not) to the brain, and
+`/voice/stop`. The audio is not compressed: a 10 s clip is 320 kB.
 
 Speech output stays espeak (`speech_node`), for every reply, online or offline.
 
-Eyes show the state: `open` on wake, a "thinking" expression while waiting for
-the Mac, `happy` when done (the expression set may need one new entry).
+Eyes (`/eyes`): `open` on the wake word (and while the agent thinks), `happy`
+when the robot has finished speaking or nobody spoke.
 
 ## Local brain (`rainbow_brain`, new package)
 
@@ -111,24 +124,32 @@ agent a summary of what happened offline.
 
 ### Router
 
-For each utterance:
+For each utterance (`on_utterance` in the brain):
 
-- If Vosk matched a **local command** with high confidence, the brain runs it
-  immediately and tells the agent ("user said 'stop', I stopped"), so the
-  conversation and memory stay consistent.
-- Otherwise, in REMOTE the audio goes to the agent; in LOCAL the robot says
-  it is offline.
+- If Vosk matched a **local command** with confidence 0.8 or more
+  (`command_confidence`), the brain runs it immediately, says a short
+  confirmation ("Going to the kitchen."), and tells the agent (an `utterance`
+  with `handled`), so the conversation and memory stay consistent. The agent
+  does not answer it again.
+- Otherwise, in REMOTE the audio goes to the agent (base64 PCM in an
+  `utterance` message); in LOCAL the robot says it can only go to places, come
+  back or wait (not for follow-ups, which are often just noise).
 
-"Stop" always runs locally and never waits for the Mac; it comes from its own
-detector, not through the router (see [Voice](#voice-rainbow_voice)).
+`/voice/stop` stops at once and tells the agent (`stopped_by_voice`).
 
 ### Local commands
 
-A fixed phrase grammar for Vosk, kept small so it stays accurate:
+A fixed phrase list for Vosk (`rainbow_brain/commands.py`), published by the
+brain on `/voice/grammar` whenever the places change:
 
-- "wait" (stop is separate, see above)
-- "go to the <place>" (place names come from the places file)
-- "come back" / "go home" (the place named "home")
+- "stop", "wait"
+- "go to the <place>", "go to <place>" (place names from the places file;
+  words Vosk does not know cannot be recognised and go to the agent)
+- "come back", "go home", "come home" (the place named "home")
+
+One unknown word after a phrase is accepted ("go to the sofa please"); more
+means a longer sentence, which goes to the agent. On test clips nothing that
+was not a command matched.
 
 ### Skills
 
@@ -338,10 +359,14 @@ in what it says (child-appropriate topics and language, no personal data about
 the family to anyone, no instructions for anything unsafe). A basic version in
 the system prompt for now; refine it later.
 
-### Text mode
+### Running it
 
-Typing instead of talking, for testing and debugging. Before the model is
-wired in, the same mode sends raw skill calls (the "stub" of build step 2).
+- `rainbow-agent run`: the agent for real. Utterances from the robot go
+  through Whisper (silence hallucinations like "Thank you." are dropped), the
+  conversation, and back as `say`. Commands the robot handled itself are added
+  to the session without a reply.
+- `rainbow-agent chat [--robot]`: typing instead of talking, against the
+  simulated robot or the real one.
 
 ### Memory and sessions
 

@@ -3,6 +3,7 @@
   rainbow-agent chat            type to Rainbow (simulated robot)
   rainbow-agent chat --robot    type to the real robot (it speaks the replies)
   rainbow-agent pair            fetch the link token from the robot (once)
+  rainbow-agent run             the agent for real: listen, think, answer (always on)
   rainbow-agent transcribe WAV  Whisper on a file, with timing
   rainbow-agent servers         run the model servers in the foreground
   rainbow-agent eval            score the model on agent/eval/cases.yaml
@@ -13,9 +14,11 @@ again on exit. In chat, "/hear FILE.wav" transcribes a recording and says it.
 
 import argparse
 import asyncio
+import base64
 import contextlib
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import time
@@ -120,6 +123,49 @@ async def chat(cfg, real=False):
             await robot.close()
 
 
+async def run_agent(cfg):
+    """Listen to the robot: utterances -> Whisper -> conversation -> spoken reply."""
+    from rainbow_agent.stt import is_speech, pcm16_to_float, Whisper
+    whisper = Whisper(cfg.whisper_model)
+    await asyncio.to_thread(whisper.transcribe, pcm16_to_float(bytes(32000)))  # load it
+    robot = make_robot(cfg, real=True)
+    conversation = Conversation(llm_client(cfg), cfg.chat_alias, robot, cfg, show_tool)
+    await robot.start()
+    print('agent running; Ctrl-C to stop')
+
+    async def events():
+        while True:
+            event = await robot.events.get()
+            print(f'{DIM}  [robot event] {event}{RESET}')
+            reply = await conversation.robot_event(event)
+            if reply:
+                print(f'{BOLD}rainbow>{RESET} {reply}')
+                await robot.say(reply)
+
+    async def utterances():
+        while True:
+            u = await robot.utterances.get()
+            if u.get('handled'):
+                print(f'{DIM}  [handled on the robot] {u.get("text")!r}: {u.get("action")}{RESET}')
+                await conversation.handled_locally(u.get('text', ''), u.get('action', ''))
+                continue
+            audio = pcm16_to_float(base64.b64decode(u.get('audio', '')))
+            text, seconds = await asyncio.to_thread(whisper.transcribe, audio)
+            if not is_speech(text):
+                print(f'{DIM}  [ignored: {text!r}]{RESET}')
+                continue
+            print(f'you> {text}  {DIM}(heard in {seconds:.2f} s){RESET}')
+            start = time.monotonic()
+            reply = await conversation.user_says(text)
+            print(f'{BOLD}rainbow>{RESET} {reply}  {DIM}({time.monotonic() - start:.1f} s){RESET}')
+            await robot.say(reply)
+
+    try:
+        await asyncio.gather(events(), utterances())
+    finally:
+        await robot.close()
+
+
 def pair(cfg):
     """Copy the brain's link token from the robot (over SSH) to the Mac."""
     cmd = ['ssh', cfg.robot_ssh, 'docker exec robot cat /data/rainbow/link_token']
@@ -146,6 +192,12 @@ def transcribe(cfg, path):
         print(f'{"first" if i == 0 else "again"}: {seconds:.2f} s  {text}')
 
 
+def robot_options(parser):
+    parser.add_argument('--robot-host', help='the robot (default: rainbow.local, then the IP)')
+    parser.add_argument('--robot-port', type=int, help='its link port (default 8766)')
+    parser.add_argument('--token-file', type=Path, help='the link token (default: paired one)')
+
+
 def model_options(parser):
     parser.add_argument('--model', type=Path, help='another chat model GGUF (to compare)')
     parser.add_argument('--mmproj', type=Path, help='its vision projector GGUF')
@@ -157,8 +209,12 @@ def main(argv=None):
     sub = parser.add_subparsers(dest='command', required=True)
     p = sub.add_parser('chat', help='type to Rainbow (simulated robot)')
     p.add_argument('--robot', action='store_true', help='the real robot, over the link')
+    robot_options(p)
     model_options(p)
     sub.add_parser('pair', help='fetch the link token from the robot over SSH')
+    p = sub.add_parser('run', help='the agent for real: listen to the robot and answer')
+    robot_options(p)
+    model_options(p)
     p = sub.add_parser('transcribe', help='Whisper on a WAV file')
     p.add_argument('wav', type=Path)
     sub.add_parser('servers', help='run the model servers until Ctrl-C')
@@ -169,6 +225,14 @@ def main(argv=None):
     model_options(p)
     args = parser.parse_args(argv)
     cfg = Config()
+    # launchd (and kill) stop with SIGTERM: shut down like Ctrl-C, model servers included
+    signal.signal(signal.SIGTERM, signal.default_int_handler)
+    if getattr(args, 'robot_host', None):
+        cfg.robot_hosts = [args.robot_host]
+    if getattr(args, 'robot_port', None):
+        cfg.robot_port = args.robot_port
+    if getattr(args, 'token_file', None):
+        cfg.link_token = args.token_file
     if getattr(args, 'model', None):
         cfg.chat_model = args.model
         cfg.vision_projector = args.mmproj or cfg.vision_projector
@@ -179,6 +243,9 @@ def main(argv=None):
                 asyncio.run(chat(cfg, real=args.robot))
         elif args.command == 'pair':
             pair(cfg)
+        elif args.command == 'run':
+            with servers(cfg):
+                asyncio.run(run_agent(cfg))
         elif args.command == 'transcribe':
             transcribe(cfg, args.wav)
         elif args.command == 'servers':

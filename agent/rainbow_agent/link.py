@@ -27,6 +27,7 @@ class LinkRobot:
         self.token = token
         self.log = log
         self.events = asyncio.Queue()
+        self.utterances = asyncio.Queue()   # what people said to the robot
         self.calls = []
         self.state = {}
         self.welcome = {}
@@ -104,6 +105,8 @@ class LinkRobot:
             self.events.put_nowait(msg.get('event') or {})
         elif kind == 'state':
             self.state = msg.get('state') or {}
+        elif kind == 'utterance':
+            self.utterances.put_nowait(msg)
 
     def _disconnected(self):
         self._ws = None

@@ -12,6 +12,16 @@ import numpy as np
 
 RATE = 16000
 
+# What Whisper says on silence or noise (it was trained on subtitles)
+HALLUCINATIONS = {'', 'you', 'thank you', 'thank you.', 'thanks for watching!',
+                  'thanks for watching.', 'bye.', 'bye', '.', 'okay.', 'so', 'uh'}
+
+
+def is_speech(text):
+    """Return False for empty text and Whisper's usual silence hallucinations."""
+    t = ' '.join(text.lower().split())
+    return len(t) > 1 and t not in HALLUCINATIONS
+
 
 def pcm16_to_float(data):
     """16-bit little-endian PCM bytes -> float32 samples in [-1, 1]."""
