@@ -24,6 +24,9 @@ _ACTION = re.compile(r"""
   | \bcall\s+the\s+\w+(\s+\w+)?\s+the\b                 # call the sofa the couch
   | \bforget\s+(the|about\s+the)\b
   | ^\W*yes\b.*\b(right|correct)\b                     # yes, the desk is right
+  | \b(what|who)\s+(do|can)\s+you\s+see\b              # seeing needs a photo
+  | \bcan\s+you\s+see\b | \blook\s+(at|around)\b | \bin\s+front\s+of\s+you\b
+  | \bremember\s+my\s+face\b
 """, re.IGNORECASE | re.VERBOSE)
 
 _FILLER = {'the', 'and', 'with', 'near', 'next', 'from', 'that', 'this', 'there', 'its',

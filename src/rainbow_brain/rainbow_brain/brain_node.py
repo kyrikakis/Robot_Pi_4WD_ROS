@@ -27,6 +27,10 @@ Topics:
   /voice/grammar      std_msgs/String (latched) out: JSON list of command phrases
   /places/pick        geometry_msgs/PoseStamped    Foxglove's pose tool (Places tab)
   /places/markers     visualization_msgs/MarkerArray  places on the map (latched)
+Camera and faces (the Hailo container, docs/brain.md): capture_photo takes one
+frame from photo_topic on demand; recognised faces on faces_topic become
+face_seen events; remember_face asks the Hailo node to save a face.
+set_pose_estimate publishes /initialpose for AMCL (startup localization).
 Reads: TF map -> base_footprint, /amcl_pose, /battery
 Link: WebSocket on link_port (8766); token in <data_dir>/link_token.
 
@@ -43,6 +47,7 @@ import threading
 from action_msgs.msg import GoalStatus
 from action_msgs.srv import CancelGoal
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from hailo_msgs.srv import SaveGalleryItem
 from nav2_msgs.action import DriveOnHeading, NavigateToPose, Spin
 from rainbow_brain.commands import parse, phrases
 from rainbow_brain.link import LinkServer, load_token
@@ -57,10 +62,13 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, qos_profile_sensor_data, QoSProfile, ReliabilityPolicy
+from rclpy.task import Future
 from rclpy.time import Time
+from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import Empty, String, UInt16
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformException, TransformListener
+from vision_msgs.msg import Detection2DArray
 from visualization_msgs.msg import Marker, MarkerArray
 
 LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
@@ -105,6 +113,15 @@ class BrainNode(Node):
         self.link_port = self.declare_parameter('link_port', 8766).value
         # A local voice command needs at least this Vosk confidence
         self.command_confidence = self.declare_parameter('command_confidence', 0.8).value
+        # The Hailo container's camera and face recognition
+        self.photo_topic = self.declare_parameter(
+            'photo_topic', '/hailo_face_recognition/image_bbx/compressed').value
+        self.photo_width = self.declare_parameter('photo_width', 640).value
+        faces_topic = self.declare_parameter(
+            'faces_topic', '/hailo_face_recognition/detections').value
+        # Seconds before the same face is announced to the agent again
+        self.face_repeat = self.declare_parameter('face_repeat', 600.0).value
+        self.faces_seen = {}
         if not self.map_name:
             raise RuntimeError('map_name is not set (brain.launch.py takes it from the '
                                'localization config)')
@@ -133,6 +150,10 @@ class BrainNode(Node):
                                  callback_group=self.group)
         self.create_subscription(Empty, '/voice/stop', self.on_voice_stop, 10,
                                  callback_group=self.group)
+        self.create_subscription(Detection2DArray, faces_topic, self.on_faces,
+                                 qos_profile_sensor_data, callback_group=self.group)
+        self.initialpose_pub = self.create_publisher(
+            PoseWithCovarianceStamped, '/initialpose', 10)
 
         # The running move: {'label', 'handle' (ours, or None from the link),
         # 'nav' (Nav2's), 'replaced'}
@@ -146,6 +167,8 @@ class BrainNode(Node):
         self.cancel_clients = [self.create_client(CancelGoal, f'{a}/_action/cancel_goal', **g)
                                for a in NAV2_ACTIONS]
         self.say_client = self.create_client(Say, '/speech/say', **g)
+        self.save_face_client = self.create_client(
+            SaveGalleryItem, '/hailo_face_recognition/save_face', **g)
 
         cancel = {'cancel_callback': self.on_cancel_request, **g}
         self.action_servers = [
@@ -436,6 +459,86 @@ class BrainNode(Node):
 
     def publish_grammar(self):
         self.grammar_pub.publish(String(data=json.dumps(phrases(self.place_names()))))
+
+    # Camera and faces
+
+    def on_faces(self, msg):
+        """Tell the agent who is in view; the Hailo node puts names in class_id."""
+        now = self.get_clock().now().nanoseconds * 1e-9
+        for detection in msg.detections:
+            for result in detection.results:
+                label, _, name = result.hypothesis.class_id.partition(': ')
+                name = name.strip()
+                if not name or name.lower() == 'unknown':
+                    continue
+                if now - self.faces_seen.get(name, -1e9) >= self.face_repeat:
+                    self.get_logger().info(f'face seen: {name}')
+                    self.emit({'kind': 'face_seen', 'name': name})
+                self.faces_seen[name] = now
+
+    async def capture_photo(self, timeout=3.0):
+        """Return one JPEG from the camera (shrunk to photo_width), or None."""
+        future = Future()
+
+        def on_image(msg):
+            if not future.done():
+                future.set_result(msg)
+
+        sub = self.create_subscription(CompressedImage, self.photo_topic, on_image,
+                                       qos_profile_sensor_data, callback_group=self.group)
+        timer = self.create_timer(timeout, lambda: future.done() or future.set_result(None),
+                                  callback_group=self.group)
+        try:
+            msg = await future
+        finally:
+            self.destroy_subscription(sub)
+            self.destroy_timer(timer)
+        if msg is None:
+            return None
+        return self.shrink(bytes(msg.data))
+
+    def shrink(self, jpeg):
+        try:
+            import cv2
+            import numpy as np
+        except ImportError:
+            return jpeg
+        image = cv2.imdecode(np.frombuffer(jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if image is None or image.shape[1] <= self.photo_width:
+            return jpeg
+        height = round(image.shape[0] * self.photo_width / image.shape[1])
+        image = cv2.resize(image, (self.photo_width, height), interpolation=cv2.INTER_AREA)
+        ok, out = cv2.imencode('.jpg', image, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        return out.tobytes() if ok else jpeg
+
+    async def remember_face(self, name):
+        """Ask the Hailo node to save the face in view as name; returns (ok, message)."""
+        if not self.save_face_client.service_is_ready():
+            return False, 'face recognition is not running'
+        response = await self.save_face_client.call_async(
+            SaveGalleryItem.Request(id=name, append=False))
+        # hailo_msgs/srv/SaveGalleryItem result codes
+        messages = {0: f'I will remember {name}',
+                    1: f'I already know you, {name}',
+                    2: 'I already know this face under another name',
+                    3: f'I know someone else called {name}',
+                    4: 'I see more than one face; only one person please',
+                    5: "I can't see a face"}
+        return response.result in (0, 1), messages.get(response.result, response.message)
+
+    def set_pose_estimate(self, place):
+        """Tell AMCL the robot is at a place (startup localization from a photo)."""
+        msg = PoseWithCovarianceStamped()
+        msg.header.frame_id = self.map_frame
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.pose.pose.position.x = place.x
+        msg.pose.pose.position.y = place.y
+        msg.pose.pose.orientation.z = math.sin(place.yaw / 2.0)
+        msg.pose.pose.orientation.w = math.cos(place.yaw / 2.0)
+        msg.pose.covariance[0] = msg.pose.covariance[7] = 0.25   # 0.5 m
+        msg.pose.covariance[35] = 0.25                           # 0.5 rad
+        self.initialpose_pub.publish(msg)
+        self.get_logger().info(f'pose estimate: at {place.name}')
 
     # Voice
 
@@ -735,6 +838,22 @@ class LinkHandler:
     def skill_delete_place(self, name):
         place = self.node.delete_place(name)
         return {'ok': True, 'message': f'deleted {place.name}'}
+
+    async def skill_capture_photo(self):
+        jpeg = await self.node.capture_photo()
+        if jpeg is None:
+            return {'ok': False, 'message': 'my camera is not sending pictures right now'}
+        return {'ok': True, 'image': base64.b64encode(jpeg).decode('ascii'),
+                'where': self.node.where_am_i()['description']}
+
+    async def skill_remember_face(self, name):
+        ok, message = await self.node.remember_face(str(name).strip())
+        return {'ok': ok, 'message': message}
+
+    def skill_set_pose_estimate(self, place):
+        target = self.node.find_place(place)
+        self.node.set_pose_estimate(target)
+        return {'ok': True, 'message': f'told the map I am at {target.name}'}
 
 
 def main(args=None):

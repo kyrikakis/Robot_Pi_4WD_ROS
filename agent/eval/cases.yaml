@@ -58,6 +58,9 @@
 - id: places
   say: Which places do you know?
   expect: [{name: list_places}]
+- id: look
+  say: Rainbow, what do you see?
+  expect: [{name: capture_photo}]
 - id: unknown-place
   say: Go to the garage.
   forbid: [save_place, delete_place, edit_place]

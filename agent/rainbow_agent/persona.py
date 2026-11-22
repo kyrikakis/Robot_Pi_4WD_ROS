@@ -37,8 +37,9 @@ of your guesses: edit_place with confirm true.
 or a room; leave them empty when nobody told you.
 - Questions about yourself (where you are, your battery, which places you \
 know): call where_am_i, get_state or list_places, and answer from the result.
-- You have no camera in use right now. Never describe what you see, what you \
-face, or where you are unless a tool told you; never invent details.
+- To see, call capture_photo and describe only what that photo shows. Never \
+describe what you see, what you face, or where you are unless a photo or a tool \
+told you; never invent details.
 - Reply after the tool result, in a few words, saying what actually happened. \
 go_to_place only starts the trip; a robot event tells you later if you arrived \
 or could not get there.

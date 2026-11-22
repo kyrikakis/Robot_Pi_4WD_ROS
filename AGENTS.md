@@ -217,8 +217,10 @@ when new work comes up, add it here.
   on the Pi on domain 77 (no driving yet). Still to do: the image rebuild and a
   test with the owner watching (driving through the link, speaking); train
   "Rainbow" and "stop" wake word models (the wake word is the placeholder
-  "hey Jarvis" until then, and "stop" only works after it); photos and faces,
-  startup localization, the head controller. Memory (step 5) is built.
+  "hey Jarvis" until then, and "stop" only works after it); re-enable face
+  recognition in the Hailo container (photos, faces and startup localization
+  depend on it); the head controller. Memory and photos/faces (steps 5-6) are
+  built.
 - Battery: warn around 7.0 V (log, eyes or speech) and cancel Nav2 goals /
   stop at the cutoff (~6.6-6.9 V, judged at rest). The firmware's own low-voltage
   behaviour is unknown. Not part of the brain work for now; later it becomes a

@@ -399,33 +399,48 @@ Forgetting ("clean memory") is not built yet.
 ## Camera and faces
 
 The RGB camera is captured by the Hailo container
-([hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2)). Changes
-needed there, not in this repo:
+([hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2)); its face
+recognition node already publishes all the brain needs, so that repo does not
+change. It must be re-enabled there (it is off to save CPU; measure the Pi's
+load with it on).
 
-- **Stills on request**: a service returning one JPEG (or a low-rate
-  `CompressedImage` topic), for `capture_photo`.
-- **Faces**: re-enable face recognition and publish recognised names (with
-  `hailo_msgs`). The brain forwards them as events, so the agent can greet
-  people and remember who it has seen.
+- **Photos**: `capture_photo` subscribes to
+  `/hailo_face_recognition/image_bbx/compressed` (1280x720 JPEG, with the
+  detection boxes drawn) only while taking one frame (3 s timeout), and shrinks
+  it with OpenCV to 640 wide (~16 kB) before sending it to the agent. The
+  agent passes it to the model as an image in the conversation.
+- **Faces**: the node publishes `/hailo_face_recognition/detections`
+  (`vision_msgs/Detection2DArray`) with the name in the class id
+  (`"<label>: <name>"`). The brain sends the agent a `face_seen` event, at most
+  once per person per 10 min (`face_repeat`). The agent notes it (speaking
+  first is for later).
+- **Remembering faces**: `remember_face(name)` calls
+  `/hailo_face_recognition/save_face` (`hailo_msgs/srv/SaveGalleryItem`).
 
-Face recognition was disabled to save CPU; measure the Pi's load with it back
-on.
+Tested on the Pi on domain 77 with fake Hailo topics: photo in 0.1-0.5 s,
+no subscription left behind, one face event per person, the pose estimate.
 
 ## Startup localization from a photo
 
 AMCL starts with global localization and usually settles once the robot drives
 a little. A photo only gives it a hint; it is never treated as a precise pose.
 
-1. At startup the brain sends a `startup` event. The agent calls `get_state()`;
-   if AMCL's covariance is already small, it stops there.
-2. Otherwise it takes a photo facing forward (head centred).
-3. It matches the photo against a **place photo database**: reference photos
-   with the poses they were taken at, recorded by driving around the mapped
-   area (stored with the places on the data volume). Image embeddings
-   (CLIP or DINOv2 style, on the Mac) give candidates; the VLM confirms one.
-4. It calls `set_pose_estimate` with that pose and a generous covariance; AMCL
-   refines it from the lidar.
+1. **Place photos**: whenever a place is saved through the agent, the robot
+   also takes a photo there, kept on the Mac
+   (`~/.rainbow-agent/data/place_photos/<map>/`), following renames and
+   deletes. Places saved from Foxglove have no photo.
+2. **At startup** (once the link is up): the agent calls `get_state()`; if
+   AMCL is `sure` or `roughly` localized, it stops there.
+3. Otherwise it takes a photo and asks the vision model which place photo
+   shows the same spot (current photo first, then up to 6 labelled
+   references, each label right before its photo; with the label after the
+   photo the model matched the wrong one with 0.98 confidence).
+4. A match with confidence 0.6 or more becomes `set_pose_estimate(place)`:
+   the brain publishes `/initialpose` (0.5 m, 0.5 rad standard deviation) and
+   AMCL refines it from the lidar.
 
+Code: `agent/rainbow_agent/localize.py`. Checked with stand-in photos (three
+different images, each found correctly, ~2.5 s); not yet with real rooms.
 Once the head controller exists, this can use several head directions.
 
 ## Head

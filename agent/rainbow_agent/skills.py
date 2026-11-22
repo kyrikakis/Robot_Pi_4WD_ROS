@@ -58,6 +58,13 @@ TOOLS = [
            'confirm': {'type': 'boolean'}},
           ['name']),
     _tool('delete_place', 'Forget a named place.', {'name': _TEXT}, ['name']),
+    _tool('capture_photo',
+          'Take a photo with your camera and look at it, when someone asks what you see '
+          'or you need to look. You get the photo right after.'),
+    _tool('remember_face',
+          'Remember the face of the person in front of the camera under their name. Only '
+          'when they ask you to, and only one person may be in view.',
+          {'name': _TEXT}, ['name']),
 ]
 
 NAMES = [t['function']['name'] for t in TOOLS]

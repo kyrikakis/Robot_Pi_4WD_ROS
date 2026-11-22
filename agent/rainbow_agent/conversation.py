@@ -58,6 +58,8 @@ def describe_event(event):
         return f"arrived at the {event['place']}"
     if kind == 'failed':
         return event.get('message') or f"could not get to the {event.get('place')}"
+    if kind == 'face_seen':
+        return f"I can see {event.get('name')} (face recognition)"
     if kind == 'stopped_by_voice':
         return 'someone said stop, so I stopped'
     if kind == 'cancelled':
@@ -161,7 +163,8 @@ class Conversation:
 
     def _recent_user_words(self, n=3):
         said = [m['content'] for m in self.messages
-                if m['role'] == 'user' and not m['content'].startswith(EVENT_PREFIX)]
+                if m['role'] == 'user' and isinstance(m['content'], str)
+                and not m['content'].startswith(EVENT_PREFIX)]
         return ' '.join(said[-n:])
 
     async def _complete(self, tools=True, extra=()):
@@ -199,6 +202,7 @@ class Conversation:
             if not tool_calls:
                 self.last_turn = time.monotonic()
                 return speakable(message.content or '')
+            photos = []
             for c in tool_calls:
                 calls += 1
                 try:
@@ -220,5 +224,14 @@ class Conversation:
                     moved = moved or name in MOVES
                 if self.on_tool:
                     self.on_tool(name, args, result)
+                if result.get('image'):
+                    # Tool results are text only: the photo follows as a message
+                    photos.append(result.pop('image'))
+                    result['photo'] = 'attached below'
                 self.messages.append({'role': 'tool', 'tool_call_id': c.id,
                                       'content': json.dumps(result)})
+            for photo in photos:
+                self.messages.append({'role': 'user', 'content': [
+                    {'type': 'text', 'text': EVENT_PREFIX + 'The photo from my camera:'},
+                    {'type': 'image_url',
+                     'image_url': {'url': f'data:image/jpeg;base64,{photo}'}}]})

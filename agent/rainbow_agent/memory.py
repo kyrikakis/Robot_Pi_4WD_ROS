@@ -77,6 +77,8 @@ def transcript(messages):
     lines = []
     for m in messages:
         content = m.get('content') or ''
+        if not isinstance(content, str):  # a photo message
+            continue
         if m['role'] == 'user' and content:
             lines.append(content if content.startswith('[Robot event]') else f'Person: {content}')
         elif m['role'] == 'assistant' and content:
@@ -122,8 +124,9 @@ class Memory:
         summary, facts = parse_summary(response.choices[0].message.content or '')
         if not summary:
             return None
-        said = ' '.join(m.get('content') or '' for m in messages
-                        if m['role'] == 'user' and not (m.get('content') or '').startswith('['))
+        said = ' '.join(m['content'] for m in messages
+                        if m['role'] == 'user' and isinstance(m.get('content'), str)
+                        and not m['content'].startswith('['))
         facts = [f for f in facts if grounded_in(f, said)]
         vectors = await self.embed([summary] + facts)
         now = time.time()

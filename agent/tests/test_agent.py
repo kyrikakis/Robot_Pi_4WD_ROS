@@ -162,7 +162,9 @@ def test_guards_action_words():
                  'Move forward a bit', 'Remember this spot as the nook',
                  'This is the bathroom, remember it.', 'Forget the hallway',
                  "Let's call the sofa the couch from now on.",
-                 'Yes, the desk is right where you think it is.'):
+                 'Yes, the desk is right where you think it is.',
+                 'Rainbow, what do you see?', "What's in front of you?",
+                 'Look at this!', 'Remember my face, I am Mia'):
         assert wants_action(text), text
     for text in ('What is your name?', 'Do you remember my name?', 'Tell me a joke',
                  "Don't stop believing is a song", 'I like turning pages'):

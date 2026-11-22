@@ -175,6 +175,12 @@ class SimRobot:
         self.places[new_key] = p
         return {'ok': True, 'message': f'updated {new_key}'}
 
+    async def _capture_photo(self):
+        return {'ok': False, 'message': 'my camera is off (simulated robot)'}
+
+    async def _remember_face(self, name):
+        return {'ok': False, 'message': 'face recognition is off (simulated robot)'}
+
     async def _delete_place(self, name):
         key = _norm(name)
         if self.places.pop(key, None) is None:

@@ -26,6 +26,8 @@ change its pin in `install.sh` and rerun `rainbow-agent eval`.
 ~/.rainbow-agent/venv/bin/rainbow-agent chat              # type to Rainbow (simulated robot)
 ~/.rainbow-agent/venv/bin/rainbow-agent pair              # once: link token from the robot (SSH)
 ~/.rainbow-agent/venv/bin/rainbow-agent chat --robot      # the real robot; it speaks the replies
+~/.rainbow-agent/venv/bin/rainbow-agent run               # for real: listens, answers, remembers
+~/.rainbow-agent/venv/bin/rainbow-agent service install   # `run` at login (launchd); uninstall, status
 ~/.rainbow-agent/venv/bin/rainbow-agent transcribe a.wav  # Whisper, with timing
 ~/.rainbow-agent/venv/bin/rainbow-agent eval              # score the model (eval/cases.yaml)
 ```

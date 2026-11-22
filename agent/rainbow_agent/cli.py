@@ -4,6 +4,7 @@
   rainbow-agent chat --robot    type to the real robot (it speaks the replies)
   rainbow-agent pair            fetch the link token from the robot (once)
   rainbow-agent run             the agent for real: listen, think, answer (always on)
+  rainbow-agent service install start `run` at login with launchd (and uninstall, status)
   rainbow-agent transcribe WAV  Whisper on a file, with timing
   rainbow-agent servers         run the model servers in the foreground
   rainbow-agent eval            score the model on agent/eval/cases.yaml
@@ -64,6 +65,36 @@ def log_line(text):
     print(f'{DIM}  [memory] {text}{RESET}')
 
 
+def photo_log(text):
+    print(f'{DIM}  [photos] {text}{RESET}')
+
+
+def tool_display(robot, cfg):
+    """Show tool calls; on the real robot, also keep place photos for localization."""
+    if not hasattr(robot, 'welcome'):
+        return show_tool, None
+    from rainbow_agent.localize import place_photo_hook, PlacePhotos
+    photos = PlacePhotos(cfg.data / 'place_photos')
+    hook = place_photo_hook(robot, photos, photo_log)
+
+    def on_tool(name, args, result):
+        show_tool(name, args, result)
+        hook(name, args, result)
+    return on_tool, photos
+
+
+async def localize_at_start(robot, cfg, photos):
+    """Once linked: if AMCL is not sure, localize from a photo of the place."""
+    from rainbow_agent.localize import localize
+    if not await robot.wait_connected(60.0):
+        return
+    try:
+        message = await localize(robot, llm_client(cfg), cfg.chat_alias, photos)
+    except Exception as e:  # never stop the agent for this
+        message = f'failed: {type(e).__name__}: {e}'
+    photo_log(f'startup localization: {message}')
+
+
 async def idle_sessions(conversation):
     while True:
         await asyncio.sleep(30)
@@ -99,9 +130,12 @@ async def chat(cfg, real=False):
             await robot.say(reply)
 
     memory = open_memory(cfg)
-    conversation = Conversation(llm_client(cfg), cfg.chat_alias, robot, cfg, show_tool,
+    on_tool, photos = tool_display(robot, cfg)
+    conversation = Conversation(llm_client(cfg), cfg.chat_alias, robot, cfg, on_tool,
                                 memory=memory, log=log_line)
     whisper = None
+    if photos is not None:
+        asyncio.ensure_future(localize_at_start(robot, cfg, photos))
 
     async def events():
         while True:
@@ -156,9 +190,11 @@ async def run_agent(cfg):
     await asyncio.to_thread(whisper.transcribe, pcm16_to_float(bytes(32000)))  # load it
     robot = make_robot(cfg, real=True)
     memory = open_memory(cfg)
-    conversation = Conversation(llm_client(cfg), cfg.chat_alias, robot, cfg, show_tool,
+    on_tool, photos = tool_display(robot, cfg)
+    conversation = Conversation(llm_client(cfg), cfg.chat_alias, robot, cfg, on_tool,
                                 memory=memory, log=log_line)
     await robot.start()
+    asyncio.ensure_future(localize_at_start(robot, cfg, photos))
     print('agent running; Ctrl-C to stop')
 
     async def events():
@@ -194,6 +230,44 @@ async def run_agent(cfg):
         await conversation.close()
         memory.close()
         await robot.close()
+
+
+PLIST = Path.home() / 'Library' / 'LaunchAgents' / 'ai.rainbow.agent.plist'
+
+
+def service(cfg, action):
+    """Run `rainbow-agent run` as a launchd agent: at login, restarted if it crashes."""
+    import plistlib
+    domain = f'gui/{os.getuid()}'
+    if action == 'install':
+        cfg.logs.mkdir(parents=True, exist_ok=True)
+        PLIST.parent.mkdir(parents=True, exist_ok=True)
+        with open(PLIST, 'wb') as f:
+            plistlib.dump({
+                'Label': 'ai.rainbow.agent',
+                'ProgramArguments': [str(cfg.root / 'venv' / 'bin' / 'rainbow-agent'), 'run'],
+                'RunAtLoad': True,
+                'KeepAlive': {'SuccessfulExit': False},
+                'ThrottleInterval': 30,
+                'WorkingDirectory': str(cfg.root),
+                'EnvironmentVariables': {'PYTHONUNBUFFERED': '1'},
+                'StandardOutPath': str(cfg.logs / 'agent.log'),
+                'StandardErrorPath': str(cfg.logs / 'agent.log'),
+            }, f)
+        subprocess.run(['launchctl', 'bootout', domain, str(PLIST)], capture_output=True)
+        subprocess.run(['launchctl', 'bootstrap', domain, str(PLIST)], check=True)
+        print(f'installed and started; log: {cfg.logs / "agent.log"}')
+    elif action == 'uninstall':
+        if PLIST.exists():
+            subprocess.run(['launchctl', 'bootout', domain, str(PLIST)], capture_output=True)
+            PLIST.unlink()
+        print('uninstalled')
+    else:
+        out = subprocess.run(['launchctl', 'print', f'{domain}/ai.rainbow.agent'],
+                             capture_output=True, text=True)
+        state = [line.strip() for line in out.stdout.splitlines()
+                 if line.strip().startswith(('state =', 'pid =', 'last exit code'))]
+        print('\n'.join(state) if out.returncode == 0 else 'not installed')
 
 
 def pair(cfg):
@@ -242,6 +316,8 @@ def main(argv=None):
     robot_options(p)
     model_options(p)
     sub.add_parser('pair', help='fetch the link token from the robot over SSH')
+    p = sub.add_parser('service', help='run the agent at login with launchd')
+    p.add_argument('action', choices=['install', 'uninstall', 'status'])
     p = sub.add_parser('run', help='the agent for real: listen to the robot and answer')
     robot_options(p)
     model_options(p)
@@ -273,6 +349,8 @@ def main(argv=None):
                 asyncio.run(chat(cfg, real=args.robot))
         elif args.command == 'pair':
             pair(cfg)
+        elif args.command == 'service':
+            service(cfg, args.action)
         elif args.command == 'run':
             with servers(cfg, embed=True):
                 asyncio.run(run_agent(cfg))
