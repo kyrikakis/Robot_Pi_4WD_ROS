@@ -77,12 +77,11 @@
        (head centred). Pitch + = looking down, roll + = right side low. -->
   <xacro:property name="tof_pitch" value="${radians(2.6)}"/>
   <xacro:property name="tof_roll"  value="${radians(-2.2)}"/>
-  <!-- Fitted against the lidar (the reference), robot 0.8-1.4 m from a desk leg
-       and a wall: without them the ToF placed things ~8.5 cm too far and 4 cm
-       left. A shift, not a range offset: a range offset lifted the floor by ~4 cm.
-       Yaw + = looking left. -->
-  <xacro:property name="tof_dx"    value="-0.085"/>
-  <xacro:property name="tof_yaw"   value="${radians(-1.5)}"/>
+  <!-- No position or yaw correction: the ToF sits in the same head mount as the
+       RGB camera, 8 cm apart (ear_dy). A fitted shift (8.5 cm back, 1.5 deg yaw)
+       put the sensor outside the head and no longer matched the lidar (5 cm too
+       close on a wall); a remaining range error belongs in the ToF data, not in
+       the mount. -->
 
   <!-- Eyes LED matrix, relative to the tilt joint -->
   <xacro:property name="eyes_dx" value="0.048"/>

@@ -78,6 +78,6 @@
   <xacro:ear_camera name="camera" y="${-ear_dy}"/>
 
   <!-- Left ear: Arducam ToF depth camera -->
-  <xacro:ear_camera name="tof" y="${ear_dy}" dx="${tof_dx}" roll="${tof_roll}" pitch="${tof_pitch}" yaw="${tof_yaw}"/>
+  <xacro:ear_camera name="tof" y="${ear_dy}" roll="${tof_roll}" pitch="${tof_pitch}"/>
 
 </robot>

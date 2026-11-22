@@ -173,10 +173,14 @@ The code you edit is the code the robot runs. Lessons learned:
   centred) gives the FOV and the mount pitch/roll. Current values: FOV 48.5 x
   39.3 deg (in base.launch.py; the spec's 64.3 x 50.4 is wrong), pitch +2.6 deg,
   roll -2.2 deg (dimensions.xacro). Floor then reads within ~1-2 cm to 1 m.
-  Against the lidar (the reference) the ToF placed things ~8.5 cm too far and
-  4 cm left: fixed with `tof_dx` -0.085 m and `tof_yaw` -1.5 deg (dimensions.xacro),
-  now within ~2 cm. Not with a range offset (`range_offset`, kept at 0): that
-  also lifted the floor ~3-4 cm and filled the costmaps with ghosts.
+  The ToF sits in the same head mount as the RGB camera, 8 cm apart: its URDF
+  link is that mount, with no fitted shift. A shift fitted against the lidar
+  (`tof_dx` -0.085 m, `tof_yaw` -1.5 deg) put the sensor 8.5 cm back inside the
+  head and was removed (2026-11-22): it had gone stale (wall 5 cm too close,
+  3.8 deg off). Without it the ToF reads a wall ~3 cm farther than the lidar; a
+  range error belongs in the ToF data, not in the mount. Not with a range
+  offset (`range_offset`, kept at 0) either: that also lifted the floor ~3-4 cm
+  and filled the costmaps with ghosts.
 - With the ESP board off there is no odometry or lidar, so SLAM and Nav2 start
   but cannot do anything useful. Do not read that as a failure.
 - The Hailo container's supervisor socket is reachable from here at
