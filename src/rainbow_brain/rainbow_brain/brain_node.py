@@ -122,6 +122,9 @@ class BrainNode(Node):
         # Seconds before the same face is announced to the agent again
         self.face_repeat = self.declare_parameter('face_repeat', 600.0).value
         self.faces_seen = {}
+        # "Look around": turn in place until AMCL is sure, at most this many turns
+        self.localize_max_turns = self.declare_parameter('localize_max_turns', 4).value
+        self.localizing = False
         if not self.map_name:
             raise RuntimeError('map_name is not set (brain.launch.py takes it from the '
                                'localization config)')
@@ -561,6 +564,51 @@ class BrainNode(Node):
             self.say("I'm offline right now. I can only go to places I know, "
                      'come back, or wait.')
 
+    async def sleep(self, seconds):
+        """Wait without blocking the executor (for coroutines on it)."""
+        future = Future()
+        timer = self.create_timer(seconds, lambda: future.done() or future.set_result(True),
+                                  callback_group=self.group)
+        try:
+            await future
+        finally:
+            self.destroy_timer(timer)
+
+    async def spin_localize(self):
+        """Turn in place, 90 deg at a time, until AMCL is sure where the robot is.
+
+        Uses the normal Spin (with its collision checks). Stops as soon as AMCL
+        is 'sure'; after localize_max_turns full turns without that, says so and
+        sends the agent a 'lost' event (it may then try a photo).
+        """
+        if self.localizing:
+            return
+        self.localizing = True
+        try:
+            if self.certainty()[0] == 'sure':
+                self.say('I already know where I am.')
+                return
+            self.say('Let me look around.')
+            for step in range(4 * self.localize_max_turns):
+                ok, message = await self.turn(math.pi / 2)
+                if not ok:
+                    self.get_logger().warning(f'look around: turn failed: {message}')
+                    if message in ('cancelled', 'replaced by a new goal'):
+                        return
+                    break
+                await self.sleep(1.0)  # let AMCL take in the new scans
+                word, pos_std, yaw_std = self.certainty()
+                self.get_logger().info(f'look around: step {step + 1}: {word} '
+                                       f'(+-{pos_std:.2f} m, +-{math.degrees(yaw_std):.0f} deg)')
+                if word == 'sure':
+                    self.say('Got it, I know where I am now.')
+                    self.emit({'kind': 'localized'})
+                    return
+            self.say("I'm not sure where I am.")
+            self.emit({'kind': 'lost'})
+        finally:
+            self.localizing = False
+
     def local_command(self, text, command):
         """Do a recognised voice command; tell the agent it was done."""
         self.get_logger().info(f'voice command: {text}')
@@ -568,6 +616,9 @@ class BrainNode(Node):
             self.stop()
             done = 'stopped'
             self.say('Okay.')
+        elif command['action'] == 'localize':
+            self.executor.create_task(self.spin_localize)
+            done = 'started turning in place until I know where I am'
         else:
             try:
                 place = self.find_place(command['place'])

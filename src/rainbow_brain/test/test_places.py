@@ -102,4 +102,6 @@ def test_command_phrases_and_parsing():
     assert parse('go to the kids room', places) == {'action': 'go_to', 'place': 'kids room'}
     assert parse('go to kitchen', places) == {'action': 'go_to', 'place': 'kitchen'}
     assert parse('go to the garage', places) is None
+    assert parse('look around', places) == {'action': 'localize'}
+    assert 'find yourself' in p
     assert parse('', places) is None

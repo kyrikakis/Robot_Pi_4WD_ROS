@@ -58,6 +58,10 @@ def describe_event(event):
         return f"arrived at the {event['place']}"
     if kind == 'failed':
         return event.get('message') or f"could not get to the {event.get('place')}"
+    if kind == 'lost':
+        return 'I turned around but still do not know where I am'
+    if kind == 'localized':
+        return 'I looked around and now I know where I am'
     if kind == 'face_seen':
         return f"I can see {event.get('name')} (face recognition)"
     if kind == 'stopped_by_voice':

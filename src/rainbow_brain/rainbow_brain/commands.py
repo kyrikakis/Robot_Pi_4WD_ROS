@@ -7,11 +7,12 @@ without the Mac. Everything else goes to the agent.
 
 STOP = ('stop', 'wait')
 HOME = ('come back', 'go home', 'come home')
+LOCALIZE = ('look around', 'find yourself', 'localize')
 
 
 def phrases(place_names):
     """Return the command phrases for these places."""
-    out = list(STOP) + list(HOME)
+    out = list(STOP) + list(HOME) + list(LOCALIZE)
     for name in place_names:
         out += [f'go to the {name}', f'go to {name}']
     return out
@@ -20,12 +21,14 @@ def phrases(place_names):
 def parse(text, place_names):
     """Return the command for a recognised phrase, or None.
 
-    {'action': 'stop'} or {'action': 'go_to', 'place': name}; going home goes
-    to the place named home.
+    {'action': 'stop'}, {'action': 'localize'} or {'action': 'go_to', 'place':
+    name}; going home goes to the place named home.
     """
     text = ' '.join(text.lower().split())
     if text in STOP:
         return {'action': 'stop'}
+    if text in LOCALIZE:
+        return {'action': 'localize'}
     if text in HOME:
         return {'action': 'go_to', 'place': 'home'}
     for prefix in ('go to the ', 'go to '):

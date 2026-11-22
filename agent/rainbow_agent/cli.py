@@ -83,16 +83,20 @@ def tool_display(robot, cfg):
     return on_tool, photos
 
 
-async def localize_at_start(robot, cfg, photos):
-    """Once linked: if AMCL is not sure, localize from a photo of the place."""
+async def localize_from_photo(robot, cfg, photos):
+    """The emergency option: the robot turned around and is still lost (brain event)."""
     from rainbow_agent.localize import localize
-    if not await robot.wait_connected(60.0):
-        return
     try:
         message = await localize(robot, llm_client(cfg), cfg.chat_alias, photos)
     except Exception as e:  # never stop the agent for this
         message = f'failed: {type(e).__name__}: {e}'
-    photo_log(f'startup localization: {message}')
+    photo_log(f'photo localization: {message}')
+
+
+def on_lost(robot, cfg, photos, event):
+    """Start photo localization when the brain says it is lost after looking around."""
+    if photos is not None and event.get('kind') == 'lost':
+        asyncio.ensure_future(localize_from_photo(robot, cfg, photos))
 
 
 async def idle_sessions(conversation):
@@ -134,12 +138,11 @@ async def chat(cfg, real=False):
     conversation = Conversation(llm_client(cfg), cfg.chat_alias, robot, cfg, on_tool,
                                 memory=memory, log=log_line)
     whisper = None
-    if photos is not None:
-        asyncio.ensure_future(localize_at_start(robot, cfg, photos))
 
     async def events():
         while True:
             event = await robot.events.get()
+            on_lost(robot, cfg, photos, event)
             print(f'\n{DIM}  [robot event] {event}{RESET}')
             reply = await conversation.robot_event(event)
             if reply:
@@ -194,12 +197,12 @@ async def run_agent(cfg):
     conversation = Conversation(llm_client(cfg), cfg.chat_alias, robot, cfg, on_tool,
                                 memory=memory, log=log_line)
     await robot.start()
-    asyncio.ensure_future(localize_at_start(robot, cfg, photos))
     print('agent running; Ctrl-C to stop')
 
     async def events():
         while True:
             event = await robot.events.get()
+            on_lost(robot, cfg, photos, event)
             print(f'{DIM}  [robot event] {event}{RESET}')
             reply = await conversation.robot_event(event)
             if reply:

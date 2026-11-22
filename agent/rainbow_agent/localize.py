@@ -2,10 +2,12 @@
 
 Whenever a place is saved through the agent, the robot also takes a photo
 there; it is kept on the Mac (<root>/data/place_photos/<map>/<place>.jpg) and
-follows renames and deletes. At startup, if AMCL is not sure where the robot
-is, the robot takes a photo and the vision model compares it with the place
-photos; a confident match is sent to AMCL as a pose estimate, which the lidar
-then refines. A photo only gives a hint, never a precise pose.
+follows renames and deletes. The emergency option: when the robot turned
+around ("look around", a local command on the Pi) and AMCL is still not sure,
+the brain sends a 'lost' event; then the robot takes a photo and the vision
+model compares it with the place photos; a confident match is sent to AMCL as
+a pose estimate, which the lidar then refines. A photo only gives a hint, never
+a precise pose.
 """
 
 import asyncio
