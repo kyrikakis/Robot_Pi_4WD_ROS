@@ -27,6 +27,10 @@ def is_speech(text):
     t = ' '.join(text.lower().split())
     if len(t) <= 1 or t in HALLUCINATIONS:
         return False
+    # Noise also comes out as symbols ("¢$!", "a ʤ0'-%$!"): need mostly a-z letters
+    letters = sum(c.isascii() and c.isalpha() for c in t)
+    if letters < 2 or letters < 0.6 * len(t.replace(' ', '')):
+        return False
     sentences = [x.strip() for x in re.split(r'[.!?]+', t) if x.strip()]
     return not any(sentences.count(x) >= 3 for x in set(sentences))
 
