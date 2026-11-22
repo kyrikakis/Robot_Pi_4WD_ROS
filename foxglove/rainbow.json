@@ -31,7 +31,9 @@
       "scene": {
         "transforms": {
           "labelSize": 0.04,
-          "axisScale": 0.3
+          "axisScale": 0.3,
+          "visible": false,
+          "showLabel": false
         }
       },
       "transforms": {
@@ -52,12 +54,12 @@
           "colorMode": "costmap"
         },
         "/local_costmap/costmap": {
-          "visible": true,
+          "visible": false,
           "colorMode": "costmap",
           "alpha": 0.6
         },
         "/local_costmap/voxel_grid": {
-          "visible": true,
+          "visible": false,
           "pointSize": 4,
           "colorMode": "flat",
           "flatColor": "#ff8000ff"
@@ -69,7 +71,7 @@
           "flatColor": "#ff0000ff"
         },
         "/point_cloud": {
-          "visible": true,
+          "visible": false,
           "pointSize": 2,
           "colorMode": "colormap",
           "colorField": "z",
@@ -84,7 +86,7 @@
           ]
         },
         "/local_costmap/published_footprint": {
-          "visible": true
+          "visible": false
         },
         "/places/markers": {
           "visible": true
@@ -193,7 +195,9 @@
       "scene": {
         "transforms": {
           "labelSize": 0.04,
-          "axisScale": 0.3
+          "axisScale": 0.3,
+          "visible": false,
+          "showLabel": false
         }
       },
       "transforms": {
