@@ -7,5 +7,3 @@ __pycache__/
 *.pyc
 .env
 
-# The Mac agent (docs/brain.md) does not run on the robot
-agent/
