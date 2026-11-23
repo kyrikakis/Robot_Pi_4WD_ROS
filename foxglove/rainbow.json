@@ -152,7 +152,8 @@
     },
     "RosOut!log": {
       "searchTerms": [],
-      "minLogLevel": 3
+      "minLogLevel": 3,
+      "topicToRender": "/rosout"
     },
     "Gauge!battery": {
       "foxglovePanelTitle": "Battery (volts x 10: 69 = 6.9 V empty, 80 = 8.0 V full)",
