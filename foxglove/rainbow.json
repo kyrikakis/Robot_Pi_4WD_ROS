@@ -152,7 +152,7 @@
     },
     "RosOut!log": {
       "searchTerms": [],
-      "minLogLevel": 3,
+      "minLogLevel": 2,
       "topicToRender": "/rosout"
     },
     "Gauge!battery": {
