@@ -17,19 +17,21 @@ agent/uninstall.sh    # removes ~/.rainbow-agent (asks first: it holds the memor
 
 Everything goes into `~/.rainbow-agent` (or `$RAINBOW_AGENT_HOME`): llama.cpp's
 server, the models, Python, the locked dependencies, uv's cache, data and logs.
+The only thing outside it is the `rainbow-agent` command, linked into
+`~/.local/bin` (on the PATH), which `uninstall.sh` removes too.
 Every download is pinned and checked against its SHA-256; to update one,
 change its pin in `install.sh` and rerun `rainbow-agent eval`.
 
 ## Use
 
 ```
-~/.rainbow-agent/venv/bin/rainbow-agent chat              # type to Rainbow (simulated robot)
-~/.rainbow-agent/venv/bin/rainbow-agent pair              # once: link token from the robot (SSH)
-~/.rainbow-agent/venv/bin/rainbow-agent chat --robot      # the real robot; it speaks the replies
-~/.rainbow-agent/venv/bin/rainbow-agent run               # for real: listens, answers, remembers
-~/.rainbow-agent/venv/bin/rainbow-agent service install   # `run` at login (launchd); uninstall, status
-~/.rainbow-agent/venv/bin/rainbow-agent transcribe a.wav  # Whisper, with timing
-~/.rainbow-agent/venv/bin/rainbow-agent eval              # score the model (eval/cases.yaml)
+rainbow-agent chat              # type to Rainbow (simulated robot)
+rainbow-agent pair              # once: link token from the robot (SSH)
+rainbow-agent chat --robot      # the real robot; it speaks the replies
+rainbow-agent run               # for real: listens, answers, remembers
+rainbow-agent service install   # `run` at login (launchd); uninstall, status
+rainbow-agent transcribe a.wav  # Whisper, with timing
+rainbow-agent eval              # score the model (eval/cases.yaml)
 ```
 
 `chat` and `eval` start the model servers (llama-server on 127.0.0.1:8180,

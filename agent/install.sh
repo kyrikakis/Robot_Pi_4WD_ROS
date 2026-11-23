@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Install Rainbow's Mac agent (docs/brain.md) into one folder, $RAINBOW_AGENT_HOME
 # (default ~/.rainbow-agent). Nothing goes anywhere else: uv's cache, Python
-# itself, the model files and the agent's data all live under that folder.
+# itself, the model files and the agent's data all live under that folder. The
+# one exception is a link to the command, ~/.local/bin/rainbow-agent (an existing
+# file of that name that is not our link is left alone).
 # agent/uninstall.sh removes it again. Safe to rerun: finished downloads are
 # kept, interrupted ones resume, and every file is checked against its SHA-256.
 #
@@ -82,6 +84,22 @@ curl -fsSL -o "$ROOT/models/whisper-large-v3-turbo/config.json" \
 # in the repo (editable install, so changes take effect without reinstalling)
 uv sync --project "$HERE" --frozen --python 3.12 --managed-python
 
+# `rainbow-agent` on the PATH: a link in ~/.local/bin, never over someone else's file
+BIN="$HOME/.local/bin"
+LINK="$BIN/rainbow-agent"
+mkdir -p "$BIN"
+if [[ -L "$LINK" || ! -e "$LINK" ]]; then
+    ln -sfn "$ROOT/venv/bin/rainbow-agent" "$LINK"
+    CMD=rainbow-agent
+    case ":$PATH:" in
+        *":$BIN:"*) ;;
+        *) echo "note: $BIN is not on your PATH; add it to run plain \`rainbow-agent\`" ;;
+    esac
+else
+    echo "note: $LINK exists and is not a link: left alone"
+    CMD="$ROOT/venv/bin/rainbow-agent"
+fi
+
 echo
 echo "Installed in $ROOT ($(du -sh "$ROOT" | cut -f1))."
-echo "Run: $ROOT/venv/bin/rainbow-agent --help"
+echo "Run: $CMD --help"
