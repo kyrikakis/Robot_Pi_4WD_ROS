@@ -92,7 +92,7 @@ LOG_LEVELS = {'debug': Log.DEBUG, 'info': Log.INFO, 'warn': Log.WARN,
 
 
 def agent_status_msg(status, connected, stamp=None):
-    """An AgentStatus from the agent's dict: known fields only, wrong types skipped."""
+    """Build an AgentStatus from the agent's dict: known fields only, wrong types skipped."""
     msg = AgentStatus(connected=connected)
     if stamp is not None:
         msg.stamp = stamp
