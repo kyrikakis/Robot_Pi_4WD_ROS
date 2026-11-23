@@ -87,11 +87,11 @@ class Listener:
             self.follow_up_until = self.clock() + self.follow_up
 
     def moved(self):
-        """The robot was commanded to move (call for every non-zero velocity command)."""
+        """Note a move command (call for every non-zero velocity command)."""
         self.moving_until = self.clock() + self.motion_settle
 
     def _wake(self, now):
-        """The wake word: start a fresh recording, follow-ups allowed again."""
+        """Start a fresh recording on the wake word; follow-ups are allowed again."""
         self.quiet_until = now + self.cooldown
         self.follow_ups = 0
         self._start(follow_up=False, preroll=[])
