@@ -267,28 +267,32 @@
         {
           "title": "Status",
           "layout": {
-            "direction": "row",
-            "first": "RawMessages!brain",
-            "splitPercentage": 40,
-            "second": {
-              "direction": "column",
-              "splitPercentage": 12,
+            "direction": "column",
+            "splitPercentage": 14,
+            "first": {
+              "direction": "row",
+              "splitPercentage": 50,
               "first": {
                 "direction": "row",
                 "first": "Indicator!agent",
                 "second": "Indicator!esp"
               },
               "second": {
-                "direction": "column",
-                "splitPercentage": 30,
-                "first": "Plot!agent",
-                "second": {
-                  "direction": "column",
-                  "splitPercentage": 40,
-                  "first": "Plot!health",
-                  "second": "RosOut!agent"
-                }
+                "direction": "row",
+                "first": "Indicator!nav2",
+                "second": "Indicator!localization"
               }
+            },
+            "second": {
+              "direction": "column",
+              "splitPercentage": 65,
+              "first": {
+                "direction": "row",
+                "splitPercentage": 50,
+                "first": "RawMessages!agent",
+                "second": "RawMessages!brain"
+              },
+              "second": "RosOut!agent"
             }
           }
         }
@@ -322,7 +326,7 @@
       "buttonColor": "#2e7d32"
     },
     "RawMessages!brain": {
-      "foxglovePanelTitle": "Brain and agent status",
+      "foxglovePanelTitle": "Robot",
       "topicPath": "/brain/status",
       "diffEnabled": false,
       "diffMethod": "custom",
@@ -331,26 +335,26 @@
       "expansion": "all"
     },
     "Indicator!agent": {
-      "foxglovePanelTitle": "Mac agent",
+      "foxglovePanelTitle": "Agent",
       "path": "/brain/status.agent.connected",
       "style": "background",
       "fallbackColor": "#a0a0a0",
-      "fallbackLabel": "agent offline (local mode)",
+      "fallbackLabel": "offline",
       "rules": [
         {
           "operator": "=",
           "rawValue": "true",
           "color": "#68e24a",
-          "label": "agent linked"
+          "label": "linked"
         }
       ]
     },
     "Indicator!esp": {
-      "foxglovePanelTitle": "ESP board (lidar age)",
+      "foxglovePanelTitle": "ESP",
       "path": "/brain/status.scan_age",
       "style": "background",
       "fallbackColor": "#ff4040",
-      "fallbackLabel": "ESP silent (see AGENTS.md: CP2102)",
+      "fallbackLabel": "silent",
       "rules": [
         {
           "operator": "<",
@@ -362,71 +366,60 @@
           "operator": "<",
           "rawValue": "2",
           "color": "#68e24a",
-          "label": "ESP ok"
+          "label": "ok"
         }
       ]
-    },
-    "Plot!agent": {
-      "foxglovePanelTitle": "Agent: seconds per turn and transcription",
-      "paths": [
-        {
-          "value": "/brain/status.agent.turn_seconds",
-          "enabled": true,
-          "timestampMethod": "receiveTime",
-          "label": "turn"
-        },
-        {
-          "value": "/brain/status.agent.stt_seconds",
-          "enabled": true,
-          "timestampMethod": "receiveTime",
-          "label": "Whisper"
-        }
-      ],
-      "showXAxisLabels": true,
-      "showYAxisLabels": true,
-      "showLegend": true,
-      "legendDisplay": "floating",
-      "showPlotValuesInLegend": true,
-      "isSynced": true,
-      "xAxisVal": "timestamp",
-      "sidebarDimension": 240
-    },
-    "Plot!health": {
-      "foxglovePanelTitle": "Seconds since the ESP last sent (growing: link down)",
-      "paths": [
-        {
-          "value": "/brain/status.scan_age",
-          "enabled": true,
-          "timestampMethod": "receiveTime",
-          "label": "lidar"
-        },
-        {
-          "value": "/brain/status.odom_age",
-          "enabled": true,
-          "timestampMethod": "receiveTime",
-          "label": "odometry"
-        },
-        {
-          "value": "/brain/status.battery_age",
-          "enabled": true,
-          "timestampMethod": "receiveTime",
-          "label": "battery"
-        }
-      ],
-      "showXAxisLabels": true,
-      "showYAxisLabels": true,
-      "showLegend": true,
-      "legendDisplay": "floating",
-      "showPlotValuesInLegend": true,
-      "isSynced": true,
-      "xAxisVal": "timestamp",
-      "sidebarDimension": 240
     },
     "RosOut!agent": {
       "foxglovePanelTitle": "Agent log",
       "topicToRender": "/agent/log",
       "searchTerms": [],
       "minLogLevel": 1
+    },
+    "RawMessages!agent": {
+      "foxglovePanelTitle": "Agent",
+      "topicPath": "/brain/status.agent",
+      "diffEnabled": false,
+      "diffMethod": "custom",
+      "diffTopicPath": "",
+      "showFullMessageForDiff": false,
+      "expansion": "all"
+    },
+    "Indicator!nav2": {
+      "foxglovePanelTitle": "Nav2",
+      "path": "/brain/status.nav2_ready",
+      "style": "background",
+      "fallbackColor": "#ff4040",
+      "fallbackLabel": "down",
+      "rules": [
+        {
+          "operator": "=",
+          "rawValue": "true",
+          "color": "#68e24a",
+          "label": "ready"
+        }
+      ]
+    },
+    "Indicator!localization": {
+      "foxglovePanelTitle": "Localization",
+      "path": "/brain/status.certainty",
+      "style": "background",
+      "fallbackColor": "#ff4040",
+      "fallbackLabel": "lost or unknown",
+      "rules": [
+        {
+          "operator": "=",
+          "rawValue": "sure",
+          "color": "#68e24a",
+          "label": "sure"
+        },
+        {
+          "operator": "=",
+          "rawValue": "roughly",
+          "color": "#f5c542",
+          "label": "roughly"
+        }
+      ]
     }
   },
   "globalVariables": {},

@@ -78,6 +78,9 @@ The code you edit is the code the robot runs. Lessons learned:
 - **Hardware is single-owner**: the I2C eyes, BNO055 and the ToF camera can only
   be opened by one process; test their nodes by restarting the supervisor
   program, not alongside it.
+- After building a new message type, restart `rainbow_foxglove`: the bridge keeps
+  the interface library it loaded at start and cannot subscribe to the new type
+  ("typesupport library ... could not be found"), so Foxglove panels stay empty.
 - `supervisorctl tail` can fail on non-UTF-8 log output; read
   `/var/log/supervisor/<program>-stdout*.log` directly.
 - **ROS params files** (`config/*.yaml`) must only have node names at the top
@@ -224,6 +227,13 @@ when new work comes up, add it here.
 
 - Drive test with the ESP on (teleop, head directions, lidar/odometry, Nav2
   in a small room). The image rebuild of the refactor is done.
+- Spins in place broke (2026-11-23), in teleop and Nav2: a left spin creeps
+  forward, a right spin backward, battery full. Recorded: `/cmd_vel` is a pure
+  turn (+-0.96 rad/s, 0 forward) and the wheel odometry reports a clean spin
+  (~1 rad/s, <1 cm moved), but the BNO055 shows the body turning at only 0.30-0.35
+  rad/s (it used to be ~80-87%): the robot pivots about its left side. Next: lift
+  it and watch all four wheels on a teleop spin (the ESP's odometry may not see
+  one dragging wheel), check the head is centred.
 - ToF blind zone: ~20-25 cm in front of the nose and outside +-24 deg to the
   sides (head level); obstacles there are only known from memory (30 s). A
   head tilt down would shrink it; try step by step with the owner watching.
