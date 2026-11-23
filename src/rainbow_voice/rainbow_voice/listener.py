@@ -11,6 +11,15 @@ Fed one 80 ms chunk (1280 samples) at a time, it returns events:
        |  \\--speech within follow_up s after the robot spoke--> RECORDING (no wake word)
        \\--stop word (always)--> stop
 While the robot is speaking (speaking(True)) only the stop word is listened for.
+
+The follow-up window must not swallow the wake word or start on motor noise:
+  - the wake word during a follow-up recording restarts it as a normal wake
+    (the hum plays, the recording starts afresh);
+  - no follow-up starts while the robot moves (moved(), called for every
+    non-zero velocity command, counts as moving for motion_settle seconds).
+After the wake word, the recording ends on silence only once min_speech of
+continuous speech was heard: the tail of the wake word or of the hum must not
+end it before the person speaks (it cut off commands at 1.2 s).
 """
 
 from collections import deque
@@ -39,7 +48,8 @@ class Listener:
     def __init__(self, scores, vad, wake_word, stop_word=None, wake_threshold=0.5,
                  stop_threshold=0.5, end_silence=0.8, max_seconds=10.0, no_speech=4.0,
                  follow_up=8.0, preroll=0.4, cooldown=2.0, skip_after_wake=0.0,
-                 follow_up_start=0.48, max_follow_ups=2, clock=time.monotonic):
+                 follow_up_start=0.48, max_follow_ups=2, min_speech=0.24,
+                 motion_settle=0.5, clock=time.monotonic):
         """Set up. scores: chunk -> {word: score} (WakeWords.process); vad: chunk -> bool."""
         self.scores, self.vad, self.clock = scores, vad, clock
         self.wake_word, self.stop_word = wake_word, stop_word
@@ -56,6 +66,9 @@ class Listener:
         self.follow_up_start = max(1, round(follow_up_start / SECONDS))
         self.max_follow_ups = max_follow_ups
         self.follow_ups = 0
+        self.min_speech = max(1, round(min_speech / SECONDS))
+        self.motion_settle = motion_settle
+        self.moving_until = 0.0
         self.preroll = deque(maxlen=max(1, int(preroll / SECONDS)))
         self.state = 'listening'
         self.muted = False
@@ -73,6 +86,17 @@ class Listener:
             # only after real speech (not "not speaking" at startup), and not forever
             self.follow_up_until = self.clock() + self.follow_up
 
+    def moved(self):
+        """The robot was commanded to move (call for every non-zero velocity command)."""
+        self.moving_until = self.clock() + self.motion_settle
+
+    def _wake(self, now):
+        """The wake word: start a fresh recording, follow-ups allowed again."""
+        self.quiet_until = now + self.cooldown
+        self.follow_ups = 0
+        self._start(follow_up=False, preroll=[])
+        return [('wake', False)]
+
     def feed(self, chunk):
         chunk = np.asarray(chunk, dtype=np.int16)
         now = self.clock()
@@ -85,13 +109,14 @@ class Listener:
             return [('stop',)]
         if self.muted:
             return events
+        woke = (scores.get(self.wake_word, 0.0) >= self.wake_threshold
+                and now >= self.quiet_until)
         if self.state == 'listening':
             voiced = self.vad(chunk)
-            if scores.get(self.wake_word, 0.0) >= self.wake_threshold and now >= self.quiet_until:
-                self.quiet_until = now + self.cooldown
-                self.follow_ups = 0
-                self._start(follow_up=False, preroll=[])
-                events.append(('wake', False))
+            if woke:
+                events += self._wake(now)
+            elif now < self.moving_until:
+                self.voiced_run = 0             # motor noise is not a follow-up
             elif now < self.follow_up_until:
                 self.voiced_run = self.voiced_run + 1 if voiced else 0
                 if self.voiced_run >= self.follow_up_start:
@@ -102,6 +127,8 @@ class Listener:
                     return events
             self.preroll.append(chunk)
             return events
+        if woke and self._recording['follow_up']:
+            return self._wake(now)
         return self._record(chunk)
 
     def _start(self, follow_up, preroll):
@@ -109,7 +136,7 @@ class Listener:
         self.voiced_run = 0
         self.follow_up_until = 0.0
         self._recording = {'chunks': list(preroll), 'follow_up': follow_up, 'spoke': False,
-                           'silence': 0, 'time': 0,
+                           'silence': 0, 'time': 0, 'run': 0,
                            'skip': 0 if follow_up else self.skip_after_wake}
 
     def _record(self, chunk):
@@ -120,8 +147,12 @@ class Listener:
             return []
         r['chunks'].append(chunk)
         if self.vad(chunk):
-            r['spoke'], r['silence'] = True, 0
+            r['run'] += 1
+            r['silence'] = 0
+            if r['run'] >= self.min_speech:
+                r['spoke'] = True
         else:
+            r['run'] = 0
             r['silence'] += 1
         done = (r['spoke'] and r['silence'] >= self.end_silence) or r['time'] >= self.max_chunks
         if not r['spoke'] and r['time'] >= self.no_speech:

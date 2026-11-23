@@ -19,6 +19,8 @@ Publishes:  /voice/wake (std_msgs/Empty), /voice/stop (std_msgs/Empty),
             /voice/utterance (rainbow_interfaces/Utterance), /eyes (std_msgs/String)
 Subscribes: /speech/speaking (std_msgs/Bool, latched): no listening while talking
             /voice/grammar (std_msgs/String, latched): JSON list of command phrases
+            /cmd_vel (geometry_msgs/Twist): no follow-up recordings while the robot
+            moves (motor noise started them)
 """
 
 import array
@@ -28,6 +30,7 @@ import subprocess
 import threading
 import time
 
+from geometry_msgs.msg import Twist
 import numpy as np
 from rainbow_interfaces.msg import Utterance
 from rainbow_voice.commands import CommandRecognizer
@@ -88,6 +91,8 @@ class VoiceNode(Node):
             follow_up=p('follow_up', 8.0).value,
             follow_up_start=p('follow_up_start', 0.48).value,
             max_follow_ups=p('max_follow_ups', 2).value,
+            min_speech=p('min_speech', 0.24).value,
+            motion_settle=p('motion_settle', 0.5).value,
             skip_after_wake=0.32 if self.wake_beep else 0.0)
         self.commands = CommandRecognizer(
             models / p('vosk_model', 'vosk-model-small-en-us-0.15').value)
@@ -102,6 +107,7 @@ class VoiceNode(Node):
         self.eyes_pub = self.create_publisher(String, '/eyes', EYES)
         self.create_subscription(Bool, '/speech/speaking', self.on_speaking, LATCHED)
         self.create_subscription(String, '/voice/grammar', self.on_grammar, LATCHED)
+        self.create_subscription(Twist, '/cmd_vel', self.on_cmd_vel, 10)
         # Back to happy eyes if no answer is ever spoken (agent away, no speech node)
         self.create_timer(1.0, self.check_eyes)
 
@@ -118,6 +124,11 @@ class VoiceNode(Node):
         if not msg.data and self.engaged:
             self.engaged = False
             self.eyes('happy')
+
+    def on_cmd_vel(self, msg):
+        if msg.linear.x or msg.linear.y or msg.angular.z:
+            with self.lock:
+                self.listener.moved()
 
     def check_eyes(self):
         if (self.engaged and not self.listener.muted

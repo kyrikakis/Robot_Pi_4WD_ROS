@@ -95,13 +95,19 @@ runs a state machine (`listener.py`) on every 80 ms chunk:
    robot. Until it exists, "stop" works after the wake word, as a local
    command.
 2. **Recording**: after the wake word, webrtcvad cuts the utterance (end
-   after 0.8 s of silence, 10 s maximum; 4 s without speech gives up). This
-   replaces v0-legacy's fixed loudness threshold, which breaks with motor noise.
+   after 0.8 s of silence, 10 s maximum; 4 s without speech gives up). The
+   silence only counts once 0.24 s of continuous speech was heard: the tail of
+   the wake word or of the hum cut commands off at 1.2 s. This replaces
+   v0-legacy's fixed loudness threshold, which breaks with motor noise.
 3. **Local commands**: Vosk (small English model) with the brain's phrase list
    (`/voice/grammar`) runs on each finished utterance (a few ms) and returns the
    matched phrase and its confidence. Anything else maps to "[unk]".
 4. **Follow-up window**: for 8 s after the robot finishes speaking, speech is
-   recorded without the wake word, so a conversation flows.
+   recorded without the wake word, so a conversation flows (at most two in a
+   row). The wake word still works in it: during a follow-up recording it
+   restarts as a normal wake. No follow-up starts while the robot moves
+   (`/cmd_vel` non-zero, and 0.5 s after): motor noise started them, and
+   each one kept the wake word deaf for up to 10 s.
 5. **Echo**: while espeak is speaking (`/speech/speaking`, latched, from
    `speech_node`) only the stop word is listened for, since the mic hears the
    speaker. The Lite cancels echo on the board; check what its two channels

@@ -9,6 +9,7 @@
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>rainbow_interfaces</exec_depend>
   <exec_depend>espeak-ng</exec_depend>
   <exec_depend>alsa-utils</exec_depend>

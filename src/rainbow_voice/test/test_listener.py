@@ -124,9 +124,46 @@ def test_follow_ups_stop_after_two_and_endless_talk_is_dropped():
     assert kinds(s.feed(LOUD, 10)) == []                 # a third: wake word needed
     s.t += 3
     s.feed(QUIET, wake=0.9)                              # the wake word resets it
-    s.feed(LOUD, 2)
+    s.feed(LOUD, 3)
     s.feed(QUIET, 12)
     s.listener.speaking(True)
     s.listener.speaking(False)
     events = s.feed(LOUD, 40)                            # talk that never stops
     assert kinds(events) == ['wake', 'nothing']
+
+
+def test_wake_word_during_a_follow_up_restarts_as_a_wake():
+    s = Script(follow_up=8.0)
+    s.listener.speaking(True)
+    s.listener.speaking(False)
+    assert kinds(s.feed(LOUD, 6)) == ['wake']            # a follow-up starts ...
+    assert s.feed(LOUD, wake=0.9) == [('wake', False)]   # ... "hey Jarvis": a real wake
+    s.feed(LOUD, 4)
+    events = s.feed(QUIET, 12)
+    assert kinds(events) == ['utterance'] and events[0][2] is False
+    assert len(events[0][1]) == CHUNK * (4 + 10)         # only what came after the wake
+
+
+def test_wake_tail_or_hum_does_not_end_the_recording_before_the_command():
+    s = Script(end_silence=0.8, min_speech=0.24, no_speech=4.0)
+    s.feed(QUIET, wake=0.9)
+    s.feed(LOUD, 2)                                      # the hum's tail: 160 ms
+    assert kinds(s.feed(QUIET, 15)) == []                # 1.2 s pause: still recording
+    s.feed(LOUD, 6)                                      # "look around"
+    assert kinds(s.feed(QUIET, 12)) == ['utterance']
+
+
+def test_no_follow_up_while_moving():
+    s = Script(follow_up=8.0, motion_settle=0.5)
+    s.listener.speaking(True)
+    s.listener.speaking(False)
+    for _ in range(20):                                  # turning: motor noise
+        s.listener.moved()
+        assert kinds(s.feed(LOUD)) == []
+    s.feed(QUIET, 7)                                     # stopped and settled
+    assert kinds(s.feed(LOUD, 6)) == ['wake']            # the window still works after
+    assert kinds(s.feed(QUIET, 12)) == ['utterance']
+    s.listener.speaking(True)
+    s.listener.speaking(False)
+    s.listener.moved()
+    assert s.feed(QUIET, wake=0.9)[-1] == ('wake', False)  # the wake word always works
