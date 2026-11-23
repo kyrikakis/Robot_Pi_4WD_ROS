@@ -25,9 +25,10 @@ import sys
 import time
 
 from rainbow_agent.config import Config
-from rainbow_agent.conversation import Conversation
+from rainbow_agent.conversation import Conversation, skill_line
 from rainbow_agent.robot import SimRobot
 from rainbow_agent.servers import chat_server, embed_server
+from rainbow_agent.status import Status
 
 DIM, BOLD, RESET = '\033[2m', '\033[1m', '\033[0m'
 
@@ -61,21 +62,34 @@ def open_memory(cfg):
     return Memory(cfg.data / 'memory.db', llm_client(cfg), cfg.chat_alias, embedder)
 
 
-def log_line(text):
-    print(f'{DIM}  [memory] {text}{RESET}')
+class Notes:
+    """Dim console lines ("  [memory] ..."), also sent to Foxglove's /agent/log.
+
+    status is set once the robot exists (the link logs before that).
+    """
+
+    def __init__(self):
+        self.status = None
+
+    def __call__(self, tag, text, level='info'):
+        print(f'{DIM}  [{tag}] {text}{RESET}')
+        if self.status is not None:
+            self.status.log(level, f'[{tag}] {text}')
+
+    def tagged(self, tag):
+        return lambda text: self(tag, text)
 
 
-def photo_log(text):
-    print(f'{DIM}  [photos] {text}{RESET}')
-
-
-def tool_display(robot, cfg):
+def tool_display(robot, cfg, note):
     """Show tool calls; on the real robot, also keep place photos for localization."""
+    def show_tool(name, args, result):
+        note('robot', skill_line(name, args, result))
+
     if not hasattr(robot, 'welcome'):
         return show_tool, None
     from rainbow_agent.localize import place_photo_hook, PlacePhotos
     photos = PlacePhotos(cfg.data / 'place_photos')
-    hook = place_photo_hook(robot, photos, photo_log)
+    hook = place_photo_hook(robot, photos, note.tagged('photos'))
 
     def on_tool(name, args, result):
         show_tool(name, args, result)
@@ -83,20 +97,23 @@ def tool_display(robot, cfg):
     return on_tool, photos
 
 
-async def localize_from_photo(robot, cfg, photos):
+async def localize_from_photo(robot, cfg, photos, status, note):
     """The emergency option: the robot turned around and is still lost (brain event)."""
     from rainbow_agent.localize import localize
+    status.set(phase='localizing')
     try:
         message = await localize(robot, llm_client(cfg), cfg.chat_alias, photos)
     except Exception as e:  # never stop the agent for this
         message = f'failed: {type(e).__name__}: {e}'
-    photo_log(f'photo localization: {message}')
+    finally:
+        status.set(phase='idle')
+    note('photos', f'photo localization: {message}')
 
 
-def on_lost(robot, cfg, photos, event):
+def on_lost(robot, cfg, photos, event, status, note):
     """Start photo localization when the brain says it is lost after looking around."""
     if photos is not None and event.get('kind') == 'lost':
-        asyncio.ensure_future(localize_from_photo(robot, cfg, photos))
+        asyncio.ensure_future(localize_from_photo(robot, cfg, photos, status, note))
 
 
 async def idle_sessions(conversation):
@@ -105,24 +122,30 @@ async def idle_sessions(conversation):
         conversation.close_if_idle()
 
 
-def show_tool(name, args, result):
-    args_text = ', '.join(f'{k}={v!r}' for k, v in (args or {}).items())
-    status = result.get('message') or ('ok' if result.get('ok') else 'failed')
-    print(f'{DIM}  [robot] {name}({args_text}) -> {status}{RESET}')
-
-
-def make_robot(cfg, real):
+def make_robot(cfg, real, note):
     if not real:
         return SimRobot()
     from rainbow_agent.link import LinkRobot
     if not cfg.link_token.exists():
         raise RuntimeError(f'no link token in {cfg.link_token}: run `rainbow-agent pair`')
-    log = (lambda m: print(f'{DIM}  [link] {m}{RESET}'))
-    return LinkRobot(cfg.robot_hosts, cfg.robot_port, cfg.link_token.read_text().strip(), log)
+    return LinkRobot(cfg.robot_hosts, cfg.robot_port, cfg.link_token.read_text().strip(),
+                     note.tagged('link'))
+
+
+def start_agent(cfg, real):
+    """The robot, its status and log, memory and the conversation."""
+    note = Notes()
+    robot = make_robot(cfg, real, note)
+    status = note.status = Status(robot, cfg.chat_alias)
+    memory = open_memory(cfg)
+    on_tool, photos = tool_display(robot, cfg, note)
+    conversation = Conversation(llm_client(cfg), cfg.chat_alias, robot, cfg, on_tool,
+                                memory=memory, log=note.tagged('memory'), status=status)
+    return robot, status, note, memory, conversation, photos
 
 
 async def chat(cfg, real=False):
-    robot = make_robot(cfg, real)
+    robot, status, note, memory, conversation, photos = start_agent(cfg, real)
     if real:
         await robot.start()
         if not await robot.wait_connected(10.0):
@@ -130,20 +153,18 @@ async def chat(cfg, real=False):
 
     async def speak(reply):
         print(f'{BOLD}rainbow>{RESET} {reply}', end='')
+        status.log('info', f'rainbow> {reply}')
         if real:
             await robot.say(reply)
 
-    memory = open_memory(cfg)
-    on_tool, photos = tool_display(robot, cfg)
-    conversation = Conversation(llm_client(cfg), cfg.chat_alias, robot, cfg, on_tool,
-                                memory=memory, log=log_line)
     whisper = None
 
     async def events():
         while True:
             event = await robot.events.get()
-            on_lost(robot, cfg, photos, event)
-            print(f'\n{DIM}  [robot event] {event}{RESET}')
+            on_lost(robot, cfg, photos, event, status, note)
+            print()
+            note('robot event', event)
             reply = await conversation.robot_event(event)
             if reply:
                 await speak(reply)
@@ -152,6 +173,7 @@ async def chat(cfg, real=False):
 
     event_task = asyncio.ensure_future(events())
     idle_task = asyncio.ensure_future(idle_sessions(conversation))
+    status_task = asyncio.ensure_future(status.refresh())
     print(f'Talk to Rainbow ({"the real robot" if real else "simulated robot"}). Ctrl-D to '
           'quit, /new for a new session, /hear FILE.wav to speak a recording.')
     try:
@@ -170,9 +192,13 @@ async def chat(cfg, real=False):
                 if whisper is None:
                     from rainbow_agent.stt import Whisper
                     whisper = Whisper(cfg.whisper_model)
+                status.set(phase='transcribing')
                 text, seconds = await asyncio.to_thread(
                     whisper.transcribe, text[6:].strip())
                 print(f'{DIM}  [heard in {seconds:.2f} s] {text}{RESET}')
+                status.set(stt_seconds=round(seconds, 2))
+            status.set(last_heard=text)
+            status.log('info', f'you> {text}')
             start = time.monotonic()
             reply = await conversation.user_says(text)
             await speak(reply)
@@ -180,6 +206,7 @@ async def chat(cfg, real=False):
     finally:
         event_task.cancel()
         idle_task.cancel()
+        status_task.cancel()
         await conversation.close()
         memory.close()
         if real:
@@ -191,44 +218,50 @@ async def run_agent(cfg):
     from rainbow_agent.stt import is_speech, pcm16_to_float, Whisper
     whisper = Whisper(cfg.whisper_model)
     await asyncio.to_thread(whisper.transcribe, pcm16_to_float(bytes(32000)))  # load it
-    robot = make_robot(cfg, real=True)
-    memory = open_memory(cfg)
-    on_tool, photos = tool_display(robot, cfg)
-    conversation = Conversation(llm_client(cfg), cfg.chat_alias, robot, cfg, on_tool,
-                                memory=memory, log=log_line)
+    robot, status, note, memory, conversation, photos = start_agent(cfg, real=True)
     await robot.start()
     print('agent running; Ctrl-C to stop')
+
+    async def reply_with(reply, seconds=None):
+        took = '' if seconds is None else f'  {DIM}({seconds:.1f} s){RESET}'
+        print(f'{BOLD}rainbow>{RESET} {reply}{took}')
+        status.log('info', f'rainbow> {reply}')
+        await robot.say(reply)
 
     async def events():
         while True:
             event = await robot.events.get()
-            on_lost(robot, cfg, photos, event)
-            print(f'{DIM}  [robot event] {event}{RESET}')
+            on_lost(robot, cfg, photos, event, status, note)
+            note('robot event', event)
             reply = await conversation.robot_event(event)
             if reply:
-                print(f'{BOLD}rainbow>{RESET} {reply}')
-                await robot.say(reply)
+                await reply_with(reply)
 
     async def utterances():
         while True:
             u = await robot.utterances.get()
             if u.get('handled'):
-                print(f'{DIM}  [handled on the robot] {u.get("text")!r}: {u.get("action")}{RESET}')
+                note('handled on the robot', f'{u.get("text")!r}: {u.get("action")}')
+                status.set(last_heard=u.get('text', ''))
                 await conversation.handled_locally(u.get('text', ''), u.get('action', ''))
                 continue
+            status.set(phase='transcribing')
             audio = pcm16_to_float(base64.b64decode(u.get('audio', '')))
             text, seconds = await asyncio.to_thread(whisper.transcribe, audio)
+            status.set(phase='idle', stt_seconds=round(seconds, 2))
             if not is_speech(text):
-                print(f'{DIM}  [ignored: {text!r}]{RESET}')
+                note('ignored', repr(text), level='debug')
                 continue
             print(f'you> {text}  {DIM}(heard in {seconds:.2f} s){RESET}')
+            status.set(last_heard=text)
+            status.log('info', f'you> {text} (heard in {seconds:.2f} s)')
             start = time.monotonic()
             reply = await conversation.user_says(text)
-            print(f'{BOLD}rainbow>{RESET} {reply}  {DIM}({time.monotonic() - start:.1f} s){RESET}')
-            await robot.say(reply)
+            await reply_with(reply, time.monotonic() - start)
 
     try:
-        await asyncio.gather(events(), utterances(), idle_sessions(conversation))
+        await asyncio.gather(events(), utterances(), idle_sessions(conversation),
+                             status.refresh())
     finally:
         await conversation.close()
         memory.close()

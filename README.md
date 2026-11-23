@@ -133,7 +133,8 @@ published on `/rpi5_ip`), then import the layout `foxglove/rainbow.json`. It has
 3D view (click to send a Nav2 goal), a Places tab (its pose tool picks a pose
 for `/places/save` with `from_pick: true`), teleop, buttons to stop (cancel
 every goal), relocalize (AMCL searches the whole map again) and save a picked place, commanded vs actual speed, head and
-eyes controls, the face-recognition camera and the log. The ToF cloud is heavy
+eyes controls, the face-recognition camera and the log, and a Status tab
+(`/brain/status`: the brain's state and health, the Mac agent's state and log). The ToF cloud is heavy
 over Wi-Fi; hide `/point_cloud` in the 3D view if it lags.
 
 ### Useful commands

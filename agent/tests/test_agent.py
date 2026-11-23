@@ -284,3 +284,38 @@ def test_memory_failures_do_not_break_the_conversation():
     logs = run(scenario())
     assert any('could not recall' in m for m in logs)
     assert any('could not store' in m for m in logs)
+
+
+class ReportingRobot(SimRobot):
+    """A SimRobot that records what the agent reports for Foxglove."""
+
+    def __init__(self):
+        super().__init__(time_scale=0.0)
+        self.reports = []
+        self.logs = []
+
+    def report(self, status):
+        self.reports.append(dict(status))
+
+    def log_line(self, level, text):
+        self.logs.append((level, text))
+
+
+def test_status_reports_a_turn():
+    robot = ReportingRobot()
+    first = message(calls=[tool_call('turn', degrees=90)])
+    first.usage = NS(prompt_tokens=900, completion_tokens=20)
+    second = message('Turned left.')
+    second.usage = NS(prompt_tokens=950, completion_tokens=5)
+    conv, _, _ = make(first, second, robot=robot)
+    assert run(conv.user_says('turn left')) == 'Turned left.'
+    phases = [r['phase'] for r in robot.reports if 'phase' in r]
+    assert phases == ['thinking', 'calling_skill', 'thinking', 'idle']
+    assert any(r.get('skill') == 'turn' for r in robot.reports)
+    s = conv.status.fields
+    assert s['last_reply'] == 'Turned left.' and s['last_skill'].startswith('turn(degrees=90)')
+    assert s['tool_calls'] == 1 and s['session_turns'] == 1
+    assert (s['prompt_tokens'], s['completion_tokens']) == (1850, 25)
+    assert all('uptime' in r for r in robot.reports)
+    conv.new_session()
+    assert conv.status.fields['session_turns'] == 0

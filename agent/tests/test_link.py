@@ -26,6 +26,8 @@ class FakeBrain:
         self.said = []
         self.connected = []
         self.calls = []
+        self.statuses = []
+        self.logs = []
         self.changed = threading.Event()
 
     async def call(self, skill, args):
@@ -44,6 +46,12 @@ class FakeBrain:
 
     def state(self):
         return {'activity': 'idle', 'battery_volts': 7.5, 'places': ['kitchen', 'sofa']}
+
+    def on_agent_status(self, status):
+        self.statuses.append(status)
+
+    def on_agent_log(self, level, text):
+        self.logs.append((level, text))
 
 
 def free_port():
@@ -207,3 +215,25 @@ def test_utterances_reach_the_agent(server):
 
     first, second = asyncio.run(scenario())
     assert first['audio'] == 'AAA=' and second['handled'] is True
+
+
+def test_status_and_logs_reach_the_brain_and_status_survives_a_reconnect(server):
+    link, brain = server
+
+    async def scenario():
+        robot = robot_for(link)
+        robot.report({'phase': 'idle', 'model': 'm'})   # before connecting: kept
+        await robot.start()
+        assert await robot.wait_connected(3.0)
+        assert await until(lambda: {'phase': 'idle', 'model': 'm'} in brain.statuses)
+        robot.report({'phase': 'thinking'})
+        robot.log_line('warn', 'memory: could not recall')
+        assert await until(lambda: brain.statuses[-1] == {'phase': 'thinking'})
+        assert await until(lambda: brain.logs == [('warn', 'memory: could not recall')])
+        # The robot side drops the link (on its own loop); the agent reconnects
+        await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(link.ws.close(), link.loop))
+        assert await until(lambda: brain.connected[-2:] == [False, True])
+        assert await until(lambda: brain.statuses[-1] == {'phase': 'thinking', 'model': 'm'})
+        await robot.close()
+
+    asyncio.run(scenario())

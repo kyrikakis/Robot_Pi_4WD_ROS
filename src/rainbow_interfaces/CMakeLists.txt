@@ -19,6 +19,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/Turn.action"
   "action/Drive.action"
   "msg/Utterance.msg"
+  "msg/AgentStatus.msg"
+  "msg/BrainStatus.msg"
   DEPENDENCIES builtin_interfaces
 )
 

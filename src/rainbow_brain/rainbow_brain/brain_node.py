@@ -27,11 +27,16 @@ Topics:
   /voice/grammar      std_msgs/String (latched) out: JSON list of command phrases
   /places/pick        geometry_msgs/PoseStamped    Foxglove's pose tool (Places tab)
   /places/markers     visualization_msgs/MarkerArray  places on the map (latched)
+  /brain/status       rainbow_interfaces/BrainStatus  for Foxglove: the brain's state,
+                      health (ESP messages, Nav2, speech) and the agent's status
+                      (from the link), every status_period s and on every change
+  /agent/log          rcl_interfaces/Log   the agent's log lines (from the link)
 Camera and faces (the Hailo container, docs/brain.md): capture_photo takes one
 frame from photo_topic on demand; recognised faces on faces_topic become
 face_seen events; remember_face asks the Hailo node to save a face.
 set_pose_estimate publishes /initialpose for AMCL (startup localization).
-Reads: TF map -> base_footprint, /amcl_pose, /battery
+Reads: TF map -> base_footprint, /amcl_pose, /battery; /scan and /odom_raw only
+for their arrival times (not deserialized)
 Link: WebSocket on link_port (8766); token in <data_dir>/link_token.
 
 Places are stored in <data_dir>/places/<map_name>.yaml (rainbow_brain.places).
@@ -43,19 +48,22 @@ import json
 import math
 import os
 import threading
+import time
 
 from action_msgs.msg import GoalStatus
 from action_msgs.srv import CancelGoal
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from hailo_msgs.srv import SaveGalleryItem
 from nav2_msgs.action import DriveOnHeading, NavigateToPose, Spin
+from nav_msgs.msg import Odometry
 from rainbow_brain.commands import parse, phrases
 from rainbow_brain.link import LinkServer, load_token
 from rainbow_brain.places import PlaceStore
 from rainbow_interfaces.action import Drive, GoToPlace, Turn
-from rainbow_interfaces.msg import Place as PlaceMsg, Utterance
+from rainbow_interfaces.msg import AgentStatus, BrainStatus, Place as PlaceMsg, Utterance
 from rainbow_interfaces.srv import (DeletePlace, EditPlace, GetState, ListPlaces,
                                     SavePlace, Say, WhereAmI)
+from rcl_interfaces.msg import Log
 import rclpy
 from rclpy.action import ActionClient, ActionServer, CancelResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
@@ -64,7 +72,7 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, qos_profile_sensor_data, QoSProfile, ReliabilityPolicy
 from rclpy.task import Future
 from rclpy.time import Time
-from sensor_msgs.msg import CompressedImage
+from sensor_msgs.msg import CompressedImage, LaserScan
 from std_msgs.msg import Empty, String, UInt16
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformException, TransformListener
@@ -77,6 +85,35 @@ LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
 # Nav2 actions cancelled by stop
 NAV2_ACTIONS = ['navigate_to_pose', 'navigate_through_poses', 'follow_path', 'spin',
                 'drive_on_heading', 'backup', 'assisted_teleop', 'wait']
+
+
+LOG_LEVELS = {'debug': Log.DEBUG, 'info': Log.INFO, 'warn': Log.WARN,
+              'warning': Log.WARN, 'error': Log.ERROR}
+
+
+def agent_status_msg(status, connected, stamp=None):
+    """An AgentStatus from the agent's dict: known fields only, wrong types skipped."""
+    msg = AgentStatus(connected=connected)
+    if stamp is not None:
+        msg.stamp = stamp
+    for name, kind in AgentStatus.get_fields_and_field_types().items():
+        if name in ('stamp', 'connected') or name not in status:
+            continue
+        try:
+            if kind == 'string':
+                value = str(status[name])
+            elif kind == 'boolean':
+                value = bool(status[name])
+            elif kind.startswith('uint'):
+                value = min(max(int(status[name]), 0), 2**32 - 1)
+            elif kind in ('float', 'double'):
+                value = float(status[name])
+            else:
+                continue
+        except (TypeError, ValueError):
+            continue
+        setattr(msg, name, value)
+    return msg
 
 
 def yaw_of(q):
@@ -125,6 +162,8 @@ class BrainNode(Node):
         # "Look around": turn in place until AMCL is sure, at most this many turns
         self.localize_max_turns = self.declare_parameter('localize_max_turns', 4).value
         self.localizing = False
+        # /brain/status every this many seconds (and on every change)
+        status_period = self.declare_parameter('status_period', 1.0).value
         if not self.map_name:
             raise RuntimeError('map_name is not set (brain.launch.py takes it from the '
                                'localization config)')
@@ -146,6 +185,22 @@ class BrainNode(Node):
         self.pick_time = None
         self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.on_amcl, LATCHED)
         self.create_subscription(UInt16, '/battery', self.on_battery, qos_profile_sensor_data)
+        # Health: when the ESP's messages last arrived (monotonic s); raw, never decoded
+        self.started = time.monotonic()
+        self.arrived = {'battery': None, 'scan': None, 'odom': None}
+        self.create_subscription(LaserScan, '/scan', lambda _: self.mark('scan'),
+                                 qos_profile_sensor_data, raw=True)
+        self.create_subscription(Odometry, '/odom_raw', lambda _: self.mark('odom'),
+                                 qos_profile_sensor_data, raw=True)
+        self.last_event = ''
+        self.last_command = ''
+        # The agent's last status (from the link) and when it arrived
+        self.agent_lock = threading.Lock()
+        self.agent_status = {}
+        self.agent_stamp = None
+        self.status_pub = self.create_publisher(BrainStatus, '/brain/status', LATCHED)
+        self.agent_log_pub = self.create_publisher(Log, '/agent/log', 50)
+        self.create_timer(status_period, self.publish_status)
         self.create_subscription(PoseStamped, '/places/pick', self.on_pick, 10)
         self.markers_pub = self.create_publisher(MarkerArray, '/places/markers', LATCHED)
         self.grammar_pub = self.create_publisher(String, '/voice/grammar', LATCHED)
@@ -207,12 +262,61 @@ class BrainNode(Node):
 
     def emit(self, event):
         """Send an event to the agent (kept for later if none is connected)."""
+        self.last_event = ' '.join(str(v) for v in event.values() if isinstance(v, str))
         if self.link is not None:
             self.link.send_event(event)
+        self.publish_status()
 
     def state_changed(self):
         if self.link is not None:
             self.link.send_state()
+        self.publish_status()
+
+    # Status for Foxglove
+
+    def mark(self, source):
+        self.arrived[source] = time.monotonic()
+
+    def age(self, source):
+        t = self.arrived[source]
+        return -1.0 if t is None else time.monotonic() - t
+
+    def publish_status(self):
+        """Publish /brain/status (from any thread)."""
+        s = self.state()
+        msg = BrainStatus(
+            mode=s['mode'], map=s['map'], activity=s['activity'],
+            localized=s['localized'], certainty=s['certainty'],
+            x=float(s.get('x', 0.0)), y=float(s.get('y', 0.0)), yaw=float(s.get('yaw', 0.0)),
+            position_std=float(s['position_std']), yaw_std=float(s['yaw_std']),
+            battery_volts=float(s['battery_volts']),
+            battery_age=self.age('battery'), scan_age=self.age('scan'),
+            odom_age=self.age('odom'),
+            nav2_ready=self.nav_client.server_is_ready(),
+            speech_ready=self.say_client.service_is_ready(),
+            faces_ready=self.save_face_client.service_is_ready(),
+            places=len(s['places']), last_event=self.last_event,
+            last_command=self.last_command, uptime=time.monotonic() - self.started)
+        msg.stamp = self.get_clock().now().to_msg()
+        if self.localizing:
+            msg.activity = 'looking around' + (
+                '' if msg.activity == 'idle' else f' ({msg.activity})')
+        with self.agent_lock:
+            status, stamp = dict(self.agent_status), self.agent_stamp
+        msg.agent = agent_status_msg(status, self.mode == 'remote', stamp)
+        self.status_pub.publish(msg)
+
+    def on_agent_status(self, status):
+        with self.agent_lock:
+            self.agent_status.update(status)
+            self.agent_stamp = self.get_clock().now().to_msg()
+        self.publish_status()
+
+    def on_agent_log(self, level, text):
+        msg = Log(level=LOG_LEVELS.get(level.lower(), Log.INFO), name='rainbow_agent',
+                  msg=text)
+        msg.stamp = self.get_clock().now().to_msg()
+        self.agent_log_pub.publish(msg)
 
     # Inputs
 
@@ -221,6 +325,7 @@ class BrainNode(Node):
 
     def on_battery(self, msg):
         self.battery = msg.data / 10.0
+        self.mark('battery')
 
     def on_pick(self, msg):
         if msg.header.frame_id != self.map_frame:
@@ -612,6 +717,7 @@ class BrainNode(Node):
     def local_command(self, text, command):
         """Do a recognised voice command; tell the agent it was done."""
         self.get_logger().info(f'voice command: {text}')
+        self.last_command = text
         if command['action'] == 'stop':
             self.stop()
             done = 'stopped'
@@ -793,6 +899,16 @@ class LinkHandler:
         node = self.node
         node.mode = 'remote' if connected else 'local'
         node.get_logger().info(f'mode: {node.mode}')
+        if not connected:
+            node.on_agent_status({'phase': 'offline', 'skill': ''})
+        else:
+            node.publish_status()
+
+    def on_agent_status(self, status):
+        self.node.on_agent_status(status)
+
+    def on_agent_log(self, level, text):
+        self.node.on_agent_log(level, text)
 
     def state(self):
         s = self.node.state()

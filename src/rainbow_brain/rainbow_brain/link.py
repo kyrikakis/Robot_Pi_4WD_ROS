@@ -8,8 +8,11 @@ replaces the old one. Protocol, JSON text messages (docs/brain.md):
   ping                                pong
   call {id, skill, args}              result {id, result}
   say {text}                          event {event}      state {state}
-                                      utterance {audio (base64 16-bit PCM), rate,
-                                                 follow_up} or {handled, text, action}
+  status {status}                     utterance {audio (base64 16-bit PCM), rate,
+  log {level, text}                              follow_up} or {handled, text, action}
+
+status is what the agent is doing (rainbow_interfaces/AgentStatus fields, sent on
+change), log its log lines (level debug, info, warn or error); both are for Foxglove.
 
 The agent must say hello with the right token first, then ping at least every
 heartbeat_timeout seconds; otherwise it is dropped and the brain goes back to
@@ -21,6 +24,8 @@ The brain plugs in through a handler object with:
   say(text)                          speak
   on_connected(connected: bool)      the mode changed
   state() -> dict                    the state to push
+  on_agent_status(status: dict)      the agent's status
+  on_agent_log(level, text)          one of its log lines
 """
 
 import asyncio
@@ -178,6 +183,10 @@ class LinkServer:
             self.handler.say(str(msg.get('text', '')))
         elif kind == 'call':
             asyncio.ensure_future(self._call(ws, msg))
+        elif kind == 'status' and isinstance(msg.get('status'), dict):
+            self.handler.on_agent_status(msg['status'])
+        elif kind == 'log':
+            self.handler.on_agent_log(str(msg.get('level', 'info')), str(msg.get('text', '')))
 
     async def _call(self, ws, msg):
         try:

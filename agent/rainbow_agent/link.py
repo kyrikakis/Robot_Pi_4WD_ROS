@@ -1,6 +1,8 @@
 """LinkRobot: the real robot, through rainbow_brain's WebSocket link.
 
-Same interface as SimRobot (call, snapshot, events) plus say(). Connects to
+Same interface as SimRobot (call, snapshot, events) plus say(), and report() and
+log_line() for Foxglove (the brain publishes them on /brain/status and /agent/log;
+the last status is sent again after a reconnect). Connects to
 the first robot host that answers, says hello with the shared token, pings
 every second (the brain drops a silent agent after 3 s and goes back to LOCAL
 mode), and reconnects by itself. Protocol: src/rainbow_brain/rainbow_brain/link.py.
@@ -36,6 +38,7 @@ class LinkRobot:
         self._pending = {}
         self._ids = itertools.count(1)
         self._task = None
+        self._status = {}
 
     # Lifecycle
 
@@ -80,6 +83,8 @@ class LinkRobot:
         self._ws = ws
         self.connected.set()
         self.log(f'linked to {reply.get("robot", "robot")} at {url} (map {reply.get("map")})')
+        if self._status:
+            await ws.send(json.dumps({'type': 'status', 'status': self._status}))
         return True
 
     async def _session(self, ws):
@@ -140,6 +145,24 @@ class LinkRobot:
         if self._ws is not None and text:
             with contextlib.suppress(websockets.ConnectionClosed):
                 await self._ws.send(json.dumps({'type': 'say', 'text': text}))
+
+    def report(self, status):
+        """Send what the agent is doing (changed AgentStatus fields); kept for reconnects."""
+        self._status.update(status)
+        self._send_soon({'type': 'status', 'status': status})
+
+    def log_line(self, level, text):
+        """Send a log line (debug, info, warn, error); dropped while not connected."""
+        self._send_soon({'type': 'log', 'level': level, 'text': text})
+
+    def _send_soon(self, msg):
+        if self._ws is not None:
+            asyncio.ensure_future(self._send(self._ws, msg))
+
+    @staticmethod
+    async def _send(ws, msg):
+        with contextlib.suppress(websockets.ConnectionClosed):
+            await ws.send(json.dumps(msg))
 
     def snapshot(self):
         if not self.connected.is_set():

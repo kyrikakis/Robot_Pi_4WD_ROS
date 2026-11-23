@@ -268,10 +268,18 @@ Messages (built: hello to state; the rest comes with later steps):
 | Pi → Mac | `event` | arrived / failed / cancelled; link_restored (with the events missed while away, last 10) |
 | Pi → Mac | `state` | activity, battery, places, mode; on changes and every 5 s |
 | Pi → Mac | `utterance` | (step 3) audio, Vosk result, whether it was handled locally |
+| Mac → Pi | `status` | what the agent is doing (phase, skill, last heard/reply, timings, tokens), on change; the brain publishes it inside `/brain/status` |
+| Mac → Pi | `log` | an agent log line with its level; the brain publishes it on `/agent/log` |
 | Pi → Mac | `question` | (later) a decision the brain wants, with a timeout and its local default |
 | Mac → Pi | `answer` | (later) answer to a `question` |
 
 In REMOTE mode the brain no longer says failures itself; the agent decides.
+
+For Foxglove the brain publishes `/brain/status` (`rainbow_interfaces/BrainStatus`)
+every second and on every change: mode, activity, localization, battery, health
+(seconds since the ESP's battery, lidar and odometry messages; Nav2, speech and
+face recognition up) and the agent's status as `agent` (last known values, with
+`connected` false, while no agent is linked). The layout's Status tab shows it.
 
 Events are rate-limited, and the agent decides whether an event is worth saying
 anything about, so the robot does not chatter.

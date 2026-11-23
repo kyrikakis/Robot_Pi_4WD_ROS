@@ -18,6 +18,9 @@ Guards (rainbow_agent.guards): a clear request for an action that got no tool
 call is retried once, with a note that nothing happened (llama-server's
 tool_choice "required" does not force a call with this model); invented place descriptions and
 rooms are dropped; only one move runs per turn.
+
+Status (rainbow_agent.status, for Foxglove): each turn reports thinking, the skill
+being called, the reply, its time, tool calls and tokens, and the session's size.
 """
 
 import asyncio
@@ -28,6 +31,7 @@ import time
 from rainbow_agent.guards import ground_args, MOVES, wants_action
 from rainbow_agent.persona import system_prompt
 from rainbow_agent.skills import TOOLS
+from rainbow_agent.status import Status
 
 EVENT_PREFIX = '[Robot event] '
 NUDGE = (EVENT_PREFIX + 'You answered without calling a tool, so nothing happened. '
@@ -74,9 +78,17 @@ def describe_event(event):
     return json.dumps(event)
 
 
+def skill_line(name, args, result):
+    """'turn(degrees=90) -> turned 90 degrees', for the log and Foxglove."""
+    args_text = ', '.join(f'{k}={v!r}' for k, v in (args or {}).items())
+    status = result.get('message') or ('ok' if result.get('ok') else 'failed')
+    return f'{name}({args_text}) -> {status}'
+
+
 class Conversation:
 
-    def __init__(self, llm, model, robot, cfg, on_tool=None, memory=None, log=print):
+    def __init__(self, llm, model, robot, cfg, on_tool=None, memory=None, log=print,
+                 status=None):
         self.llm = llm                  # an openai.AsyncOpenAI (or a fake in tests)
         self.model = model
         self.robot = robot
@@ -91,6 +103,10 @@ class Conversation:
         self.memories = []              # recalled for this session
         self.session_started = time.time()
         self._storing = set()
+        self.status = status or Status(robot, model)
+        self.turns = 0
+        self.tokens = [0, 0]            # prompt, completion: this turn
+        self.turn_calls = 0
 
     def new_session(self):
         """Start afresh; the finished session goes to memory in the background."""
@@ -102,6 +118,9 @@ class Conversation:
         self.pending_events = []
         self.memories = []
         self.session_started = time.time()
+        self.turns = 0
+        self.status.session_started = None
+        self.status.set(session_turns=0, memories=0)
 
     async def _store(self, messages, started):
         try:
@@ -140,7 +159,7 @@ class Conversation:
                 self.messages.append({'role': 'user', 'content': EVENT_PREFIX + note})
             self.pending_events = []
             self.messages.append({'role': 'user', 'content': text})
-            return await self._turn(text)
+            return await self._reported_turn(text)
 
     async def handled_locally(self, text, action):
         """The robot understood a simple command itself; keep the session in step."""
@@ -159,7 +178,7 @@ class Conversation:
             return None
         async with self.lock:
             self.messages.append({'role': 'user', 'content': EVENT_PREFIX + note})
-            return await self._turn()
+            return await self._reported_turn()
 
     def _maybe_new_session(self):
         if self.messages and time.monotonic() - self.last_turn > self.cfg.session_idle:
@@ -179,7 +198,30 @@ class Conversation:
             model=self.model, messages=[system, *self.messages, *extra],
             temperature=self.cfg.temperature, max_tokens=self.cfg.max_reply_tokens,
             **kwargs)
+        usage = getattr(response, 'usage', None)
+        if usage is not None:
+            self.tokens[0] += getattr(usage, 'prompt_tokens', 0) or 0
+            self.tokens[1] += getattr(usage, 'completion_tokens', 0) or 0
         return response.choices[0].message
+
+    async def _reported_turn(self, said=None):
+        """_turn, with its status for Foxglove."""
+        if self.status.session_started is None:
+            self.status.session_started = time.monotonic()
+        self.tokens = [0, 0]
+        self.turn_calls = 0
+        self.status.set(phase='thinking', skill='', memories=len(self.memories))
+        start = time.monotonic()
+        reply = ''
+        try:
+            reply = await self._turn(said)
+            return reply
+        finally:
+            self.turns += 1
+            self.status.set(phase='idle', skill='', last_reply=reply,
+                            turn_seconds=round(time.monotonic() - start, 2),
+                            tool_calls=self.turn_calls, prompt_tokens=self.tokens[0],
+                            completion_tokens=self.tokens[1], session_turns=self.turns)
 
     async def _turn(self, said=None):
         """said: the person's words that started this turn (None for robot events)."""
@@ -209,6 +251,7 @@ class Conversation:
             photos = []
             for c in tool_calls:
                 calls += 1
+                self.turn_calls += 1
                 try:
                     args = json.loads(c.function.arguments or '{}')
                 except json.JSONDecodeError:
@@ -221,7 +264,10 @@ class Conversation:
                               'tell the person what you did and let them ask again'}
                 else:
                     args, dropped = ground_args(name, args, self._recent_user_words())
+                    self.status.set(phase='calling_skill', skill=name)
                     result = await self.robot.call(name, args)
+                    self.status.set(phase='thinking', skill='',
+                                    last_skill=skill_line(name, args, result))
                     if dropped:
                         result['note'] = (f'{" and ".join(dropped)} left out: only save what '
                                           'the person said')
