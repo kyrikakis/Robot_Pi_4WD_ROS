@@ -8,8 +8,8 @@ the brain's phrase list (rainbow_voice.commands) and is published for the
 brain, which handles local commands itself and sends the rest to the Mac.
 
 Wake words (wake_models, any one wakes, each with its own threshold in
-wake_thresholds): hey_rainbow.onnx answers "hey Rainbow" and "Rainbow" alone,
-hey_robot.onnx "hey Robot" and "Robot" (the fallback name). The
+wake_thresholds): hey_rainbow.onnx answers "hey Rainbow" and "Rainbow" alone
+(hey_robot.onnx, "hey Robot"/"Robot", ships too but is not heard well enough). The
 stop word (stop_model, stop.onnx) is heard at any time, even while the robot talks;
 "Rainbow, stop" also works, as a local command after the wake word. These models
 were trained for Rainbow (training/wakeword/, synthetic voices) and live in this
@@ -87,8 +87,8 @@ class VoiceNode(Node):
         self.channels = p('channels', 2).value
         self.channel = p('channel', 0).value
         models = Path(p('models_dir', '/opt/rainbow/voice').value)
-        wake_models = list(p('wake_models', ['hey_rainbow.onnx', 'hey_robot.onnx']).value)
-        thresholds = list(p('wake_thresholds', [0.3, 0.3]).value)
+        wake_models = list(p('wake_models', ['hey_rainbow.onnx']).value)
+        thresholds = list(p('wake_thresholds', [0.3]).value)
         stop_model = p('stop_model', 'stop.onnx').value
 
         self.wake_beep = p('wake_beep', False).value

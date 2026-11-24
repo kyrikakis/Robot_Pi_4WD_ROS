@@ -78,10 +78,11 @@ runs a state machine (`listener.py`) on every 80 ms chunk:
    `wake_models` is a list, any one wakes, each with its threshold in
    `wake_thresholds`. `hey_rainbow.onnx` answers "hey Rainbow" and "Rainbow"
    alone (threshold 0.3; the "hey"-only round is kept in the training results).
-   `hey_robot.onnx` (threshold 0.3) is the fallback: "hey Robot" and "Robot" alone,
-   "hey Robot" 82% in a quiet room, 72/62/47% at 10/5/0 dB, 42% across the room,
-   ~0.4 false wakes per hour; the bare "Robot" 83% quiet, 62/54/36%, 33%. Either
-   model can be dropped from `wake_models` without retraining. On the synthetic test
+   `hey_robot.onnx` ("hey Robot" and "Robot" alone) ships too but is not in
+   `wake_models`: on synthetic voices at 0.3 "hey Robot" scored 82% in a quiet
+   room (72/62/47% at 10/5/0 dB, 42% across the room, ~0.4 false wakes per hour),
+   but the owner's "Robot" through the ReSpeaker stayed under 0.3. On the robot
+   the owner finds "hey Rainbow" far better than "hey Jarvis". On the synthetic test
    (standard voices, 0.5): "hey Rainbow" 100% in a quiet room, 84/69/42% at
    10/5/0 dB noise, 45% far across a reverberant room, 0.7 false wakes per hour of
    AudioSet; "hey Jarvis" scores 99, 95/89/71, 78, 0.2: ours still trail in noise
