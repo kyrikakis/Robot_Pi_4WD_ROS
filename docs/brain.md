@@ -498,6 +498,16 @@ the brain does not move the head: photos are taken with it centred, and the
 6. Hailo stills and faces (other repo), place photo database, startup
    localization.
 7. Head movement controller, then photos in several directions.
+8. Recognising voices (later): a pre-trained speaker-embedding model (a few MB,
+   e.g. WeSpeaker or 3D-Speaker through sherpa-onnx, pinned) in `rainbow_voice`
+   turns each utterance into a voice print and names the closest enrolled
+   person, or "unknown", on the utterance. Enrolment by voice ("Rainbow,
+   remember my voice"): 5-10 sentences per person through the ReSpeaker, so the
+   robot's own noise is in the prints; prints on the data volume. No training.
+   Expect: reliable among a few household members from ~2 s of speech, weak on
+   a bare "stop", alike voices can mix. Not a security check (a recording fools
+   it): for names, per-person memory and cross-checking faces. To discuss: who
+   is enrolled and what changes once the speaker is known.
 
 Each step is discussed with the owner before it is built.
 
