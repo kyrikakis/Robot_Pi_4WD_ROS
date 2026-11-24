@@ -2,7 +2,7 @@
 
 Uses the agent's Whisper (large-v3-turbo) from its venv:
 
-  ~/.rainbow-agent/venv/bin/python whisper_filter.py ~/rainbow-wakeword-data/accent_pool
+  ~/.rainbow-agent/venv/bin/python whisper_filter.py <accent_pool folder>
 
 For every <model>/<split>/ directory it writes accepted.txt and rejected.txt (file name,
 tab, transcript); files already listed are skipped, so it can be stopped and rerun.
