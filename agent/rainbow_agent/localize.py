@@ -93,7 +93,7 @@ async def localize(robot, llm, model, photos, min_confidence=0.6):
     state = await robot.call('get_state', {})
     if not state.get('ok'):
         return f'no state from the robot: {state.get("message")}'
-    if state.get('certainty') in ('sure', 'roughly'):
+    if state.get('certainty') == 'sure':   # roughly can be a metre off: try the photo
         return f'already localized ({state["certainty"]})'
     references = dict(list(photos.all(state.get('map', '')).items())[:MAX_REFERENCES])
     if not references:

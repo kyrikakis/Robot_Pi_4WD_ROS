@@ -7,7 +7,7 @@ string map
 # What the brain is doing, e.g. "idle", "going to kitchen", "turning", "looking around"
 string activity
 # Localization (AMCL): certainty word (sure, roughly, lost, unknown), pose in the map,
-# standard deviations (m, rad; negative when unknown)
+# standard deviations (m, rad; negative when unknown). localized: only when sure
 bool localized
 string certainty
 float64 x

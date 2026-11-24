@@ -2,6 +2,7 @@
 # local (no agent) or remote (agent connected)
 string mode
 string map
+# True only when AMCL is sure (see WhereAmI)
 bool localized
 string certainty
 float64 x

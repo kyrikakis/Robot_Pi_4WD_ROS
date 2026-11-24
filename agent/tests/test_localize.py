@@ -73,6 +73,10 @@ def test_localize_only_when_needed_and_confident(tmp_path):
     robot = FakeRobot(certainty='sure')
     assert 'already localized' in run(localize(robot, FakeLLM(), 'm', photos))
 
+    robot = FakeRobot(certainty='roughly')   # not good enough: a photo is tried
+    llm = FakeLLM('{"place": "kitchen", "confidence": 0.9}')
+    assert 'pose estimate at kitchen' in run(localize(robot, llm, 'm', photos))
+
     robot, llm = FakeRobot(), FakeLLM('{"place": "sofa", "confidence": 0.9}')
     assert 'pose estimate at sofa' in run(localize(robot, llm, 'm', photos))
     assert robot.calls[-1] == ('set_pose_estimate', {'place': 'sofa'})

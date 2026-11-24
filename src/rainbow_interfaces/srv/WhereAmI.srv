@@ -1,6 +1,7 @@
 # The robot's position in words, from the places file and AMCL.
 ---
-# False when there is no map -> base_footprint transform yet
+# True only when AMCL is sure (not when roughly: that can be a metre off) and there is
+# a map -> base_footprint transform
 bool localized
 # How sure AMCL is: sure, roughly, lost, or unknown (no AMCL pose yet)
 string certainty

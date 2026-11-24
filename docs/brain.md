@@ -463,7 +463,8 @@ a little. A photo only gives it a hint; it is never treated as a precise pose.
    (`~/.rainbow-agent/data/place_photos/<map>/`), following renames and
    deletes. Places saved from Foxglove have no photo.
 2. **At startup** (once the link is up): the agent calls `get_state()`; if
-   AMCL is `sure` or `roughly` localized, it stops there.
+   AMCL is `sure`, it stops there (`roughly` can be a metre off, so it is not
+   taken as localized anywhere).
 3. Otherwise it takes a photo and asks the vision model which place photo
    shows the same spot (current photo first, then up to 6 labelled
    references, each label right before its photo; with the label after the

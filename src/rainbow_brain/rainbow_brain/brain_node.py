@@ -374,7 +374,9 @@ class BrainNode(Node):
         x, y, yaw = pose
         with self.places_lock:
             sentence, near, ahead = self.places.describe(x, y, yaw, self.near_distance, word)
-        out = {'ok': True, 'localized': True, 'certainty': word, 'description': sentence,
+        # Only 'sure' counts as localized: 'roughly' can be a metre off
+        out = {'ok': True, 'localized': word == 'sure', 'certainty': word,
+               'description': sentence,
                'x': round(x, 2), 'y': round(y, 2), 'yaw': round(yaw, 2)}
         if near is not None:
             out['nearest_place'] = near.name
@@ -393,7 +395,7 @@ class BrainNode(Node):
         with self.places_lock:
             names = [p.name for p in self.places.sorted_places()]
         out = {'ok': True, 'mode': self.mode, 'map': self.map_name,
-               'localized': pose is not None, 'certainty': word,
+               'localized': pose is not None and word == 'sure', 'certainty': word,
                'position_std': round(pos_std, 2), 'yaw_std': round(yaw_std, 2),
                'battery_volts': round(float(self.battery or 0.0), 1),
                'activity': current['label'] if current else 'idle', 'places': names}
@@ -537,7 +539,7 @@ class BrainNode(Node):
             pose = self.pose()
             if pose is None:
                 raise ValueError("I don't know where I am, so I can't save this place")
-            if self.certainty()[0] == 'lost':
+            if self.certainty()[0] != 'sure':
                 raise ValueError("I'm not sure where I am yet, so I can't save this place")
             x, y, yaw = pose
             source = 'robot' if guess else 'owner'
