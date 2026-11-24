@@ -8,6 +8,25 @@
 ![robot_back_right](./images/robot_back_right.jpeg)
 ![robot_top](./images/robot_top.jpeg)
 
+## Hardware
+
+| Part | What | Connected to |
+|---|---|---|
+| Computer | Raspberry Pi 5 | |
+| AI accelerator | Hailo-8 (face recognition, in its own container) | PCIe |
+| Motor controller | Yahboom MicroROS control board (ESP32) | USB serial (CP2102), micro-ROS |
+| Motors | 4x Yahboom MD310Z20: 7.4 V, 1:20, encoder, 3 mm D-shaft, 450 rpm | ESP32 board |
+| Wheels | 45 mm, skid-steer (wheelbase 13 cm, 14 cm across) | Motors |
+| Lidar | Oradar MS200 | ESP32 board |
+| Head | Pan/tilt, 2x MG90S servos | ESP32 board |
+| Depth camera | Arducam ToF, in the head | CSI (`cam0`) |
+| RGB camera | Raspberry Pi Camera Module 3, in the head | CSI (`cam1`) |
+| IMU | BNO055 (the ESP32 board's own IMU is unused) | I2C |
+| Eyes | Two 8x8 LED matrices on an HT16K33 | I2C |
+| Microphone and speaker | ReSpeaker Lite, speaker on its output | USB |
+| Wi-Fi | ALFA adapter (rtl8812au driver) | USB |
+| Battery | Zee 2S LiPo 7.4 V, 8000 mAh, 100C (~6.9-8.0 V in use) | ESP32 board |
+
 ## Installation
 1. Download and install a new pi bookworm image in a micro sd. Proposed a Sundisk Extreme A2 256GB using the pi imager 
 2. Edit the imager settings and add your ~/.ssh/id_rsa.pub
