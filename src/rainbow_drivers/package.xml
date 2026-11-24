@@ -18,6 +18,7 @@
   <exec_depend>tf2_ros</exec_depend>
   <!-- Not in rosdep, installed with pip in the Dockerfile:
        adafruit-circuitpython-ht16k33 (eyes), ArducamDepthCamera (tof) -->
+  <test_depend>python3-pytest</test_depend>
 
   <export>
     <build_type>ament_python</build_type>

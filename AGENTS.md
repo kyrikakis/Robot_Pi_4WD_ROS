@@ -34,10 +34,11 @@ unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
   so a power-on is a clean deployment. This is deliberate; do not bind-mount
   the repo. The image is built from the **Pi host's** checkout, not from inside
   the container.
-- Supervisor runs eight of its nine programs from `supervisor/rainbow.conf`, each a
+- Supervisor runs nine of its ten programs from `supervisor/rainbow.conf`, each a
   `rainbow_bringup` launch file via `scripts/rainbow_launch.sh`. The micro-ROS
-  agent (`rainbow_microros`) and the ToF (`rainbow_tof`) are separate programs:
-  restarting the base disconnects neither the ESP nor the ToF.
+  agent (`rainbow_microros`), the ToF (`rainbow_tof`) and the head
+  (`rainbow_head`) are separate programs: restarting the base disconnects
+  neither the ESP nor the ToF, and the head can be tuned without touching the EKF.
 - Localization is map_server + AMCL (`rainbow_localization`) on a saved map in
   `maps/`, read-only. slam_toolbox (`rainbow_slam`, autostart off) is only for
   mapping a new place; never run both (both publish map -> odom). Its
@@ -47,7 +48,7 @@ unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
 - **Restarting `rainbow_base` restarts the EKF, which resets the odometry: AMCL
   then needs a pose estimate, and a SLAM mapping session gets scrambled
   (restart `rainbow_slam` right after). Ask the owner before restarting the
-  base.** Restarting Nav2, the ToF or the brain is safe.
+  base.** Restarting Nav2, the ToF, the head or the brain is safe.
 - Nav2 runs composed in one process (`nav2_container`); as separate processes
   its 11 servers cost ~66% of a core idle, composed ~38%.
 - `ROS_DOMAIN_ID=20` for the robot.
@@ -261,11 +262,18 @@ when new work comes up, add it here.
   `training/wakeword/README.md`), then household recordings; re-enable face
   recognition in the Hailo container (photos, faces and startup localization
   depend on it). Memory and photos/faces (steps 5-6) are built.
-- Head controller (`docs/brain.md` step 7, branch `head-controller`): smooth,
-  calm moves, `/joint_states` following the moving head, a settle time before photos, a
-  `look` skill in degrees, and a latest-target-wins topic for following faces
-  later. Later still: ToF + camera, the distance of what the camera sees, placed
-  in the map.
+- Head controller (`docs/brain.md` step 7, branch `head-controller`): built and
+  tested on the Mac (motion profile unit tests; the node in a `ros:jazzy`
+  container on domain 77; agent eval 34/34), not yet on the robot. The head moved
+  out of `rainbow_base` into its own program `rainbow_head`: the running
+  container needs the new supervisor conf (image rebuild) and one base restart
+  (owner's call), or the old head in the base and the new one both drive the
+  servos. Then, with the owner watching: speed (30 deg/s, accel 60 deg/s^2:
+  calm, may jitter at 1 deg steps), the settle time (estimated 0.2 s + 5 ms/deg;
+  measure with the ToF image going still, robot at rest) and `servo_latency_s`
+  (0.05 s, estimated). Then photos in several directions for startup
+  localization. Later: following faces (`/head/target`), and ToF + camera
+  fusion, the distance of what the camera sees, placed in the map.
 - Battery: warn around 7.0 V (log, eyes or speech) and cancel Nav2 goals /
   stop at the cutoff (~6.6-6.9 V, judged at rest). The firmware's own low-voltage
   behaviour is unknown. Not part of the brain work for now; later it becomes a

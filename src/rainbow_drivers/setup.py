@@ -12,6 +12,7 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
+    tests_require=['pytest'],
     maintainer='Stefanos Kyrikakis',
     maintainer_email='kirikakis@gmail.com',
     description="Rainbow's hardware nodes: head, eyes, ToF, velocity watchdog, IP publisher.",

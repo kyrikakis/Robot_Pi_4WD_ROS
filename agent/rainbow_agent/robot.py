@@ -15,6 +15,9 @@ Events are dicts on robot.events: {'kind': 'arrived' | 'failed' | ..., ...}.
 import asyncio
 import math
 
+# In look's result: the head moving shows the model nothing (it made up what was there)
+LOOK_SEEN = 'nothing yet: call capture_photo to see what is there'
+
 
 def _norm(name):
     name = ' '.join(str(name).lower().split())
@@ -174,6 +177,12 @@ class SimRobot:
         new_key = _norm(new_name) if new_name else key
         self.places[new_key] = p
         return {'ok': True, 'message': f'updated {new_key}'}
+
+    async def _look(self, pan_degrees=0.0, tilt_degrees=0.0):
+        pan = max(-40.0, min(38.0, float(pan_degrees)))
+        tilt = max(-19.0, min(36.0, float(tilt_degrees)))
+        return {'ok': True, 'message': f'looking {pan:.0f} deg left, {tilt:.0f} deg up',
+                'pan_degrees': round(pan), 'tilt_degrees': round(tilt), 'seen': LOOK_SEEN}
 
     async def _capture_photo(self):
         return {'ok': False, 'message': 'my camera is off (simulated robot)'}

@@ -87,8 +87,9 @@ Supervisor starts these when the container starts (`supervisor/rainbow.conf`):
 | Program | Launch file | Contents |
 |---|---|---|
 | `rainbow_microros` | `microros.launch.py` | micro-ROS agent (ESP board) |
-| `rainbow_base` | `base.launch.py` | description, BNO055, EKF, head, eyes, velocity watchdog, IP publisher |
+| `rainbow_base` | `base.launch.py` | description, BNO055, EKF, eyes, velocity watchdog, IP publisher |
 | `rainbow_tof` | `tof.launch.py` | ToF camera |
+| `rainbow_head` | `head.launch.py` | Pan/tilt head (smooth moves) |
 | `rainbow_localization` | `localization.launch.py` | map_server + AMCL on the saved map in `maps/` |
 | `rainbow_slam` | `slam.launch.py` | slam_toolbox, for mapping (not started by default) |
 | `rainbow_navigation` | `navigation.launch.py` | Nav2 |
@@ -108,13 +109,15 @@ map_saver_cli -f maps/<name>`, set `yaml_filename` in
 `config/localization.yaml`, then swap the two programs back.
 
 To run everything by hand instead: `scripts/rainbow_launch.sh rainbow.launch.py`
-(arguments `localization`, `navigation`, `foxglove`, `voice`, `tof`,
+(arguments `localization`, `navigation`, `foxglove`, `voice`, `tof`, `head`,
 `microros`, `brain`, default `true`; `slam` default `false`).
 
 ### Talking to the robot
 
 ```
-# Head (radians; pan positive = left, tilt positive = down)
+# Head (radians; pan positive = left, tilt positive = down). Moves are smooth;
+# /head/move returns once the head has settled, set_pose returns at once
+ros2 action send_goal /head/move rainbow_interfaces/action/MoveHead "{pan: 0.3, tilt: 0.0}"
 ros2 service call /head/set_pose rainbow_interfaces/srv/SetHeadPose "{pan: 0.3, tilt: 0.0}"
 ros2 service call /head/center std_srvs/srv/Trigger
 

@@ -61,6 +61,15 @@
 - id: look
   say: Rainbow, what do you see?
   expect: [{name: capture_photo}]
+- id: look-left
+  say: Rainbow, look to your left.
+  expect: [{name: look, args: {pan_degrees: {min: 15, max: 60}}}]
+  forbid: [turn]
+  reply_not: [hallway, door, kitchen, sofa]
+- id: look-down-see
+  say: Look down and tell me what you see.
+  expect: [{name: look, args: {tilt_degrees: {min: -60, max: -5}}}, {name: capture_photo}]
+  forbid: [turn, drive_forward]
 - id: unknown-place
   say: Go to the garage.
   forbid: [save_place, delete_place, edit_place]

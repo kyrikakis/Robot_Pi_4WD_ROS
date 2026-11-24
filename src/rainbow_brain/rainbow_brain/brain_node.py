@@ -31,6 +31,8 @@ Topics:
                       health (ESP messages, Nav2, speech) and the agent's status
                       (from the link), every status_period s and on every change
   /agent/log          rcl_interfaces/Log   the agent's log lines (from the link)
+Head: look points the head (the head node's /head/move action, which returns once
+the head has settled); capture_photo skips frames while /head/moving is true.
 Camera and faces (the Hailo container, docs/brain.md): capture_photo takes one
 frame from photo_topic on demand; recognised faces on faces_topic become
 face_seen events; remember_face asks the Hailo node to save a face.
@@ -59,7 +61,7 @@ from nav_msgs.msg import Odometry
 from rainbow_brain.commands import parse, phrases
 from rainbow_brain.link import LinkServer, load_token
 from rainbow_brain.places import PlaceStore
-from rainbow_interfaces.action import Drive, GoToPlace, Turn
+from rainbow_interfaces.action import Drive, GoToPlace, MoveHead, Turn
 from rainbow_interfaces.msg import AgentStatus, BrainStatus, Place as PlaceMsg, Utterance
 from rainbow_interfaces.srv import (DeletePlace, EditPlace, GetState, ListPlaces,
                                     SavePlace, Say, WhereAmI)
@@ -73,7 +75,7 @@ from rclpy.qos import DurabilityPolicy, qos_profile_sensor_data, QoSProfile, Rel
 from rclpy.task import Future
 from rclpy.time import Time
 from sensor_msgs.msg import CompressedImage, LaserScan
-from std_msgs.msg import Empty, String, UInt16
+from std_msgs.msg import Bool, Empty, String, UInt16
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformException, TransformListener
 from vision_msgs.msg import Detection2DArray
@@ -214,6 +216,9 @@ class BrainNode(Node):
                                  qos_profile_sensor_data, callback_group=self.group)
         self.initialpose_pub = self.create_publisher(
             PoseWithCovarianceStamped, '/initialpose', 10)
+        # The head node's state: no photos while it moves or settles
+        self.head_moving = False
+        self.create_subscription(Bool, '/head/moving', self.on_head_moving, LATCHED)
 
         # The running move: {'label', 'handle' (ours, or None from the link),
         # 'nav' (Nav2's), 'replaced'}
@@ -224,6 +229,7 @@ class BrainNode(Node):
         self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose', **g)
         self.spin_client = ActionClient(self, Spin, 'spin', **g)
         self.drive_client = ActionClient(self, DriveOnHeading, 'drive_on_heading', **g)
+        self.head_client = ActionClient(self, MoveHead, '/head/move', **g)
         self.cancel_clients = [self.create_client(CancelGoal, f'{a}/_action/cancel_goal', **g)
                                for a in NAV2_ACTIONS]
         self.say_client = self.create_client(Say, '/speech/say', **g)
@@ -593,12 +599,32 @@ class BrainNode(Node):
                     self.emit({'kind': 'face_seen', 'name': name})
                 self.faces_seen[name] = now
 
+    def on_head_moving(self, msg):
+        self.head_moving = msg.data
+
+    async def look(self, pan_deg, tilt_deg):
+        """Point the head (degrees, 0, 0 = straight ahead); returns (ok, message, pan, tilt)."""
+        if not self.head_client.wait_for_server(timeout_sec=1.0):
+            return False, 'my head is not working right now', None, None
+        goal = MoveHead.Goal(pan=math.radians(pan_deg), tilt=math.radians(tilt_deg))
+        handle = await self.head_client.send_goal_async(goal)
+        if not handle.accepted:
+            return False, 'my head refused to move', None, None
+        response = await handle.get_result_async()
+        result = response.result
+        pan, tilt = math.degrees(result.pan), math.degrees(result.tilt)
+        return response.status == GoalStatus.STATUS_SUCCEEDED, result.message, pan, tilt
+
     async def capture_photo(self, timeout=3.0):
-        """Return one JPEG from the camera (shrunk to photo_width), or None."""
+        """Return one JPEG from the camera (shrunk to photo_width), or None.
+
+        Frames that arrive while the head moves or settles are skipped (blurred,
+        or not where the head points); the timeout counts from the call.
+        """
         future = Future()
 
         def on_image(msg):
-            if not future.done():
+            if not future.done() and not self.head_moving:
                 future.set_result(msg)
 
         sub = self.create_subscription(CompressedImage, self.photo_topic, on_image,
@@ -1015,6 +1041,18 @@ class LinkHandler:
     def skill_delete_place(self, name):
         place = self.node.delete_place(name)
         return {'ok': True, 'message': f'deleted {place.name}'}
+
+    async def skill_look(self, pan_degrees=0.0, tilt_degrees=0.0):
+        # The agent's tilt is positive up; the head's (URDF) positive down
+        ok, message, pan, tilt = await self.node.look(float(pan_degrees), -float(tilt_degrees))
+        out = {'ok': ok, 'message': message}
+        if pan is not None:
+            out['pan_degrees'], out['tilt_degrees'] = round(pan), round(-tilt)
+            if ok:
+                out['message'] = f'looking {round(pan)} deg left, {round(-tilt)} deg up'
+                # Without this the model made up what was there
+                out['seen'] = 'nothing yet: call capture_photo to see what is there'
+        return out
 
     async def skill_capture_photo(self):
         jpeg = await self.node.capture_photo()

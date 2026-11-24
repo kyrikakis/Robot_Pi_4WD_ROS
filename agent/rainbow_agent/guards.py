@@ -26,6 +26,7 @@ _ACTION = re.compile(r"""
   | ^\W*yes\b.*\b(right|correct)\b                     # yes, the desk is right
   | \b(what|who)\s+(do|can)\s+you\s+see\b              # seeing needs a photo
   | \bcan\s+you\s+see\b | \blook\s+(at|around)\b | \bin\s+front\s+of\s+you\b
+  | \blook\s+(left|right|up|down|straight)\b
   | \bremember\s+my\s+face\b
 """, re.IGNORECASE | re.VERBOSE)
 

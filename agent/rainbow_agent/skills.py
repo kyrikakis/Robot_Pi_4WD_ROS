@@ -58,6 +58,15 @@ TOOLS = [
            'confirm': {'type': 'boolean'}},
           ['name']),
     _tool('delete_place', 'Forget a named place.', {'name': _TEXT}, ['name']),
+    _tool('look',
+          'Point your head (and camera). Angles from straight ahead: pan positive left, '
+          'negative right; tilt positive up, negative down. 0, 0 looks straight ahead. '
+          'The head turns about 40 degrees each way and tilts about 36 up and 19 down; '
+          'bigger values stop at the limit. Moving the head shows you nothing: only '
+          'capture_photo does, so never say what is there without one. Returns once '
+          'the head is still, so a capture_photo right after sees where it points.',
+          {'pan_degrees': {'type': 'number', 'description': '-40 to 38'},
+           'tilt_degrees': {'type': 'number', 'description': '-19 to 36'}}),
     _tool('capture_photo',
           'Take a photo with your camera and look at it, when someone asks what you see '
           'or you need to look. You get the photo right after.'),

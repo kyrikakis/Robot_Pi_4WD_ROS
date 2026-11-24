@@ -183,7 +183,7 @@ Each call is checked (known place, mode) and may be refused with a reason the
 agent can say aloud. If Nav2 cannot reach a place, the brain does not retry: it
 reports the failure to the agent (in LOCAL mode it says so itself).
 
-Head skills (`look`) come later, with the head controller (see [Head](#head)).
+The head has `look` (see [Head](#head)).
 
 | Skill | Does |
 |---|---|
@@ -194,7 +194,8 @@ Head skills (`look`) come later, with the head controller (see [Head](#head)).
 | `list_places()` | Places with room, description and status |
 | `save_place(name, description, room, guess)` | Save the current pose (or the last Foxglove pick); `guess` saves it unconfirmed |
 | `edit_place(name, new_name, description, room, confirm)`, `delete_place` | Rename, re-describe or confirm a place; delete it |
-| `capture_photo()` | A still JPEG from the RGB camera, with the pose it was taken at |
+| `capture_photo()` | A still JPEG from the RGB camera, with the pose it was taken at; skips frames while the head moves |
+| `look(pan_degrees, tilt_degrees)` | Point the head (+ left, + up from straight ahead); returns once it has settled |
 | `turn(angle)`, `drive(distance)` | Corner cases: Nav2 Spin / DriveOnHeading (forward only) |
 | `say(text)` | espeak |
 | `set_expression(name)` | Eyes |
@@ -475,16 +476,34 @@ a little. A photo only gives it a hint; it is never treated as a precise pose.
 
 Code: `agent/rainbow_agent/localize.py`. Checked with stand-in photos (three
 different images, each found correctly, ~2.5 s); not yet with real rooms.
-Once the head controller exists, this can use several head directions.
+With the head controller (see [Head](#head)) this can use several head directions (next).
 
 ## Head
 
-The servos have no position feedback, so after a move the head must wait until
-it has physically arrived before a photo is taken. A head movement controller
-(smooth moves, a settle time that depends on the size of the move) is planned
-but not designed yet; it needs testing with the owner watching. Until then,
-the brain does not move the head: photos are taken with it centred, and the
-`look` skill comes with the controller.
+The servos have no position feedback and jump at full speed to whatever angle
+the ESP is sent, so the head node (`rainbow_drivers/head_node.py`, its own
+supervisor program `rainbow_head`) does the smoothing:
+
+- The commanded angle moves towards the target with limited speed and
+  acceleration (calm by default: 30 deg/s, 60 deg/s^2), braking to stop on the
+  target; both axes are scaled to arrive together. Code:
+  `rainbow_drivers/head_motion.py`, tested without ROS.
+- A new target blends in from the current motion, so a stream of targets is one
+  continuous movement: `/head/target` (`HeadTarget`, latest wins) is for
+  following faces later.
+- `/joint_states` follows the commanded angle at 50 Hz while moving (10 Hz at
+  rest), `servo_latency_s` late, so the ToF and camera frames are placed with the
+  pose the head really had. This matters for the planned ToF + camera fusion
+  (the distance of what the camera sees, placed in the map).
+- After a move, the head counts as settled only after `settle_base_s` +
+  `settle_per_deg_s` x the degrees moved; `/head/moving` is true until then.
+- `/head/move` (`MoveHead` action) returns once settled; a new target of any
+  kind replaces it, cancelling stops the head where it is. `/head/set_pose`,
+  `/head/center` and the old degree topics start a move without waiting.
+
+The brain's `look` uses `/head/move`; `capture_photo` skips frames while
+`/head/moving` is true. Speed, settle time and latency are estimates until
+measured on the robot with the owner watching.
 
 ## Build order
 

@@ -1,0 +1,20 @@
+# Move the head smoothly and wait until it has stopped and settled (the servos
+# have no position feedback, so "settled" is a timed estimate).
+# Angles in radians, following the URDF joints:
+#   pan:  positive turns left (about +z)
+#   tilt: positive pitches down (about +y)
+# Values outside the head's limits are clamped. speed: rad/s, 0 = the default.
+# A new goal, a /head/target message or a set_pose call replaces the running goal
+# (it aborts with "replaced"); cancelling stops the head where it is.
+float64 pan
+float64 tilt
+float64 speed
+---
+bool success
+string message
+# Where the head is now (commanded), after clamping
+float64 pan
+float64 tilt
+---
+float64 pan
+float64 tilt
