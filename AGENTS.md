@@ -22,7 +22,8 @@ compose setup lives in `~/hailo_tappas_ros2` on the host.
 | Hailo container ([hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2)) | Face recognition on the Hailo, capturing the RGB camera itself | No. Only `hailo_msgs` is built here, to read its messages |
 
 Contracts with the ESP firmware (node `YB_Car_Node`, do not rename): it
-subscribes to `cmd_vel`, `servo_s1` (pan), `servo_s2` (tilt) and `/beep`, and
+subscribes to `cmd_vel` (skid-steer: it ignores `linear.y`, tested with the wheels
+lifted 2026-11-24), `servo_s1` (pan), `servo_s2` (tilt) and `/beep`, and
 publishes `/odom_raw`, `/scan` in `laser_frame`, `/imu` in `imu_frame`, and
 `/battery` (UInt16, volts x 10, 1 Hz; the owner's pack runs ~6.9-8.0 V). The ESP's IMU is mounted wrongly and
 unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
