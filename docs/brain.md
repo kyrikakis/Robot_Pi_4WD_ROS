@@ -40,7 +40,7 @@ simple commands and safety itself, and keeps going when the Mac or Wi-Fi is down
           │ WebSocket, LAN only, token auth
  ┌────────▼──────────────── MacBook ────────────────────────────────────┐
  │ rainbow-agent (plain Python)                                         │
- │   Whisper (MLX / whisper.cpp) → local VLM with tool calling          │
+ │   Whisper (mlx-whisper) → Qwen3-VL on llama-server, with tools       │
  │   memory: SQLite + embeddings, rolling sessions                      │
  │   replies are text; the Pi speaks them with espeak                   │
  └──────────────────────────────────────────────────────────────────────┘
@@ -52,44 +52,82 @@ provides still photos and recognised faces (see [Camera and faces](#camera-and-f
 ## Voice (`rainbow_voice`)
 
 Hardware: the ReSpeaker Lite (USB, 2 mics, speaker output) is both microphone
-and speaker (espeak plays on `plughw:2,0`, as before and in v0-legacy). Select
-the card by name, not number, which can change between boots. The Lite does
-echo cancellation and noise suppression on the board; check what its USB
-channels carry before relying on it. English only for now.
+and speaker. ALSA card "Lite": 16 kHz, 16-bit, 2 channels; espeak plays on it
+(`plughw:2,0`, as before). The voice node records by card name
+(`plughw:CARD=Lite,DEV=0`, channel 0), since card numbers can change between
+boots. Its two USB channels carry the same stream (measured: bit-identical);
+the quiet-room noise floor is about -38 dBFS. English only for now.
 
-One node, `voice_node` (replacing the `wake_word_node` placeholder), opens the
-microphone. Capture devices are single-owner, so nothing else may open it.
+Measured on the Pi: the wake word costs 3.8 ms per 80 ms chunk and the voice
+node about 8% of one core while listening; Vosk takes ~80 ms per command; from
+the wake word to the agent's spoken reply 2.6 s (0.8 s of it waiting for the
+end of speech, Whisper 0.27 s, the model 0.3 s).
 
-1. **Wake word**: openWakeWord with a custom-trained "Rainbow" model. A
-   one-word wake word triggers falsely more often than a phrase; tune its
-   threshold on recordings made with the motors running. Trained on
-   synthetic voices for now; recordings on the robot can improve it later.
-   **"Stop" needs no wake word**: a second custom openWakeWord model for "stop"
-   runs on the same audio (openWakeWord shares the feature extraction between
-   models, so it costs little). It stays active even while espeak is speaking
-   and during the follow-up window. A false "stop" only stops the robot, which
-   is the safe direction, so its threshold can be lower than the wake word's.
-2. **Recording**: after the wake word, a VAD (Silero or webrtcvad) cuts the
-   utterance (end after ~0.8 s of silence, 10 s maximum). This replaces
+One node, `voice` (`voice_node.py`), owns the microphone (capture devices are
+single-owner). It reads the card with `arecord` (no Python audio library) and
+runs a state machine (`listener.py`) on every 80 ms chunk:
+
+1. **Wake word**: openWakeWord's models, run on onnxruntime by our own
+   `wakeword.py`. The openWakeWord package itself is not installed: it pulls in
+   scipy and scikit-learn and wants a tflite-runtime that has no Python 3.12
+   build. Its inference is small and reimplemented with the same models; the
+   scores match the package's to 0.0001 (checked on test clips).
+   **Wake words**: trained for Rainbow on the Mac (`training/wakeword/`, openWakeWord's
+   training on synthetic voices only: LibriTTS speakers, accented Piper voices,
+   Greek pronunciations), shipped in the package (`rainbow_voice/models/`).
+   `wake_models` is a list, any one wakes, each with its threshold in
+   `wake_thresholds`. `hey_rainbow.onnx` answers "hey Rainbow" and "Rainbow"
+   alone (threshold 0.3; the "hey"-only round is kept in the training results).
+   `hey_robot.onnx` ("hey Robot" and "Robot" alone) ships too but is not in
+   `wake_models`: on synthetic voices at 0.3 "hey Robot" scored 82% in a quiet
+   room (72/62/47% at 10/5/0 dB, 42% across the room, ~0.4 false wakes per hour),
+   but the owner's "Robot" through the ReSpeaker stayed under 0.3. On the robot
+   the owner finds "hey Rainbow" far better than "hey Jarvis". On the synthetic test
+   (standard voices, 0.5): "hey Rainbow" 100% in a quiet room, 84/69/42% at
+   10/5/0 dB noise, 45% far across a reverberant room, 0.7 false wakes per hour of
+   AudioSet; "hey Jarvis" scores 99, 95/89/71, 78, 0.2: ours still trail in noise
+   and at a distance. It also wakes when the robot says "Rainbow" itself, which
+   is why nothing but the stop word is listened for while the robot talks.
+   **"Stop"** without the wake word: `stop.onnx` (`stop_model`, threshold 0.7),
+   listened for even while the robot talks; a false "stop" only stops the robot.
+   Round 4 at 0.7: 78% in a quiet room, 60/49/36% at 10/5/0 dB, ~2 false stops
+   per hour of AudioSet, ~17 per hour of espeak (a short test); a bare "Stop!" 29
+   of 32 synthetic clips. 0.9 was tried first: the owner's "stop" through the
+   ReSpeaker scored 0.75-0.90 and was missed. It
+   does not fire on "Rainbow, stop" or "Robot, stop": those go through Vosk, as a
+   local command after the wake word (17-18 of 20 on the synthetic end-to-end
+   test). For that, the recording starts with the chunk the wake word
+   fired on, a leading unknown word (the wake word's tail) is dropped by the
+   recognizer, and the wake word does not silence the stop word.
+2. **Recording**: after the wake word, webrtcvad cuts the utterance (end
+   after 0.8 s of silence, 10 s maximum; 4 s without speech gives up). The
+   silence only counts once 0.24 s of continuous speech was heard: the tail of
+   the wake word or of the hum cut commands off at 1.2 s. The wake hum
+   (`wake_beep`) is off by default: its 0.32 s, skipped from the recording since
+   the mic hears it, swallowed commands said in one breath ("Rainbow, stop"). This replaces
    v0-legacy's fixed loudness threshold, which breaks with motor noise.
-3. **Local transcript**: Vosk with a fixed phrase grammar (see
-   [Local commands](#local-commands)) runs on every utterance and returns the
-   matched phrase and its confidence.
-4. **Follow-up window**: for ~8 s after the robot finishes speaking, speech is
-   recorded without the wake word, so a conversation flows.
-5. **Echo**: wake word and recording are muted while espeak is speaking (same
-   card, the mic hears the speaker), unless the Lite's echo cancellation
-   proves good enough. `speech_node` publishes when it starts and
-   stops talking.
+3. **Local commands**: Vosk (small English model) with the brain's phrase list
+   (`/voice/grammar`) runs on each finished utterance (a few ms) and returns the
+   matched phrase and its confidence. Anything else maps to "[unk]".
+4. **Follow-up window**: for 8 s after the robot finishes speaking, speech is
+   recorded without the wake word, so a conversation flows (at most two in a
+   row). The wake word still works in it: during a follow-up recording it
+   restarts as a normal wake. No follow-up starts while the robot moves
+   (`/cmd_vel` non-zero, and 0.5 s after): motor noise started them, and
+   each one kept the wake word deaf for up to 10 s.
+5. **Echo**: while espeak is speaking (`/speech/speaking`, latched, from
+   `speech_node`) only the stop word is listened for, since the mic hears the
+   speaker. The Lite cancels echo on the board; check what its two channels
+   carry before relying on it.
 
-The node publishes each utterance (16 kHz mono PCM, the Vosk result, a
-timestamp) to the brain. The audio is not compressed: a 10 s clip is 320 kB,
-fine on the LAN.
+The node publishes each utterance (`rainbow_interfaces/Utterance`: 16 kHz
+samples, the Vosk phrase and confidence, follow-up or not) to the brain, and
+`/voice/stop`. The audio is not compressed: a 10 s clip is 320 kB.
 
 Speech output stays espeak (`speech_node`), for every reply, online or offline.
 
-Eyes show the state: `open` on wake, a "thinking" expression while waiting for
-the Mac, `happy` when done (the expression set may need one new entry).
+Eyes (`/eyes`): `open` on the wake word (and while the agent thinks), `happy`
+when the robot has finished speaking or nobody spoke.
 
 ## Local brain (`rainbow_brain`, new package)
 
@@ -111,24 +149,32 @@ agent a summary of what happened offline.
 
 ### Router
 
-For each utterance:
+For each utterance (`on_utterance` in the brain):
 
-- If Vosk matched a **local command** with high confidence, the brain runs it
-  immediately and tells the agent ("user said 'stop', I stopped"), so the
-  conversation and memory stay consistent.
-- Otherwise, in REMOTE the audio goes to the agent; in LOCAL the robot says
-  it is offline.
+- If Vosk matched a **local command** with confidence 0.8 or more
+  (`command_confidence`), the brain runs it immediately, says a short
+  confirmation ("Going to the kitchen."), and tells the agent (an `utterance`
+  with `handled`), so the conversation and memory stay consistent. The agent
+  does not answer it again.
+- Otherwise, in REMOTE the audio goes to the agent (base64 PCM in an
+  `utterance` message); in LOCAL the robot says it can only go to places, come
+  back or wait (not for follow-ups, which are often just noise).
 
-"Stop" always runs locally and never waits for the Mac; it comes from its own
-detector, not through the router (see [Voice](#voice-rainbow_voice)).
+`/voice/stop` stops at once and tells the agent (`stopped_by_voice`).
 
 ### Local commands
 
-A fixed phrase grammar for Vosk, kept small so it stays accurate:
+A fixed phrase list for Vosk (`rainbow_brain/commands.py`), published by the
+brain on `/voice/grammar` whenever the places change:
 
-- "wait" (stop is separate, see above)
-- "go to the <place>" (place names come from the places file)
-- "come back" / "go home" (a configured home place)
+- "stop", "wait"
+- "go to the <place>", "go to <place>" (place names from the places file;
+  words Vosk does not know cannot be recognised and go to the agent)
+- "come back", "go home", "come home" (the place named "home")
+
+One unknown word after a phrase is accepted ("go to the sofa please"); more
+means a longer sentence, which goes to the agent. On test clips nothing that
+was not a command matched.
 
 ### Skills
 
@@ -146,8 +192,8 @@ Head skills (`look`) come later, with the head controller (see [Head](#head)).
 | `where_am_i()` | Pose in words: room, nearest place within ~1.5 m, heading, AMCL certainty |
 | `get_state()` | Pose, AMCL covariance, battery voltage, current goal, mode |
 | `list_places()` | Places with room, description and status |
-| `save_place(name, description, room)` | Save the current pose (or the last Foxglove pick) |
-| `rename_place`, `delete_place` | Edit places |
+| `save_place(name, description, room, guess)` | Save the current pose (or the last Foxglove pick); `guess` saves it unconfirmed |
+| `edit_place(name, new_name, description, room, confirm)`, `delete_place` | Rename, re-describe or confirm a place; delete it |
 | `capture_photo()` | A still JPEG from the RGB camera, with the pose it was taken at |
 | `turn(angle)`, `drive(distance)` | Corner cases: Nav2 Spin / DriveOnHeading (forward only) |
 | `say(text)` | espeak |
@@ -170,8 +216,7 @@ to one map: a new map needs new places.
 
 ```yaml
 map: home_live
-home: sofa                   # target of "come back" / "go home"
-places:
+places:                  # a place named "home" is where "go home" goes
   kitchen:
     pose: {x: 3.20, y: -1.10, yaw: 1.57}
     room: kitchen
@@ -205,41 +250,72 @@ The Foxglove layout gets this layer.
 
 A WebSocket server in the brain process (asyncio in its own thread), so the
 brain knows the moment the Mac disconnects. The Mac connects to the Pi.
+Pi side: `rainbow_brain/link.py` (no ROS, tested on the Mac); Mac side:
+`agent/rainbow_agent/link.py` (`LinkRobot`, same interface as the simulated
+robot); `agent/tests/test_link.py` runs both ends against each other.
 
-- The Mac connects to `rainbow.local`, falling back to `192.168.1.172`
-  (configurable).
-- LAN only, shared token in the first message (stored on the data volume, not
-  in the repo; copied to the Mac once). Anything that can reach this socket
-  can drive the robot.
-- Heartbeat both ways every 1 s; 3 s without one means disconnected.
-- JSON text frames; utterance audio and photos as binary frames referenced by
-  id.
+- Port 8766 (8765 is Foxglove). The Mac connects to `rainbow.local`, falling
+  back to `192.168.1.172` (configurable).
+- One agent at a time: a new connection replaces the old one.
+- LAN only. The brain creates a random token on first start
+  (`/data/rainbow/link_token`, owner-only); `rainbow-agent pair` copies it to
+  the Mac over SSH. A wrong token is refused. Anything with the token can
+  drive the robot.
+- The agent pings every 1 s; 3 s without a message means disconnected and the
+  brain goes back to LOCAL mode.
+- The link speaks the agent's units (degrees, metres); the brain converts.
+  Results of turn and drive_forward include `now`, where_am_i's sentence, so
+  the model reports facts.
+- JSON text frames (utterance audio and photos will be binary frames,
+  referenced by id).
 
-Messages:
+Messages (built: hello to state; the rest comes with later steps):
 
 | Direction | Type | Content |
 |---|---|---|
-| Pi → Mac | `utterance` | audio id, Vosk result, whether it was handled locally |
-| Pi → Mac | `event` | goal reached / failed / stuck, stopped by voice, startup, face seen, link restored (with offline summary) |
-| Pi → Mac | `question` | a decision the brain wants (e.g. "goal failed twice, what now?"), with a timeout and the local default it will take |
-| Pi → Mac | `result` | result of a tool call |
+| Mac → Pi | `hello` | the token; answered by `welcome` (robot, map, protocol) or `error` |
+| Mac → Pi | `ping` | heartbeat; answered by `pong` |
 | Mac → Pi | `call` | a skill call with id and arguments |
-| Mac → Pi | `answer` | answer to a `question` |
-| both | `ping` | heartbeat |
+| Pi → Mac | `result` | result of a call, same id |
+| Mac → Pi | `say` | text for espeak |
+| Pi → Mac | `event` | arrived / failed / cancelled; link_restored (with the events missed while away, last 10) |
+| Pi → Mac | `state` | activity, battery, places, mode; on changes and every 5 s |
+| Pi → Mac | `utterance` | (step 3) audio, Vosk result, whether it was handled locally |
+| Mac → Pi | `status` | what the agent is doing (phase, skill, last heard/reply, timings, tokens), on change; the brain publishes it inside `/brain/status` |
+| Mac → Pi | `log` | an agent log line with its level; the brain publishes it on `/agent/log` |
+| Pi → Mac | `question` | (later) a decision the brain wants, with a timeout and its local default |
+| Mac → Pi | `answer` | (later) answer to a `question` |
+
+In REMOTE mode the brain no longer says failures itself; the agent decides.
+
+For Foxglove the brain publishes `/brain/status` (`rainbow_interfaces/BrainStatus`)
+every second and on every change: mode, activity, localization, battery, health
+(seconds since the ESP's battery, lidar and odometry messages; Nav2, speech and
+face recognition up) and the agent's status as `agent` (last known values, with
+`connected` false, while no agent is linked). The layout's Status tab shows it.
 
 Events are rate-limited, and the agent decides whether an event is worth saying
 anything about, so the robot does not chatter.
 
 ## Agent on the Mac (`rainbow-agent`)
 
-Plain Python, no ROS. It lives in this repo under `agent/` (the link protocol
-is then defined in one place), and runs on the Mac outside Docker as a launchd
-service, so it is up whenever the Mac is.
+Plain Python, no ROS. The code lives in this repo under `agent/` (the link
+protocol is then defined in one place); see `agent/README.md` to install and
+run it.
+
+Not in Docker: containers on macOS get no GPU (Docker Desktop's Linux VM has
+no Metal), so the model and Whisper would run on the CPU, several times
+slower. Docker Model Runner runs models on the host GPU but has no speech to
+text. Instead, everything the agent installs lives in one folder,
+`~/.rainbow-agent` (llama.cpp's server, the model files, Python and the
+dependencies from `uv.lock`, uv's cache, memory, logs), plus one launchd file
+once the agent runs as a service; `agent/uninstall.sh` removes both. Every
+download is pinned and checked against its SHA-256 (`agent/install.sh`).
 
 ### Processes
 
 ```
- launchd
+ launchd (once the link exists)
  ├─ rainbow-agent      (one asyncio process, ours)
  │   ├─ link client       WebSocket to the Pi, reconnects, heartbeat
  │   ├─ stt               Whisper, in process
@@ -247,13 +323,12 @@ service, so it is up whenever the Mac is.
  │   ├─ events policy     which brain events/questions reach the model
  │   ├─ memory            SQLite + vectors
  │   └─ places matcher    image embeddings for localization (step 6)
- └─ model server       (Ollama or LM Studio; OpenAI-compatible HTTP on localhost)
-     ├─ main model        chat + tools + vision
-     └─ embedding model   for memory search
+ ├─ llama-server :8180  main model: chat + tools + vision (OpenAI-compatible, localhost)
+ └─ llama-server :8181  embedding model, for memory search
 ```
 
-The model runs in its own server, reached through the OpenAI-compatible chat
-API with `tools`. Swapping models is then a config change, and a model crash
+The models run in llama.cpp's own server (a prebuilt macOS binary with Metal,
+pinned release), reached through the OpenAI-compatible chat API with `tools`. Swapping models is then a config change, and a model crash
 does not take down the link. Speech to text and image embeddings run inside the
 agent (small, and called on every utterance).
 
@@ -288,8 +363,8 @@ The choice must be confirmed by tests with this robot's real tool calls (below).
 | Role | First choice | Alternative | Notes |
 |---|---|---|---|
 | Speech to text | Whisper large-v3-turbo (mlx-whisper) | Parakeet TDT (parakeet-mlx) | Whisper is the more accurate and multilingual; ~1 s per short utterance on an M4. Parakeet is several times faster but was clearly less accurate in an independent test; worth a try only if latency hurts |
-| Main model (chat, tools, vision) | Qwen3-VL 30B-A3B (MoE, ~3B active), 4-bit | Same at 8-bit, or Qwen3-VL 32B dense (better, slower) | One model for conversation, tool calls and photos keeps memory use and latency down. The MoE answers fast because few weights are active per token |
-| Text embeddings (memory) | Qwen3-Embedding 0.6B | nomic-embed-text | Small; served by the model server |
+| Main model (chat, tools, vision) | Qwen3-VL 30B-A3B (MoE, ~3B active), Q4_K_M GGUF + F16 vision projector | Same at 8-bit, or Qwen3-VL 32B dense (better, slower) | One model for conversation, tool calls and photos keeps memory use and latency down. The MoE answers fast because few weights are active per token |
+| Text embeddings (memory) | Qwen3-Embedding 0.6B (Q8_0 GGUF) | nomic-embed-text | Small; its own llama-server |
 | Image embeddings (places) | DINOv2 (ViT-S/B) | SigLIP 2 | DINOv2 is good at "same place" matching; SigLIP adds text search ("photo of a kitchen") |
 
 The Mac has 64 GB, of which macOS lets the GPU use ~48 GB by default; it is
@@ -317,54 +392,89 @@ in what it says (child-appropriate topics and language, no personal data about
 the family to anyone, no instructions for anything unsafe). A basic version in
 the system prompt for now; refine it later.
 
-### Text mode
+### Running it
 
-Typing instead of talking, for testing and debugging. Before the model is
-wired in, the same mode sends raw skill calls (the "stub" of build step 2).
+- `rainbow-agent run`: the agent for real. Utterances from the robot go
+  through Whisper (silence hallucinations like "Thank you." are dropped), the
+  conversation, and back as `say`. Commands the robot handled itself are added
+  to the session without a reply.
+- `rainbow-agent chat [--robot]`: typing instead of talking, against the
+  simulated robot or the real one.
 
 ### Memory and sessions
 
-Stored on the Mac only (SQLite + embeddings); the Pi never needs it.
+Stored on the Mac only (`~/.rainbow-agent/data/memory.db`, SQLite +
+embeddings from Qwen3-Embedding on the second llama-server); the Pi never
+needs it. Code: `agent/rainbow_agent/memory.py`.
 
-- **Session**: starts at a wake word, ends after ~2 min without speech. The
-  model keeps the full turns of the current session.
-- **At session end**: the model writes a short summary, stored with an
-  embedding, and extracts lasting facts (people, preferences, places, things
-  the owner asked it to remember).
-- **At session start**: the context gets the relevant facts and summaries
-  (embedding search on the first utterance), the robot's state and the place
-  list.
+- **Session**: starts at a wake word, ends after 2 min without a turn (checked
+  every 30 s) or when the agent stops. The model keeps the full turns of the
+  current session.
+- **At session end** (in the background; the next reply never waits): the
+  model writes a 1-3 sentence summary, stored with an embedding, and lists
+  lasting facts (names, preferences, places, things someone asked it to
+  remember). Sessions where nobody spoke are not stored.
+- **Facts must have been said by a person.** The model turns its own guesses
+  into "facts" (it invented a cat's habits and stored them) and the prompt
+  alone does not stop it, so a fact is kept only if it has 3+ words and most of
+  its meaningful words were said by a person in that session. A fact nearly
+  the same as a known one (cosine 0.9) replaces it.
+- **At session start**: the first words are embedded; the closest facts and
+  episodes (cosine 0.35 or more), plus the last episode, go into the system
+  prompt as "things you remember", with the rule never to tell them to
+  strangers.
+- Memory failures (a server down) are logged and never break a conversation.
+
+Tested with the real models: a new session remembered a child's name,
+favourite dinosaur and cat; nothing the robot made up was stored.
+Forgetting ("clean memory") is not built yet.
 
 ## Camera and faces
 
 The RGB camera is captured by the Hailo container
-([hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2)). Changes
-needed there, not in this repo:
+([hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2)); its face
+recognition node already publishes all the brain needs, so that repo does not
+change. It must be re-enabled there (it is off to save CPU; measure the Pi's
+load with it on).
 
-- **Stills on request**: a service returning one JPEG (or a low-rate
-  `CompressedImage` topic), for `capture_photo`.
-- **Faces**: re-enable face recognition and publish recognised names (with
-  `hailo_msgs`). The brain forwards them as events, so the agent can greet
-  people and remember who it has seen.
+- **Photos**: `capture_photo` subscribes to
+  `/hailo_face_recognition/image_bbx/compressed` (1280x720 JPEG, with the
+  detection boxes drawn) only while taking one frame (3 s timeout), and shrinks
+  it with OpenCV to 640 wide (~16 kB) before sending it to the agent. The
+  agent passes it to the model as an image in the conversation.
+- **Faces**: the node publishes `/hailo_face_recognition/detections`
+  (`vision_msgs/Detection2DArray`) with the name in the class id
+  (`"<label>: <name>"`). The brain sends the agent a `face_seen` event, at most
+  once per person per 10 min (`face_repeat`). The agent notes it (speaking
+  first is for later).
+- **Remembering faces**: `remember_face(name)` calls
+  `/hailo_face_recognition/save_face` (`hailo_msgs/srv/SaveGalleryItem`).
 
-Face recognition was disabled to save CPU; measure the Pi's load with it back
-on.
+Tested on the Pi on domain 77 with fake Hailo topics: photo in 0.1-0.5 s,
+no subscription left behind, one face event per person, the pose estimate.
 
 ## Startup localization from a photo
 
 AMCL starts with global localization and usually settles once the robot drives
 a little. A photo only gives it a hint; it is never treated as a precise pose.
 
-1. At startup the brain sends a `startup` event. The agent calls `get_state()`;
-   if AMCL's covariance is already small, it stops there.
-2. Otherwise it takes a photo facing forward (head centred).
-3. It matches the photo against a **place photo database**: reference photos
-   with the poses they were taken at, recorded by driving around the mapped
-   area (stored with the places on the data volume). Image embeddings
-   (CLIP or DINOv2 style, on the Mac) give candidates; the VLM confirms one.
-4. It calls `set_pose_estimate` with that pose and a generous covariance; AMCL
-   refines it from the lidar.
+1. **Place photos**: whenever a place is saved through the agent, the robot
+   also takes a photo there, kept on the Mac
+   (`~/.rainbow-agent/data/place_photos/<map>/`), following renames and
+   deletes. Places saved from Foxglove have no photo.
+2. **At startup** (once the link is up): the agent calls `get_state()`; if
+   AMCL is `sure`, it stops there (`roughly` can be a metre off, so it is not
+   taken as localized anywhere).
+3. Otherwise it takes a photo and asks the vision model which place photo
+   shows the same spot (current photo first, then up to 6 labelled
+   references, each label right before its photo; with the label after the
+   photo the model matched the wrong one with 0.98 confidence).
+4. A match with confidence 0.6 or more becomes `set_pose_estimate(place)`:
+   the brain publishes `/initialpose` (0.5 m, 0.5 rad standard deviation) and
+   AMCL refines it from the lidar.
 
+Code: `agent/rainbow_agent/localize.py`. Checked with stand-in photos (three
+different images, each found correctly, ~2.5 s); not yet with real rooms.
 Once the head controller exists, this can use several head directions.
 
 ## Head
@@ -388,6 +498,16 @@ the brain does not move the head: photos are taken with it centred, and the
 6. Hailo stills and faces (other repo), place photo database, startup
    localization.
 7. Head movement controller, then photos in several directions.
+8. Recognising voices (later): a pre-trained speaker-embedding model (a few MB,
+   e.g. WeSpeaker or 3D-Speaker through sherpa-onnx, pinned) in `rainbow_voice`
+   turns each utterance into a voice print and names the closest enrolled
+   person, or "unknown", on the utterance. Enrolment by voice ("Rainbow,
+   remember my voice"): 5-10 sentences per person through the ReSpeaker, so the
+   robot's own noise is in the prints; prints on the data volume. No training.
+   Expect: reliable among a few household members from ~2 s of speech, weak on
+   a bare "stop", alike voices can mix. Not a security check (a recording fools
+   it): for names, per-person memory and cross-checking faces. To discuss: who
+   is enrolled and what changes once the speaker is known.
 
 Each step is discussed with the owner before it is built.
 

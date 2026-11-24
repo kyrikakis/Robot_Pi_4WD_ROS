@@ -2,18 +2,18 @@
   "configById": {
     "3D!rainbow": {
       "cameraState": {
-        "distance": 2.5,
-        "perspective": true,
-        "phi": 55,
-        "thetaOffset": 45,
+        "distance": 16,
+        "perspective": false,
+        "phi": 0,
+        "thetaOffset": 0,
         "targetOffset": [
           0,
           0,
           0
         ],
         "target": [
-          0,
-          0,
+          1.571,
+          -3.9,
           0
         ],
         "targetOrientation": [
@@ -26,12 +26,14 @@
         "near": 0.01,
         "far": 1000
       },
-      "followMode": "follow-pose",
-      "followTf": "base_link",
+      "followMode": "follow-none",
+      "followTf": "map",
       "scene": {
         "transforms": {
           "labelSize": 0.04,
-          "axisScale": 0.3
+          "axisScale": 0.3,
+          "visible": false,
+          "showLabel": false
         }
       },
       "transforms": {
@@ -52,12 +54,12 @@
           "colorMode": "costmap"
         },
         "/local_costmap/costmap": {
-          "visible": true,
+          "visible": false,
           "colorMode": "costmap",
           "alpha": 0.6
         },
         "/local_costmap/voxel_grid": {
-          "visible": true,
+          "visible": false,
           "pointSize": 4,
           "colorMode": "flat",
           "flatColor": "#ff8000ff"
@@ -69,22 +71,28 @@
           "flatColor": "#ff0000ff"
         },
         "/point_cloud": {
-          "visible": true,
+          "visible": false,
           "pointSize": 2,
           "colorMode": "colormap",
           "colorField": "z",
           "colorMap": "turbo"
         },
         "/plan": {
+          "visible": false
+        },
+        "/local_costmap/published_footprint": {
+          "visible": false
+        },
+        "/places/markers": {
+          "visible": true
+        },
+        "/plan_viz": {
           "visible": true,
           "lineWidth": 0.02,
           "gradient": [
             "#00ff00ff",
             "#00ff00ff"
           ]
-        },
-        "/local_costmap/published_footprint": {
-          "visible": true
         }
       },
       "layers": {
@@ -144,7 +152,8 @@
     },
     "RosOut!log": {
       "searchTerms": [],
-      "minLogLevel": 3
+      "minLogLevel": 2,
+      "topicToRender": "/rosout"
     },
     "Gauge!battery": {
       "foxglovePanelTitle": "Battery (volts x 10: 69 = 6.9 V empty, 80 = 8.0 V full)",
@@ -157,7 +166,260 @@
         "#ff0000ff",
         "#00ff00ff"
       ],
-      "reverse": false
+      "reverse": false,
+      "showTicks": true,
+      "tickInterval": 1
+    },
+    "3D!places": {
+      "cameraState": {
+        "distance": 8,
+        "perspective": false,
+        "phi": 0,
+        "thetaOffset": 0,
+        "targetOffset": [
+          0,
+          0,
+          0
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "fovy": 45,
+        "near": 0.01,
+        "far": 1000
+      },
+      "followMode": "follow-none",
+      "followTf": "map",
+      "scene": {
+        "transforms": {
+          "labelSize": 0.04,
+          "axisScale": 0.3,
+          "visible": false,
+          "showLabel": false
+        }
+      },
+      "transforms": {
+        "frame:map": {
+          "visible": false
+        },
+        "frame:odom": {
+          "visible": false
+        }
+      },
+      "topics": {
+        "/map": {
+          "visible": true,
+          "colorMode": "map"
+        },
+        "/places/markers": {
+          "visible": true
+        }
+      },
+      "layers": {
+        "grid": {
+          "layerId": "foxglove.Grid",
+          "instanceId": "grid",
+          "visible": true,
+          "frameId": "odom",
+          "size": 10,
+          "divisions": 20,
+          "lineWidth": 1,
+          "color": "#248eff40"
+        },
+        "rainbow-urdf": {
+          "layerId": "foxglove.Urdf",
+          "instanceId": "rainbow-urdf",
+          "label": "Rainbow",
+          "visible": true,
+          "sourceType": "topic",
+          "topic": "/robot_description"
+        }
+      },
+      "publish": {
+        "type": "pose",
+        "poseTopic": "/places/pick",
+        "pointTopic": "/clicked_point",
+        "poseEstimateTopic": "/initialpose",
+        "poseEstimateXDeviation": 0.25,
+        "poseEstimateYDeviation": 0.25,
+        "poseEstimateThetaDeviation": 0.26
+      }
+    },
+    "Tab!main": {
+      "activeTabIdx": 0,
+      "tabs": [
+        {
+          "title": "Drive",
+          "layout": "3D!rainbow"
+        },
+        {
+          "title": "Places",
+          "layout": "3D!places"
+        },
+        {
+          "title": "Status",
+          "layout": {
+            "direction": "column",
+            "splitPercentage": 14,
+            "first": {
+              "direction": "row",
+              "splitPercentage": 50,
+              "first": {
+                "direction": "row",
+                "first": "Indicator!agent",
+                "second": "Indicator!esp"
+              },
+              "second": {
+                "direction": "row",
+                "first": "Indicator!nav2",
+                "second": "Indicator!localization"
+              }
+            },
+            "second": {
+              "direction": "column",
+              "splitPercentage": 65,
+              "first": {
+                "direction": "row",
+                "splitPercentage": 50,
+                "first": "RawMessages!agent",
+                "second": "RawMessages!brain"
+              },
+              "second": "RosOut!agent"
+            }
+          }
+        }
+      ]
+    },
+    "CallService!stop": {
+      "serviceName": "/brain/stop",
+      "requestPayload": "{}",
+      "layout": "vertical",
+      "editingMode": false,
+      "buttonText": "Stop",
+      "buttonTooltip": "Stop in place and cancel every Nav2 goal",
+      "buttonColor": "#d32f2f"
+    },
+    "CallService!relocalize": {
+      "serviceName": "/reinitialize_global_localization",
+      "requestPayload": "{}",
+      "layout": "vertical",
+      "editingMode": false,
+      "buttonText": "Relocalize",
+      "buttonTooltip": "AMCL forgets its pose and searches the whole map again (then drive or turn a little)",
+      "buttonColor": "#ef6c00"
+    },
+    "CallService!place": {
+      "serviceName": "/places/save",
+      "requestPayload": "{\n  \"name\": \"kitchen\",\n  \"description\": \"\",\n  \"room\": \"\",\n  \"from_pick\": true,\n  \"guess\": false\n}",
+      "layout": "vertical",
+      "editingMode": true,
+      "buttonText": "Save place",
+      "buttonTooltip": "Click a pose in the Places tab first, edit the name, then press",
+      "buttonColor": "#2e7d32"
+    },
+    "RawMessages!brain": {
+      "foxglovePanelTitle": "Robot",
+      "topicPath": "/brain/status",
+      "diffEnabled": false,
+      "diffMethod": "custom",
+      "diffTopicPath": "",
+      "showFullMessageForDiff": false,
+      "expansion": "all"
+    },
+    "Indicator!agent": {
+      "foxglovePanelTitle": "Agent",
+      "path": "/brain/status.agent.connected",
+      "style": "background",
+      "fallbackColor": "#a0a0a0",
+      "fallbackLabel": "offline",
+      "rules": [
+        {
+          "operator": "=",
+          "rawValue": "true",
+          "color": "#68e24a",
+          "label": "linked"
+        }
+      ]
+    },
+    "Indicator!esp": {
+      "foxglovePanelTitle": "ESP",
+      "path": "/brain/status.scan_age",
+      "style": "background",
+      "fallbackColor": "#ff4040",
+      "fallbackLabel": "silent",
+      "rules": [
+        {
+          "operator": "<",
+          "rawValue": "0",
+          "color": "#a0a0a0",
+          "label": "no lidar yet"
+        },
+        {
+          "operator": "<",
+          "rawValue": "2",
+          "color": "#68e24a",
+          "label": "ok"
+        }
+      ]
+    },
+    "RosOut!agent": {
+      "foxglovePanelTitle": "Agent log",
+      "topicToRender": "/agent/log",
+      "searchTerms": [],
+      "minLogLevel": 1
+    },
+    "RawMessages!agent": {
+      "foxglovePanelTitle": "Agent",
+      "topicPath": "/brain/status.agent",
+      "diffEnabled": false,
+      "diffMethod": "custom",
+      "diffTopicPath": "",
+      "showFullMessageForDiff": false,
+      "expansion": "all"
+    },
+    "Indicator!nav2": {
+      "foxglovePanelTitle": "Nav2",
+      "path": "/brain/status.nav2_ready",
+      "style": "background",
+      "fallbackColor": "#ff4040",
+      "fallbackLabel": "down",
+      "rules": [
+        {
+          "operator": "=",
+          "rawValue": "true",
+          "color": "#68e24a",
+          "label": "ready"
+        }
+      ]
+    },
+    "Indicator!localization": {
+      "foxglovePanelTitle": "Localization",
+      "path": "/brain/status.certainty",
+      "style": "background",
+      "fallbackColor": "#ff4040",
+      "fallbackLabel": "lost or unknown",
+      "rules": [
+        {
+          "operator": "=",
+          "rawValue": "sure",
+          "color": "#68e24a",
+          "label": "sure"
+        },
+        {
+          "operator": "=",
+          "rawValue": "roughly",
+          "color": "#f5c542",
+          "label": "roughly"
+        }
+      ]
     }
   },
   "globalVariables": {},
@@ -167,14 +429,29 @@
   },
   "layout": {
     "direction": "row",
-    "first": "3D!rainbow",
+    "first": "Tab!main",
     "second": {
       "direction": "column",
       "first": {
-        "direction": "row",
-        "first": "Teleop!rainbow",
-        "second": "Gauge!battery",
-        "splitPercentage": 45
+        "direction": "column",
+        "first": {
+          "direction": "row",
+          "first": "Teleop!rainbow",
+          "second": "Gauge!battery",
+          "splitPercentage": 45
+        },
+        "second": {
+          "direction": "row",
+          "first": "CallService!stop",
+          "second": {
+            "direction": "row",
+            "first": "CallService!relocalize",
+            "second": "CallService!place",
+            "splitPercentage": 40
+          },
+          "splitPercentage": 30
+        },
+        "splitPercentage": 55
       },
       "second": {
         "direction": "column",
@@ -182,7 +459,7 @@
         "second": "RosOut!log",
         "splitPercentage": 55
       },
-      "splitPercentage": 40
+      "splitPercentage": 55
     },
     "splitPercentage": 62
   }

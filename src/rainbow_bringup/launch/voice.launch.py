@@ -1,7 +1,7 @@
-"""Rainbow's voice.
+"""Rainbow's voice: text to speech, and the ears (wake word, utterances).
 
 Arguments:
-  wake_word  false  start the "Hey Rainbow" wake word node (placeholder for now)
+  listen  true  start the voice node (ReSpeaker Lite; models in /opt/rainbow/voice)
 """
 
 from launch import LaunchDescription
@@ -13,11 +13,12 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('wake_word', default_value='false'),
+        DeclareLaunchArgument('listen', default_value='true'),
         Node(package='rainbow_voice', executable='speech'),
         Node(
             package='rainbow_voice',
-            executable='wake_word',
-            condition=IfCondition(LaunchConfiguration('wake_word')),
+            executable='voice',
+            condition=IfCondition(LaunchConfiguration('listen')),
+            output='screen',
         ),
     ])

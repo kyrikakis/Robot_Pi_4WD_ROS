@@ -1,0 +1,7 @@
+# Turn in place with Nav2's Spin. Radians, positive = left; at most one turn.
+float64 angle
+---
+bool success
+string message
+---
+float32 turned

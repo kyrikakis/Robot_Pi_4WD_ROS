@@ -18,11 +18,16 @@ services:
         source: /boot/firmware
         target: /boot/firmware
         read_only: false
+      # Data the robot writes at runtime (places, later the link token): survives
+      # image rebuilds; created by docker compose. Never code (docs/brain.md).
+      - type: volume
+        source: rainbow_data
+        target: /data/rainbow
 
     cap_add: 
       - SYS_ADMIN
     privileged: true
     restart: always
-    
 
-    
+volumes:
+  rainbow_data:

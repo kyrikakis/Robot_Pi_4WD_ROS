@@ -4,6 +4,8 @@ Interfaces:
   ~/say              rainbow_interfaces/srv/Say   returns once spoken
   /speech/speak      std_msgs/String              say this (kept from the old node)
   /speech/amplitude  std_msgs/UInt16              set the volume, 0-200
+  /speech/speaking   std_msgs/Bool (latched)      true while speaking (the voice
+                                                  node does not listen meanwhile)
 """
 
 import subprocess
@@ -11,7 +13,8 @@ import subprocess
 from rainbow_interfaces.srv import Say
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String, UInt16
+from rclpy.qos import DurabilityPolicy, QoSProfile
+from std_msgs.msg import Bool, String, UInt16
 
 
 class SpeechNode(Node):
@@ -27,12 +30,17 @@ class SpeechNode(Node):
         self.create_subscription(String, '/speech/speak', lambda m: self.speak(m.data), 10)
         self.create_subscription(UInt16, '/speech/amplitude', self.on_amplitude, 10)
         self.create_service(Say, '~/say', self.on_say)
+        self.speaking_pub = self.create_publisher(
+            Bool, '/speech/speaking',
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+        self.speaking_pub.publish(Bool(data=False))
 
     def speak(self, text):
         """Speak text; returns an error message, or '' on success."""
         cmd = ['espeak-ng', '-v', self.voice, '-s', str(self.speed),
                '-g', str(self.word_gap), '-d', self.device,
                '-a', str(self.amplitude), text]
+        self.speaking_pub.publish(Bool(data=True))
         try:
             subprocess.run(cmd, check=True, capture_output=True, timeout=60)
             return ''
@@ -41,6 +49,8 @@ class SpeechNode(Node):
             error = f'{e} {stderr.decode(errors="replace").strip()}'.strip()
             self.get_logger().error(f'espeak-ng failed: {error}')
             return error
+        finally:
+            self.speaking_pub.publish(Bool(data=False))
 
     def on_amplitude(self, msg):
         self.amplitude = msg.data

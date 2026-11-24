@@ -1,0 +1,28 @@
+[project]
+name = "rainbow-agent"
+version = "0.1.0"
+description = "Rainbow's agent on the Mac: Whisper, a local vision-language model with tools, memory (docs/brain.md)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "openai>=1.50",
+    "mlx-whisper>=0.4",
+    "numpy>=1.26",
+    "pyyaml>=6",
+    "websockets>=12",
+]
+
+[project.scripts]
+rainbow-agent = "rainbow_agent.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "flake8>=7", "flake8-import-order>=0.18", "flake8-quotes>=3.4"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rainbow_agent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

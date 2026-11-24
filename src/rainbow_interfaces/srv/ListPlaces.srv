@@ -1,0 +1,4 @@
+---
+# The map the places belong to
+string map
+Place[] places

@@ -1,0 +1,9 @@
+# Drive to a named place with Nav2. "home" goes to the place named home.
+# A new goal (go, turn or drive) replaces the one running.
+string place
+---
+bool success
+string message
+---
+float32 distance_remaining
+float32 seconds_remaining

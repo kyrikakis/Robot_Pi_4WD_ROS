@@ -8,6 +8,25 @@
 ![robot_back_right](./images/robot_back_right.jpeg)
 ![robot_top](./images/robot_top.jpeg)
 
+## Hardware
+
+| Part | What | Connected to |
+|---|---|---|
+| Computer | Raspberry Pi 5 | |
+| AI accelerator | Hailo-8 (face recognition, in its own container) | PCIe |
+| Motor controller | Yahboom MicroROS control board (ESP32) | USB serial (CP2102), micro-ROS |
+| Motors | 4x Yahboom MD310Z20: 7.4 V, 1:20, encoder, 3 mm D-shaft, 450 rpm | ESP32 board |
+| Wheels | 45 mm, skid-steer (wheelbase 13 cm, 14 cm across) | Motors |
+| Lidar | Oradar MS200 | ESP32 board |
+| Head | Pan/tilt, 2x MG90S servos | ESP32 board |
+| Depth camera | Arducam ToF, in the head | CSI (`cam0`) |
+| RGB camera | Raspberry Pi Camera Module 3, in the head | CSI (`cam1`) |
+| IMU | BNO055 (the ESP32 board's own IMU is unused) | I2C |
+| Eyes | Two 8x8 LED matrices on an HT16K33 | I2C |
+| Microphone and speaker | ReSpeaker Lite, speaker on its output | USB |
+| Wi-Fi | ALFA adapter (rtl8812au driver) | USB |
+| Battery | Zee 2S LiPo 7.4 V, 8000 mAh, 100C (~6.9-8.0 V in use) | ESP32 board |
+
 ## Installation
 1. Download and install a new pi bookworm image in a micro sd. Proposed a Sundisk Extreme A2 256GB using the pi imager 
 2. Edit the imager settings and add your ~/.ssh/id_rsa.pub
@@ -49,8 +68,9 @@ Rainbow's ROS 2 packages live in `src/`:
 | `rainbow_description` | URDF of the robot: chassis, sensors and the pan/tilt head |
 | `rainbow_bringup` | Launch files and all configuration (EKF, BNO055, SLAM, Nav2) |
 | `rainbow_drivers` | Head, eyes, ToF depth camera, velocity watchdog, IP publisher |
-| `rainbow_voice` | Text to speech; wake word placeholder (`voice.launch.py wake_word:=true`) |
-| `rainbow_interfaces` | Service definitions |
+| `rainbow_voice` | Text to speech; the ears: wake word, utterances, local commands on the ReSpeaker Lite |
+| `rainbow_brain` | Local brain: skills (go to a place, turn, drive, stop) and named places on the map ([design](docs/brain.md)) |
+| `rainbow_interfaces` | Service, action and message definitions |
 
 The ESP32 board runs the motors (with PID), the head servos, the lidar, battery
 monitoring and its own IMU. It talks to the Pi over micro-ROS (`/dev/ttyUSB_ROS`).
@@ -73,7 +93,8 @@ Supervisor starts these when the container starts (`supervisor/rainbow.conf`):
 | `rainbow_slam` | `slam.launch.py` | slam_toolbox, for mapping (not started by default) |
 | `rainbow_navigation` | `navigation.launch.py` | Nav2 |
 | `rainbow_foxglove` | `foxglove.launch.py` | Foxglove bridge on port 8765 |
-| `rainbow_voice` | `voice.launch.py` | Text to speech |
+| `rainbow_voice` | `voice.launch.py` | Text to speech, wake word and listening (ReSpeaker Lite) |
+| `rainbow_brain` | `brain.launch.py` | Local brain, places, link to the Mac agent (port 8766) |
 
 ```
 supervisorctl status
@@ -88,7 +109,7 @@ map_saver_cli -f maps/<name>`, set `yaml_filename` in
 
 To run everything by hand instead: `scripts/rainbow_launch.sh rainbow.launch.py`
 (arguments `localization`, `navigation`, `foxglove`, `voice`, `tof`,
-`microros`, default `true`; `slam` default `false`).
+`microros`, `brain`, default `true`; `slam` default `false`).
 
 ### Talking to the robot
 
@@ -102,6 +123,16 @@ ros2 service call /eyes/set_expression rainbow_interfaces/srv/SetExpression "{ex
 
 # Speech
 ros2 service call /speech/say rainbow_interfaces/srv/Say "{text: 'Hello, I am Rainbow'}"
+
+# Places (stored per map on the rainbow_data volume, shown on /places/markers)
+ros2 service call /places/save rainbow_interfaces/srv/SavePlace "{name: kitchen, room: kitchen}"
+ros2 service call /places/list rainbow_interfaces/srv/ListPlaces
+ros2 service call /brain/where_am_i rainbow_interfaces/srv/WhereAmI
+
+# Skills (all through Nav2); /brain/stop cancels every Nav2 goal
+ros2 action send_goal /brain/go_to_place rainbow_interfaces/action/GoToPlace "{place: kitchen}" --feedback
+ros2 action send_goal /brain/turn rainbow_interfaces/action/Turn "{angle: 1.57}"
+ros2 service call /brain/stop std_srvs/srv/Trigger
 ```
 
 The old topics still work: `/head/z_rotation` and `/head/y_rotation` (degrees),
@@ -118,8 +149,11 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=cmd_
 
 Connect the Foxglove app to `ws://<robot-ip>:8765` (Foxglove WebSocket; the IP is
 published on `/rpi5_ip`), then import the layout `foxglove/rainbow.json`. It has the
-3D view (click to send a Nav2 goal), teleop, commanded vs actual speed, head and
-eyes controls, the face-recognition camera and the log. The ToF cloud is heavy
+3D view (click to send a Nav2 goal), a Places tab (its pose tool picks a pose
+for `/places/save` with `from_pick: true`), teleop, buttons to stop (cancel
+every goal), relocalize (AMCL searches the whole map again) and save a picked place, commanded vs actual speed, head and
+eyes controls, the face-recognition camera and the log, and a Status tab
+(`/brain/status`: the brain's state and health, the Mac agent's state and log). The ToF cloud is heavy
 over Wi-Fi; hide `/point_cloud` in the 3D view if it lags.
 
 ### Useful commands

@@ -1,0 +1,11 @@
+# Change a place without moving it. Empty strings keep the current value.
+string name
+string new_name
+string description
+string room
+# Mark one of the robot's guesses as confirmed by the owner
+bool confirm
+---
+bool success
+string message
+Place place

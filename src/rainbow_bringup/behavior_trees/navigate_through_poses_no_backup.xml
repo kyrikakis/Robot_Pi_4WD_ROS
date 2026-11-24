@@ -43,10 +43,11 @@
               <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
               <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
             </Sequence>
-            <!-- Both ways: a turn one way can be blocked (collision monitor or the
-                 costmap) where the other way is free -->
-            <Spin name="SpinLeft" spin_dist="1.57" error_code_id="{spin_error_code}"/>
-            <Spin name="SpinRight" spin_dist="-1.57" error_code_id="{spin_error_code}"/>
+            <!-- Both ways, with free_spin (nav2.yaml): no collision check and past
+                 the collision monitor, so an obstacle at the nose cannot keep the
+                 robot from turning away from it -->
+            <Spin name="SpinLeft" server_name="free_spin" spin_dist="1.57" error_code_id="{spin_error_code}"/>
+            <Spin name="SpinRight" server_name="free_spin" spin_dist="-1.57" error_code_id="{spin_error_code}"/>
             <!-- Nose against an obstacle (within ~2 cm) the front corners hit it
                  turning either way: back up 10 cm, slowly, into the space it just
                  drove through (BackUp checks the local costmap first) -->

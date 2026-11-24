@@ -22,7 +22,8 @@ compose setup lives in `~/hailo_tappas_ros2` on the host.
 | Hailo container ([hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2)) | Face recognition on the Hailo, capturing the RGB camera itself | No. Only `hailo_msgs` is built here, to read its messages |
 
 Contracts with the ESP firmware (node `YB_Car_Node`, do not rename): it
-subscribes to `cmd_vel`, `servo_s1` (pan), `servo_s2` (tilt) and `/beep`, and
+subscribes to `cmd_vel` (skid-steer: it ignores `linear.y`, tested with the wheels
+lifted 2026-11-24), `servo_s1` (pan), `servo_s2` (tilt) and `/beep`, and
 publishes `/odom_raw`, `/scan` in `laser_frame`, `/imu` in `imu_frame`, and
 `/battery` (UInt16, volts x 10, 1 Hz; the owner's pack runs ~6.9-8.0 V). The ESP's IMU is mounted wrongly and
 unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
@@ -33,7 +34,7 @@ unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
   so a power-on is a clean deployment. This is deliberate; do not bind-mount
   the repo. The image is built from the **Pi host's** checkout, not from inside
   the container.
-- Supervisor runs seven of its eight programs from `supervisor/rainbow.conf`, each a
+- Supervisor runs eight of its nine programs from `supervisor/rainbow.conf`, each a
   `rainbow_bringup` launch file via `scripts/rainbow_launch.sh`. The micro-ROS
   agent (`rainbow_microros`) and the ToF (`rainbow_tof`) are separate programs:
   restarting the base disconnects neither the ESP nor the ToF.
@@ -46,10 +47,22 @@ unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
 - **Restarting `rainbow_base` restarts the EKF, which resets the odometry: AMCL
   then needs a pose estimate, and a SLAM mapping session gets scrambled
   (restart `rainbow_slam` right after). Ask the owner before restarting the
-  base.** Restarting Nav2 or the ToF is safe.
+  base.** Restarting Nav2, the ToF or the brain is safe.
 - Nav2 runs composed in one process (`nav2_container`); as separate processes
   its 11 servers cost ~66% of a core idle, composed ~38%.
 - `ROS_DOMAIN_ID=20` for the robot.
+- The voice node (`rainbow_voice`, program `rainbow_voice`) owns the ReSpeaker
+  Lite's microphone (single owner: stop the program before recording from it).
+  It reads it with `arecord`; its models are in `/opt/rainbow/voice` (pinned
+  downloads in the Dockerfile). Test it without the mic by putting a stand-in
+  `arecord` that streams a raw 16 kHz stereo file first on its PATH.
+- The brain's link to the Mac agent (`agent/`) is a WebSocket on port 8766;
+  its token is `/data/rainbow/link_token` (`rainbow-agent pair` copies it).
+  `agent/tests/test_link.py` runs both ends against each other on the Mac.
+- Data the robot writes at runtime (places, the link token) lives on the
+  `rainbow_data` Docker volume at `/data/rainbow`, never in the image or `maps/`.
+  Places are per map (`places/<map>.yaml`, map name taken from
+  `localization.yaml`): a new map needs new places.
 - All measurements live in `src/rainbow_description/urdf/dimensions.xacro`
   (measured values are marked). Nav2's footprint in `rainbow_bringup/config/nav2.yaml`
   must be kept in sync with it by hand.
@@ -66,6 +79,9 @@ The code you edit is the code the robot runs. Lessons learned:
 - **Hardware is single-owner**: the I2C eyes, BNO055 and the ToF camera can only
   be opened by one process; test their nodes by restarting the supervisor
   program, not alongside it.
+- After building a new message type, restart `rainbow_foxglove`: the bridge keeps
+  the interface library it loaded at start and cannot subscribe to the new type
+  ("typesupport library ... could not be found"), so Foxglove panels stay empty.
 - `supervisorctl tail` can fail on non-UTF-8 log output; read
   `/var/log/supervisor/<program>-stdout*.log` directly.
 - **ROS params files** (`config/*.yaml`) must only have node names at the top
@@ -80,8 +96,14 @@ The code you edit is the code the robot runs. Lessons learned:
 - **ESP connection**: if `/scan`, `/odom_raw` and `/battery` stop, the ESP's CP2102
   USB serial chip may have locked up (`dmesg`: `cp210x ... failed set request`).
   It is powered by the Pi, so a battery reset does not clear it; re-enumerate it:
-  `echo 0 > /sys/bus/usb/devices/1-2/authorized; sleep 2; echo 1 > .../authorized`.
-  The agent reconnects by itself. Avoid restarting `rainbow_microros`: after the
+  `echo 0 > /sys/bus/usb/devices/3-2/authorized; sleep 2; echo 1 > .../authorized`
+  (the USB path was 1-2 before; check `cat /sys/bus/usb/devices/*/product`).
+  The agent reconnects by itself. Switching to a new image (`docker compose up
+  -d`) restarts the agent: the CP2102 locked up ~2 min later, and after
+  re-enumerating, a restart of rainbow_microros plus an ESP board reset brought
+  the ESP back. Nav2 started meanwhile without a `map` frame (no lidar) and
+  aborted its bringup ("Action server is inactive. Rejecting the goal."):
+  restart rainbow_navigation once the ESP is back. Avoid restarting `rainbow_microros`: after the
   agent stops, the ESP itself needs a board reset (with the agent running).
 - The ToF is in both costmaps (STVL). The node does the floor filtering and
   publishes `/tof/obstacles` (2-16 cm above the floor within 0.7 m, 2.5-16 cm
@@ -128,7 +150,11 @@ The code you edit is the code the robot runs. Lessons learned:
 - Nav2 does not drive backwards (`allow_backward: false`): nothing sees low
   obstacles behind. The only exception is the recovery in
   `rainbow_bringup/behavior_trees/`: spin left, spin right, then back up 10 cm
-  at 5 cm/s. With its nose within ~2 cm of an obstacle the 19 x 14 cm footprint's
+  at 5 cm/s. The recovery spins use `free_spin` (a second behavior server,
+  `free_spin_server` in nav2.yaml): no collision check and past the smoother and
+  collision monitor, so an obstacle at the nose (the owner's case: obstacle in
+  front, free to the sides and behind) cannot keep the robot from turning away;
+  the corners may scrape it. The back-up keeps its costmap check. With its nose within ~2 cm of an obstacle the 19 x 14 cm footprint's
   front corners (12.2 cm from the centre) hit it turning either way, and the
   ToF's 30 s memory keeps it after a costmap clear (blind zone).
 - Frames and IMU are verified: base_footprint -> base_link is a fixed joint, so
@@ -151,10 +177,14 @@ The code you edit is the code the robot runs. Lessons learned:
   centred) gives the FOV and the mount pitch/roll. Current values: FOV 48.5 x
   39.3 deg (in base.launch.py; the spec's 64.3 x 50.4 is wrong), pitch +2.6 deg,
   roll -2.2 deg (dimensions.xacro). Floor then reads within ~1-2 cm to 1 m.
-  Against the lidar (the reference) the ToF placed things ~8.5 cm too far and
-  4 cm left: fixed with `tof_dx` -0.085 m and `tof_yaw` -1.5 deg (dimensions.xacro),
-  now within ~2 cm. Not with a range offset (`range_offset`, kept at 0): that
-  also lifted the floor ~3-4 cm and filled the costmaps with ghosts.
+  The ToF sits in the same head mount as the RGB camera, 8 cm apart: its URDF
+  link is that mount, with no fitted shift. A shift fitted against the lidar
+  (`tof_dx` -0.085 m, `tof_yaw` -1.5 deg) put the sensor 8.5 cm back inside the
+  head and was removed (2026-11-22): it had gone stale (wall 5 cm too close,
+  3.8 deg off). Without it the ToF reads a wall ~3 cm farther than the lidar; a
+  range error belongs in the ToF data, not in the mount. Not with a range
+  offset (`range_offset`, kept at 0) either: that also lifted the floor ~3-4 cm
+  and filled the costmaps with ghosts.
 - With the ESP board off there is no odometry or lidar, so SLAM and Nav2 start
   but cannot do anything useful. Do not read that as a failure.
 - The Hailo container's supervisor socket is reachable from here at
@@ -198,13 +228,39 @@ when new work comes up, add it here.
 
 - Drive test with the ESP on (teleop, head directions, lidar/odometry, Nav2
   in a small room). The image rebuild of the refactor is done.
+- Spins in place broke (2026-11-23), in teleop and Nav2: a left spin creeps
+  forward, a right spin backward, battery full. Recorded: `/cmd_vel` is a pure
+  turn (+-0.96 rad/s, 0 forward) and the wheel odometry reports a clean spin
+  (~1 rad/s, <1 cm moved), but the BNO055 shows the body turning at only 0.30-0.35
+  rad/s (it used to be ~80-87%): the robot pivots about its left side. Measured
+  again 2026-11-24 with lidar ICP as ground truth (gyro and lidar agree): spins
+  reach 25-33% of the wheel odometry's angle, left spins creep ~10 cm forward,
+  right spins ~8-12 cm backward (the right side always wins, the left stays
+  put); a fast left spin's wheels only reach 0.66 of 0.96 rad/s (right: 0.94).
+  Straight drives are fine both ways (lidar within ~1 cm, <2.5 deg yaw). Ruled
+  out: the commands (pure turns reach the ESP), the head (centred), tilt (level).
+  Cause (owner, 2026-11-24): the left wheels' plastic inserts wore round on the
+  D-shaped motor shafts and spin freely on them; the motors and encoders turn,
+  the wheels do not (straight drives need little torque, so it showed only in
+  spins). Fix: new wheels (metal hubs with a set screw last longer), then check
+  a teleop spin against the gyro and re-measure `angular_gain` (1.2 was set with
+  worn or wearing wheels).
 - ToF blind zone: ~20-25 cm in front of the nose and outside +-24 deg to the
   sides (head level); obstacles there are only known from memory (30 s). A
   head tilt down would shrink it; try step by step with the owner watching.
-- Brain and voice: agreed design in `docs/brain.md` (local brain on the Pi,
-  agent with Whisper and memory on the owner's Mac, openWakeWord "Rainbow" on
-  the ReSpeaker, places on the map). Build in its order, discussing each step
-  with the owner first. "Stop" works without the wake word.
+- Brain and voice (`docs/brain.md`, branch `brain`): steps 1-3 built and tested
+  on the Pi on domain 77; the image is rebuilt (2026-11-24, not yet switched to:
+  the running container got the voice changes by git pull) and speaking was
+  tested with the owner. Still to do: driving through the link with the owner
+  watching. The trained wake words (`training/wakeword/`, data on the training
+  laptop's `rainbow_wakeword` volume) are on the robot: "hey Rainbow"/"Rainbow" works well for the owner (far
+  better than "hey Jarvis"), "stop" scores 0.5-0.9 (threshold 0.7), "hey
+  Robot"/"Robot" is not heard (under 0.3; low priority). To improve them: retrain
+  with the robot's own noise as background (lidar hum + fan; see
+  `training/wakeword/README.md`), then household recordings; re-enable face
+  recognition in the Hailo container (photos, faces and startup localization
+  depend on it); the head controller. Memory and photos/faces (steps 5-6) are
+  built.
 - Battery: warn around 7.0 V (log, eyes or speech) and cancel Nav2 goals /
   stop at the cutoff (~6.6-6.9 V, judged at rest). The firmware's own low-voltage
   behaviour is unknown. Not part of the brain work for now; later it becomes a
