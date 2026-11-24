@@ -231,9 +231,19 @@ when new work comes up, add it here.
   forward, a right spin backward, battery full. Recorded: `/cmd_vel` is a pure
   turn (+-0.96 rad/s, 0 forward) and the wheel odometry reports a clean spin
   (~1 rad/s, <1 cm moved), but the BNO055 shows the body turning at only 0.30-0.35
-  rad/s (it used to be ~80-87%): the robot pivots about its left side. Next: lift
-  it and watch all four wheels on a teleop spin (the ESP's odometry may not see
-  one dragging wheel), check the head is centred.
+  rad/s (it used to be ~80-87%): the robot pivots about its left side. Measured
+  again 2026-11-24 with lidar ICP as ground truth (gyro and lidar agree): spins
+  reach 25-33% of the wheel odometry's angle, left spins creep ~10 cm forward,
+  right spins ~8-12 cm backward (the right side always wins, the left stays
+  put); a fast left spin's wheels only reach 0.66 of 0.96 rad/s (right: 0.94).
+  Straight drives are fine both ways (lidar within ~1 cm, <2.5 deg yaw). Ruled
+  out: the commands (pure turns reach the ESP), the head (centred), tilt (level).
+  Cause (owner, 2026-11-24): the left wheels' plastic inserts wore round on the
+  D-shaped motor shafts and spin freely on them; the motors and encoders turn,
+  the wheels do not (straight drives need little torque, so it showed only in
+  spins). Fix: new wheels (metal hubs with a set screw last longer), then check
+  a teleop spin against the gyro and re-measure `angular_gain` (1.2 was set with
+  worn or wearing wheels).
 - ToF blind zone: ~20-25 cm in front of the nose and outside +-24 deg to the
   sides (head level); obstacles there are only known from memory (30 s). A
   head tilt down would shrink it; try step by step with the owner watching.
