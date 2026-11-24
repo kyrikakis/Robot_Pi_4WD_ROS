@@ -32,15 +32,47 @@ SECONDS = CHUNK / 16000.0
 
 
 class Vad:
-    """webrtcvad over a chunk: voiced if at least 2 of its four 20 ms frames are."""
+    """Voice activity for one chunk: webrtcvad, and louder than the background.
 
-    def __init__(self, aggressiveness=2):
+    webrtcvad (voiced if at least 2 of the chunk's four 20 ms frames are) takes the
+    robot's own steady noise for speech: the lidar's hum and the fan, which the
+    ReSpeaker's automatic gain turns up within a second of silence, so recordings
+    ran to their limit. A chunk therefore also needs its 200-4000 Hz energy margin_db
+    above the background level. The background is followed only on chunks that are
+    not speech, slowly (time constant floor_seconds): after speech the gain ramps the
+    noise back up to the level it had before, which stays under the margin.
+    """
+
+    def __init__(self, aggressiveness=2, margin_db=6.0, floor_seconds=4.0, band=(200, 4000)):
         import webrtcvad
         self.vad = webrtcvad.Vad(aggressiveness)
+        self.margin_db = margin_db
+        self.alpha = min(1.0, 0.08 / floor_seconds)   # per 80 ms chunk
+        self.band = band
+        self.floor = None   # dB
+        self.loud_run = 0   # chunks over the margin in a row
+
+    def level(self, chunk):
+        """Energy in the speech band, in dB."""
+        x = np.asarray(chunk, dtype=np.float32)
+        spectrum = np.abs(np.fft.rfft(x)) ** 2
+        freqs = np.fft.rfftfreq(len(x), 1.0 / 16000)
+        energy = spectrum[(freqs >= self.band[0]) & (freqs < self.band[1])].sum()
+        return 10.0 * np.log10(energy + 1.0)
 
     def __call__(self, chunk):
         frames = np.asarray(chunk, dtype=np.int16).reshape(4, 320)
-        return sum(self.vad.is_speech(f.tobytes(), 16000) for f in frames) >= 2
+        voiced = sum(self.vad.is_speech(f.tobytes(), 16000) for f in frames) >= 2
+        level = self.level(chunk)
+        if self.floor is None:
+            self.floor = level
+        loud = level >= self.floor + self.margin_db
+        self.loud_run = self.loud_run + 1 if loud else 0
+        # Follow the background on quiet chunks; after 15 s of "loud" in a row the
+        # background itself got louder (the lidar started): follow that too.
+        if not loud or self.loud_run > 187:
+            self.floor += self.alpha * (level - self.floor)
+        return voiced and loud
 
 
 class Listener:
