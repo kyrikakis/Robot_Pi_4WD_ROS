@@ -104,7 +104,7 @@ class VoiceNode(Node):
         # For the log: which model fired with what score, and near misses (a model
         # peaking at log_scores_above or more without reaching its threshold).
         self.thresholds = {f'wake:{m}': t for m, t in zip(wake_models, thresholds)}
-        self.stop_threshold = p('stop_threshold', 0.9).value
+        self.stop_threshold = p('stop_threshold', 0.7).value
         if stop_model:
             self.thresholds['stop'] = self.stop_threshold
         self.log_floor = p('log_scores_above', 0.1).value
@@ -235,7 +235,7 @@ class VoiceNode(Node):
                 peak = self.peaks.pop(name)
                 if peak < threshold:
                     self.get_logger().info(
-                        f'near miss: {name.removeprefix("wake:")} {peak:.2f} (needs {threshold})')
+                        f'near miss: {name.removeprefix("wake:")} {peak:.3f} (needs {threshold})')
 
     def on_chunk(self, chunk):
         with self.lock:

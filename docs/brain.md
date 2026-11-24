@@ -87,12 +87,12 @@ runs a state machine (`listener.py`) on every 80 ms chunk:
    AudioSet; "hey Jarvis" scores 99, 95/89/71, 78, 0.2: ours still trail in noise
    and at a distance. It also wakes when the robot says "Rainbow" itself, which
    is why nothing but the stop word is listened for while the robot talks.
-   **"Stop"** without the wake word: `stop.onnx` (`stop_model`, threshold 0.9),
+   **"Stop"** without the wake word: `stop.onnx` (`stop_model`, threshold 0.7),
    listened for even while the robot talks; a false "stop" only stops the robot.
-   Round 4 at 0.9: 68% in a quiet room, 44/33/20% at 10/5/0 dB, ~1 false stop per
-   hour of AudioSet, ~6 per hour of espeak (3 in a short test); a bare "Stop!" 26
-   of 32 synthetic clips (round 3: 18). A stricter threshold than the wake words:
-   the model is sure of a real "stop", and it listens while the robot talks. It
+   Round 4 at 0.7: 78% in a quiet room, 60/49/36% at 10/5/0 dB, ~2 false stops
+   per hour of AudioSet, ~17 per hour of espeak (a short test); a bare "Stop!" 29
+   of 32 synthetic clips. 0.9 was tried first: the owner's "stop" through the
+   ReSpeaker scored 0.75-0.90 and was missed. It
    does not fire on "Rainbow, stop" or "Robot, stop": those go through Vosk, as a
    local command after the wake word (17-18 of 20 on the synthetic end-to-end
    test). For that, the recording starts with the chunk the wake word
