@@ -194,8 +194,9 @@ The code you edit is the code the robot runs. Lessons learned:
 ## Conventions
 
 - `main` is the finished robot. New work happens on a branch per feature
-  (currently `brain`, for `docs/brain.md`); do not merge to `main` or suggest
-  merging until the owner says so.
+  (currently `head-controller`, step 7 of `docs/brain.md`; steps 1-6 were
+  merged from `brain`); do not merge to `main` or suggest merging until the
+  owner says so.
 - Python nodes: ament_python, one node per module, `ament_flake8 --linelength 100`
   clean. New services go in `rainbow_interfaces`. Keep the old topics
   (`/head/*_rotation`, `/eyes`, `/speech/*`) working.
@@ -248,7 +249,7 @@ when new work comes up, add it here.
 - ToF blind zone: ~20-25 cm in front of the nose and outside +-24 deg to the
   sides (head level); obstacles there are only known from memory (30 s). A
   head tilt down would shrink it; try step by step with the owner watching.
-- Brain and voice (`docs/brain.md`, branch `brain`): steps 1-3 built and tested
+- Brain and voice (`docs/brain.md`, in `main`): steps 1-3 built and tested
   on the Pi on domain 77; the image is rebuilt (2026-11-24, not yet switched to:
   the running container got the voice changes by git pull) and speaking was
   tested with the owner. Still to do: driving through the link with the owner
@@ -259,8 +260,12 @@ when new work comes up, add it here.
   with the robot's own noise as background (lidar hum + fan; see
   `training/wakeword/README.md`), then household recordings; re-enable face
   recognition in the Hailo container (photos, faces and startup localization
-  depend on it); the head controller. Memory and photos/faces (steps 5-6) are
-  built.
+  depend on it). Memory and photos/faces (steps 5-6) are built.
+- Head controller (`docs/brain.md` step 7, branch `head-controller`): smooth,
+  calm moves, `/joint_states` following the moving head, a settle time before photos, a
+  `look` skill in degrees, and a latest-target-wins topic for following faces
+  later. Later still: ToF + camera, the distance of what the camera sees, placed
+  in the map.
 - Battery: warn around 7.0 V (log, eyes or speech) and cancel Nav2 goals /
   stop at the cutoff (~6.6-6.9 V, judged at rest). The firmware's own low-voltage
   behaviour is unknown. Not part of the brain work for now; later it becomes a
