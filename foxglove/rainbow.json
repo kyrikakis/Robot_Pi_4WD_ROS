@@ -295,6 +295,29 @@
               "second": "RosOut!agent"
             }
           }
+        },
+        {
+          "title": "Head",
+          "layout": {
+            "direction": "column",
+            "splitPercentage": 30,
+            "first": {
+              "direction": "row",
+              "splitPercentage": 50,
+              "first": {
+                "direction": "row",
+                "first": "CallService!head",
+                "second": "CallService!head_center",
+                "splitPercentage": 60
+              },
+              "second": {
+                "direction": "row",
+                "first": "Indicator!head",
+                "second": "CallService!eyes"
+              }
+            },
+            "second": "Plot!head"
+          }
         }
       ]
     },
@@ -420,6 +443,89 @@
           "label": "roughly"
         }
       ]
+    },
+    "CallService!head": {
+      "serviceName": "/head/set_pose",
+      "requestPayload": "{\n  \"pan\": 0.5,\n  \"tilt\": 0.0\n}",
+      "layout": "vertical",
+      "editingMode": true,
+      "buttonText": "Point head",
+      "buttonTooltip": "Radians (0.5 = 29 deg). Pan + = left (-0.70 to 0.66), tilt + = down (-0.63 to 0.33). Smooth move",
+      "buttonColor": "#1565c0"
+    },
+    "CallService!head_center": {
+      "serviceName": "/head/center",
+      "requestPayload": "{}",
+      "layout": "vertical",
+      "editingMode": false,
+      "buttonText": "Centre head",
+      "buttonTooltip": "Back to straight ahead (0, 0)"
+    },
+    "CallService!eyes": {
+      "serviceName": "/eyes/set_expression",
+      "requestPayload": "{\n  \"expression\": \"happy\"\n}",
+      "layout": "vertical",
+      "editingMode": true,
+      "buttonText": "Set eyes",
+      "buttonTooltip": "happy, open, closed or off"
+    },
+    "Indicator!head": {
+      "foxglovePanelTitle": "Head",
+      "path": "/head/moving.data",
+      "style": "background",
+      "fallbackColor": "#a0a0a0",
+      "fallbackLabel": "no head node",
+      "rules": [
+        {
+          "operator": "=",
+          "rawValue": "true",
+          "color": "#ffb300",
+          "label": "moving / settling"
+        },
+        {
+          "operator": "=",
+          "rawValue": "false",
+          "color": "#68e24a",
+          "label": "still"
+        }
+      ]
+    },
+    "Plot!head": {
+      "foxglovePanelTitle": "Head angles (deg; joints follow the servo commands, a little late)",
+      "paths": [
+        {
+          "value": "/joint_states.position[0].@degrees",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "pan joint"
+        },
+        {
+          "value": "/joint_states.position[1].@degrees",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "tilt joint"
+        },
+        {
+          "value": "/servo_s1.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "pan servo (-pan)"
+        },
+        {
+          "value": "/servo_s2.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "tilt servo (-tilt - 56)"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 20
     }
   },
   "globalVariables": {},
