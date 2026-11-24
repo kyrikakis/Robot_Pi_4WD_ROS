@@ -43,7 +43,8 @@ def test_wake_record_until_silence():
     assert kinds(events) == ['utterance']
     samples, follow_up = events[0][1], events[0][2]
     assert follow_up is False
-    assert len(samples) == CHUNK * (10 + 10)  # speech plus 0.8 s of silence
+    # the chunk the wake word fired on, speech, 0.8 s of silence
+    assert len(samples) == CHUNK * (1 + 10 + 10)
     assert s.listener.state == 'listening'
 
 
@@ -106,7 +107,7 @@ def test_wake_beep_is_skipped_but_follow_ups_are_not():
     s.feed(LOUD, 2)                      # the beep: dropped, not "speech"
     s.feed(LOUD, 3)
     events = s.feed(QUIET, 12)
-    assert len(events[0][1]) == CHUNK * (3 + 10)
+    assert len(events[0][1]) == CHUNK * (1 + 3 + 10)   # the wake chunk, then after the beep
 
 
 def test_follow_ups_stop_after_two_and_endless_talk_is_dropped():
@@ -141,7 +142,7 @@ def test_wake_word_during_a_follow_up_restarts_as_a_wake():
     s.feed(LOUD, 4)
     events = s.feed(QUIET, 12)
     assert kinds(events) == ['utterance'] and events[0][2] is False
-    assert len(events[0][1]) == CHUNK * (4 + 10)         # only what came after the wake
+    assert len(events[0][1]) == CHUNK * (1 + 4 + 10)     # only from the wake on
 
 
 def test_wake_tail_or_hum_does_not_end_the_recording_before_the_command():
@@ -167,3 +168,26 @@ def test_no_follow_up_while_moving():
     s.listener.speaking(False)
     s.listener.moved()
     assert s.feed(QUIET, wake=0.9)[-1] == ('wake', False)  # the wake word always works
+
+
+def test_several_wake_words_each_with_its_threshold():
+    scores = {}
+    listener = Listener(lambda c: scores, lambda c: bool(c.any()),
+                        {'rainbow': 0.3, 'robot': 0.6}, clock=lambda: 0.0)
+    scores.update(rainbow=0.2, robot=0.5)
+    assert kinds(listener.feed(QUIET)) == []
+    scores.update(rainbow=0.0, robot=0.7)
+    assert kinds(listener.feed(QUIET)) == ['wake']
+    listener = Listener(lambda c: scores, lambda c: bool(c.any()),
+                        {'rainbow': 0.3, 'robot': 0.6}, clock=lambda: 0.0)
+    scores.update(rainbow=0.35, robot=0.0)
+    assert kinds(listener.feed(QUIET)) == ['wake']
+
+
+def test_stop_word_right_after_the_wake_word():
+    """Check "Rainbow, stop!": the wake word's cooldown must not silence the stop word."""
+    s = Script()
+    assert kinds(s.feed(LOUD, wake=0.9)) == ['wake']
+    s.feed(LOUD, 3)
+    assert kinds(s.feed(LOUD, stop=0.9)) == ['stop']
+    assert kinds(s.feed(LOUD, stop=0.9)) == []          # but a stop has its own cooldown

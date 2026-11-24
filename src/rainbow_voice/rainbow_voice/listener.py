@@ -50,10 +50,14 @@ class Listener:
                  follow_up=8.0, preroll=0.4, cooldown=2.0, skip_after_wake=0.0,
                  follow_up_start=0.48, max_follow_ups=2, min_speech=0.24,
                  motion_settle=0.5, clock=time.monotonic):
-        """Set up. scores: chunk -> {word: score} (WakeWords.process); vad: chunk -> bool."""
+        """Set up. scores: chunk -> {word: score} (WakeWords.process); vad: chunk -> bool.
+
+        wake_word: a name, or {name: threshold} for several wake words (any one wakes).
+        """
         self.scores, self.vad, self.clock = scores, vad, clock
-        self.wake_word, self.stop_word = wake_word, stop_word
-        self.wake_threshold, self.stop_threshold = wake_threshold, stop_threshold
+        self.wake_words = (dict(wake_word) if isinstance(wake_word, dict)
+                           else {wake_word: wake_threshold})
+        self.stop_word, self.stop_threshold = stop_word, stop_threshold
         # Durations counted in whole chunks (summing 0.08 s drifts below the limit)
         self.end_silence, self.max_chunks, self.no_speech = (
             round(end_silence / SECONDS), round(max_seconds / SECONDS), round(no_speech / SECONDS))
@@ -73,7 +77,10 @@ class Listener:
         self.state = 'listening'
         self.muted = False
         self.follow_up_until = 0.0
-        self.quiet_until = 0.0        # no new wake/stop trigger before this
+        self.quiet_until = 0.0        # no new wake trigger before this
+        # no new stop before this: only a stop silences the stop word, not a wake
+        # ("Rainbow, stop!" has the stop word right after the wake word)
+        self.stop_quiet_until = 0.0
         self.voiced_run = 0
         self._recording = None
 
@@ -90,11 +97,15 @@ class Listener:
         """Note a move command (call for every non-zero velocity command)."""
         self.moving_until = self.clock() + self.motion_settle
 
-    def _wake(self, now):
-        """Start a fresh recording on the wake word; follow-ups are allowed again."""
+    def _wake(self, now, chunk):
+        """Start a fresh recording on the wake word; follow-ups are allowed again.
+
+        The recording starts with the chunk the wake word fired on: the model fires
+        a little after the word ends, so that chunk can hold the start of the command.
+        """
         self.quiet_until = now + self.cooldown
         self.follow_ups = 0
-        self._start(follow_up=False, preroll=[])
+        self._start(follow_up=False, preroll=[chunk])
         return [('wake', False)]
 
     def feed(self, chunk):
@@ -103,18 +114,18 @@ class Listener:
         scores = self.scores(chunk)
         events = []
         if (self.stop_word and scores.get(self.stop_word, 0.0) >= self.stop_threshold
-                and now >= self.quiet_until):
-            self.quiet_until = now + self.cooldown
+                and now >= self.stop_quiet_until):
+            self.quiet_until = self.stop_quiet_until = now + self.cooldown
             self.state, self._recording = 'listening', None
             return [('stop',)]
         if self.muted:
             return events
-        woke = (scores.get(self.wake_word, 0.0) >= self.wake_threshold
+        woke = (any(scores.get(w, 0.0) >= t for w, t in self.wake_words.items())
                 and now >= self.quiet_until)
         if self.state == 'listening':
             voiced = self.vad(chunk)
             if woke:
-                events += self._wake(now)
+                events += self._wake(now, chunk)
             elif now < self.moving_until:
                 self.voiced_run = 0             # motor noise is not a follow-up
             elif now < self.follow_up_until:
@@ -128,7 +139,7 @@ class Listener:
             self.preroll.append(chunk)
             return events
         if woke and self._recording['follow_up']:
-            return self._wake(now)
+            return self._wake(now, chunk)
         return self._record(chunk)
 
     def _start(self, follow_up, preroll):

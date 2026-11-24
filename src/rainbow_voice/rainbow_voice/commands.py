@@ -32,9 +32,12 @@ class CommandRecognizer:
         result = json.loads(rec.FinalResult())
         words = [w for w in result.get('result') or [] if w.get('word')]
         # One trailing unknown word is fine ("go to the sofa please"); more means a
-        # longer sentence, which is for the agent
+        # longer sentence, which is for the agent. One leading one too: the tail of the
+        # wake word ("...bow, stop"), as the recording starts where the wake word fired.
         if words and words[-1]['word'] == '[unk]':
             words = words[:-1]
+        if words and words[0]['word'] == '[unk]':
+            words = words[1:]
         text = ' '.join(w['word'] for w in words)
         if not words or text not in self.phrases:
             return '', 0.0

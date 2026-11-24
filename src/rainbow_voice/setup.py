@@ -1,3 +1,5 @@
+from glob import glob
+
 from setuptools import setup
 
 package_name = 'rainbow_voice'
@@ -9,6 +11,8 @@ setup(
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        # wake and stop word models trained for Rainbow (training/wakeword/)
+        ('share/' + package_name + '/models', glob('models/*.onnx')),
     ],
     install_requires=['setuptools'],
     tests_require=['pytest'],

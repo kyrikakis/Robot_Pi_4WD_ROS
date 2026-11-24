@@ -2,18 +2,25 @@
 
 Reads the ReSpeaker Lite with arecord (16 kHz, 16-bit; no Python audio
 library needed) and runs rainbow_voice.listener on every 80 ms chunk:
-openWakeWord models (rainbow_voice.wakeword) for the wake and stop words,
+openWakeWord models (rainbow_voice.wakeword) for the wake words and the stop word,
 webrtcvad for the end of speech. A finished utterance goes through Vosk with
 the brain's phrase list (rainbow_voice.commands) and is published for the
 brain, which handles local commands itself and sends the rest to the Mac.
 
-The wake word is a placeholder ("hey Jarvis", openWakeWord's pretrained model)
-until a "Rainbow" model is trained; there is no stop model yet, so "stop" only
-works after the wake word (as a local command). The capture device can only be
-opened by one process: nothing else may record from it.
+Wake words (wake_models, any one wakes, each with its own threshold in
+wake_thresholds): hey_rainbow.onnx answers "hey Rainbow" and "Rainbow" alone,
+hey_robot.onnx "hey Robot" and "Robot" (the fallback name). The
+stop word (stop_model, stop.onnx) is heard at any time, even while the robot talks;
+"Rainbow, stop" also works, as a local command after the wake word. These models
+were trained for Rainbow (training/wakeword/, synthetic voices) and live in this
+package (models/); a name not found there is looked up in models_dir (openWakeWord's
+own models, e.g. hey_jarvis_v0.1.onnx). The capture device can only be opened by one
+process: nothing else may record from it.
 
-On the wake word it plays a short soft hum, a rising "hmm?", on the same card
-(wake_beep, beep_volume 0.35); the recording skips its 0.32 s, since the mic hears it.
+On the wake word the eyes open. A short soft hum, a rising "hmm?", can play too
+(wake_beep, beep_volume 0.35; off by default): the recording then skips its 0.32 s,
+since the mic hears it, and that skip cut off commands said in one breath ("Rainbow,
+stop": on synthetic voices 0-1 of 20 stopped with the hum, 17-18 without).
 
 Publishes:  /voice/wake (std_msgs/Empty), /voice/stop (std_msgs/Empty),
             /voice/utterance (rainbow_interfaces/Utterance), /eyes (std_msgs/String)
@@ -30,6 +37,7 @@ import subprocess
 import threading
 import time
 
+from ament_index_python.packages import get_package_share_directory, PackageNotFoundError
 from geometry_msgs.msg import Twist
 import numpy as np
 from rainbow_interfaces.msg import Utterance
@@ -45,6 +53,15 @@ from std_msgs.msg import Bool, Empty, String
 LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 EYES = QoSProfile(reliability=ReliabilityPolicy.RELIABLE, history=HistoryPolicy.KEEP_LAST,
                   depth=1)
+
+
+def model_path(name, models_dir):
+    """Return this package's model of that name (models/), else the one in models_dir."""
+    try:
+        own = Path(get_package_share_directory('rainbow_voice')) / 'models' / name
+    except PackageNotFoundError:
+        own = None
+    return own if own is not None and own.exists() else models_dir / name
 
 
 def beep_samples(volume, seconds=0.3, start_hz=180.0, end_hz=240.0):
@@ -70,22 +87,25 @@ class VoiceNode(Node):
         self.channels = p('channels', 2).value
         self.channel = p('channel', 0).value
         models = Path(p('models_dir', '/opt/rainbow/voice').value)
-        wake_model = p('wake_model', 'hey_jarvis_v0.1.onnx').value
-        stop_model = p('stop_model', '').value
+        wake_models = list(p('wake_models', ['hey_rainbow.onnx', 'hey_robot.onnx']).value)
+        thresholds = list(p('wake_thresholds', [0.3, 0.3]).value)
+        stop_model = p('stop_model', 'stop.onnx').value
 
-        self.wake_beep = p('wake_beep', True).value
+        self.wake_beep = p('wake_beep', False).value
         self.beep = beep_samples(p('beep_volume', 0.35).value)
 
-        words = {'wake': models / wake_model}
+        # One threshold per wake model; a shorter list repeats its last value
+        thresholds = [thresholds[min(i, len(thresholds) - 1)] for i in range(len(wake_models))]
+        words = {f'wake:{m}': model_path(m, models) for m in wake_models}
         if stop_model:
-            words['stop'] = models / stop_model
+            words['stop'] = model_path(stop_model, models)
         self.wake = WakeWords(words, models / 'melspectrogram.onnx',
                               models / 'embedding_model.onnx')
         self.listener = Listener(
-            self.wake.process, Vad(p('vad_aggressiveness', 3).value), 'wake',
+            self.wake.process, Vad(p('vad_aggressiveness', 3).value),
+            {f'wake:{m}': t for m, t in zip(wake_models, thresholds)},
             'stop' if stop_model else None,
-            wake_threshold=p('wake_threshold', 0.5).value,
-            stop_threshold=p('stop_threshold', 0.5).value,
+            stop_threshold=p('stop_threshold', 0.9).value,
             end_silence=p('end_silence', 0.8).value,
             max_seconds=p('max_seconds', 10.0).value,
             follow_up=p('follow_up', 8.0).value,
@@ -116,7 +136,9 @@ class VoiceNode(Node):
         self.thread = threading.Thread(target=self.audio_loop, name='audio', daemon=True)
         self.thread.start()
         self.get_logger().info(
-            f'listening on {self.device} (wake: {wake_model}, stop: {stop_model or "none"})')
+            f'listening on {self.device} (wake: '
+            f'{", ".join(f"{m} >= {t}" for m, t in zip(wake_models, thresholds))}, '
+            f'stop: {stop_model or "none"})')
 
     def on_speaking(self, msg):
         with self.lock:

@@ -72,32 +72,38 @@ runs a state machine (`listener.py`) on every 80 ms chunk:
    scipy and scikit-learn and wants a tflite-runtime that has no Python 3.12
    build. Its inference is small and reimplemented with the same models; the
    scores match the package's to 0.0001 (checked on test clips).
-   **Placeholder:** the wake word is openWakeWord's pretrained "hey Jarvis"
-   until a "Rainbow" model is trained (on the Mac, later). With a trained
-   model, change `wake_model` (and a `stop_model`) in the node's parameters.
-   A one-word wake word triggers falsely more often than a phrase; tune its
-   threshold on recordings made with the motors running.
-   **Training (not done yet)**: openWakeWord's training notebook
-   (`notebooks/automatic_model_training.ipynb`) is Linux-only and pinned to
-   Python 3.9-era packages (tensorflow-cpu 2.8.1 has no Apple Silicon build;
-   TensorFlow is only for the optional .tflite export, we use .onnx). It
-   generates the positive clips with piper-sample-generator
-   (`en_US-libritts_r-medium.pt`, 204 MB, sha256 e95ee537...0ff6), downloads
-   ~20 GB of negatives and noise (ACAV100M features, MIT room impulse
-   responses, part of AudioSet, FMA) and needs 20,000+ clips for a good model:
-   hours of full CPU load on the Mac. Options: a Linux container on the Mac,
-   or the notebook on Google Colab (free GPU, under an hour). Output:
-   `<output_dir>/<model_name>.onnx`, copied to `/opt/rainbow/voice` via the
-   repo and set as `wake_model` / `stop_model`.
-   **"Stop" without the wake word** needs a trained "stop" model too (another
-   openWakeWord model on the same features, so it costs little); it is
-   listened for even while the robot talks, and a false "stop" only stops the
-   robot. Until it exists, "stop" works after the wake word, as a local
-   command.
+   **Wake words**: trained for Rainbow on the Mac (`training/wakeword/`, openWakeWord's
+   training on synthetic voices only: LibriTTS speakers, accented Piper voices,
+   Greek pronunciations), shipped in the package (`rainbow_voice/models/`).
+   `wake_models` is a list, any one wakes, each with its threshold in
+   `wake_thresholds`. `hey_rainbow.onnx` answers "hey Rainbow" and "Rainbow"
+   alone (threshold 0.3; the "hey"-only round is kept in the training results).
+   `hey_robot.onnx` (threshold 0.3) is the fallback: "hey Robot" and "Robot" alone,
+   "hey Robot" 82% in a quiet room, 72/62/47% at 10/5/0 dB, 42% across the room,
+   ~0.4 false wakes per hour; the bare "Robot" 83% quiet, 62/54/36%, 33%. Either
+   model can be dropped from `wake_models` without retraining. On the synthetic test
+   (standard voices, 0.5): "hey Rainbow" 100% in a quiet room, 84/69/42% at
+   10/5/0 dB noise, 45% far across a reverberant room, 0.7 false wakes per hour of
+   AudioSet; "hey Jarvis" scores 99, 95/89/71, 78, 0.2: ours still trail in noise
+   and at a distance. It also wakes when the robot says "Rainbow" itself, which
+   is why nothing but the stop word is listened for while the robot talks.
+   **"Stop"** without the wake word: `stop.onnx` (`stop_model`, threshold 0.9),
+   listened for even while the robot talks; a false "stop" only stops the robot.
+   Round 4 at 0.9: 68% in a quiet room, 44/33/20% at 10/5/0 dB, ~1 false stop per
+   hour of AudioSet, ~6 per hour of espeak (3 in a short test); a bare "Stop!" 26
+   of 32 synthetic clips (round 3: 18). A stricter threshold than the wake words:
+   the model is sure of a real "stop", and it listens while the robot talks. It
+   does not fire on "Rainbow, stop" or "Robot, stop": those go through Vosk, as a
+   local command after the wake word (17-18 of 20 on the synthetic end-to-end
+   test). For that, the recording starts with the chunk the wake word
+   fired on, a leading unknown word (the wake word's tail) is dropped by the
+   recognizer, and the wake word does not silence the stop word.
 2. **Recording**: after the wake word, webrtcvad cuts the utterance (end
    after 0.8 s of silence, 10 s maximum; 4 s without speech gives up). The
    silence only counts once 0.24 s of continuous speech was heard: the tail of
-   the wake word or of the hum cut commands off at 1.2 s. This replaces
+   the wake word or of the hum cut commands off at 1.2 s. The wake hum
+   (`wake_beep`) is off by default: its 0.32 s, skipped from the recording since
+   the mic hears it, swallowed commands said in one breath ("Rainbow, stop"). This replaces
    v0-legacy's fixed loudness threshold, which breaks with motor noise.
 3. **Local commands**: Vosk (small English model) with the brain's phrase list
    (`/voice/grammar`) runs on each finished utterance (a few ms) and returns the
