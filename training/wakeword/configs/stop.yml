@@ -1,0 +1,51 @@
+# openWakeWord train.py config for "stop" (see ../README.md)
+model_name: stop
+target_phrase:
+  - "stop"
+custom_negative_phrases:
+  - "top"
+  - "stomp"
+  - "shop"
+  - "stock"
+  - "spot"
+  - "step"
+  - "stuff"
+  - "store"
+  - "stuck"
+  - "storm"
+  - "start"
+  - "stub"
+  - "stoop"
+  - "stab"
+  - "stuart"
+  - "hey rainbow"
+n_samples: 15000   # r3: 15000 new negatives without the word "stop" (positives stay 30000)
+n_samples_val: 3000
+tts_batch_size: 32
+augmentation_batch_size: 16
+piper_sample_generator_path: /src
+output_dir: /data/runs
+rir_paths:
+  - /data/rirs
+  - /data/rirs_far   # make_far_rirs.py: across a room, mic near the floor
+background_paths:
+  - /data/background
+  - /data/espeak_negative   # training-only espeak (the robot's voice); /data/espeak is eval
+background_paths_duplication_rate:
+  - 4
+  - 1
+false_positive_validation_data_path: /data/features/validation_set_features.npy
+augmentation_rounds: 1
+feature_data_files:
+  ACAV100M_sample: /data/features/openwakeword_features_ACAV100M_2000_hrs_16bit.npy
+  espeak_negative: /data/features/espeak_negative_features.npy
+batch_n_per_class:
+  ACAV100M_sample: 1024
+  espeak_negative: 300   # r5 (r4: 100; r4 had 21.7 false stops per hour on espeak)
+  adversarial_negative: 50   # r4 (r3: 20)
+  positive: 200
+model_type: dnn
+layer_size: 128   # r4: r3 had too many false accepts (4.5/h) for its recall
+steps: 50000
+max_negative_weight: 300
+target_false_positives_per_hour: 1.0
