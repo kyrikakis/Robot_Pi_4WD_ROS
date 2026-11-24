@@ -159,8 +159,10 @@ class BrainNode(Node):
         # Seconds before the same face is announced to the agent again
         self.face_repeat = self.declare_parameter('face_repeat', 600.0).value
         self.faces_seen = {}
-        # "Look around": turn in place until AMCL is sure, at most this many turns
-        self.localize_max_turns = self.declare_parameter('localize_max_turns', 4).value
+        # "Look around": localize_turns full turns in one go, then again if AMCL is not
+        # sure yet, at most localize_rounds times
+        self.localize_turns = self.declare_parameter('localize_turns', 4).value
+        self.localize_rounds = self.declare_parameter('localize_rounds', 2).value
         self.localizing = False
         # /brain/status every this many seconds (and on every change)
         status_period = self.declare_parameter('status_period', 1.0).value
@@ -483,8 +485,13 @@ class BrainNode(Node):
         """Turn in place by angle (rad, positive left); returns (success, message)."""
         if not 0.0 < abs(angle) <= 2.0 * math.pi:
             return False, 'the angle must be non-zero and at most one full turn'
+        return await self.spin(angle, goal_handle, feedback)
+
+    async def spin(self, angle, goal_handle=None, feedback=None):
+        """Nav2's Spin by angle (rad, any number of turns); returns (success, message)."""
         goal = Spin.Goal(target_yaw=float(angle))
-        goal.time_allowance.sec = int(abs(angle) / 0.3) + 5
+        # 0.2 rad/s: worn wheels turn the robot at a third of the wheel rate (AGENTS.md)
+        goal.time_allowance.sec = int(abs(angle) / 0.2) + 5
         return await self.run_nav2('turning', self.spin_client, goal, goal_handle, feedback)
 
     async def drive(self, distance, goal_handle=None, feedback=None):
@@ -680,11 +687,12 @@ class BrainNode(Node):
             self.destroy_timer(timer)
 
     async def spin_localize(self):
-        """Turn in place, 90 deg at a time, until AMCL is sure where the robot is.
+        """Turn in place until AMCL is sure where the robot is.
 
-        Uses the normal Spin (with its collision checks). Stops as soon as AMCL
-        is 'sure'; after localize_max_turns full turns without that, says so and
-        sends the agent a 'lost' event (it may then try a photo).
+        localize_turns full turns in one go with the normal Spin (with its
+        collision checks), then a check; again if AMCL is not 'sure', at most
+        localize_rounds times. Then says so and sends the agent a 'lost' event
+        (it may then try a photo).
         """
         if self.localizing:
             return
@@ -694,8 +702,8 @@ class BrainNode(Node):
                 self.say('I already know where I am.')
                 return
             self.say('Let me look around.')
-            for step in range(4 * self.localize_max_turns):
-                ok, message = await self.turn(math.pi / 2)
+            for round_ in range(self.localize_rounds):
+                ok, message = await self.spin(2.0 * math.pi * self.localize_turns)
                 if not ok:
                     self.get_logger().warning(f'look around: turn failed: {message}')
                     if message in ('cancelled', 'replaced by a new goal'):
@@ -703,7 +711,7 @@ class BrainNode(Node):
                     break
                 await self.sleep(1.0)  # let AMCL take in the new scans
                 word, pos_std, yaw_std = self.certainty()
-                self.get_logger().info(f'look around: step {step + 1}: {word} '
+                self.get_logger().info(f'look around: round {round_ + 1}: {word} '
                                        f'(+-{pos_std:.2f} m, +-{math.degrees(yaw_std):.0f} deg)')
                 if word == 'sure':
                     self.say('Got it, I know where I am now.')
