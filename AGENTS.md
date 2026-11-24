@@ -240,11 +240,12 @@ when new work comes up, add it here.
 - Brain and voice (`docs/brain.md`, branch `brain`): steps 1-3 built and tested
   on the Pi on domain 77 (no driving yet). Still to do: the image rebuild and a
   test with the owner watching (driving through the link, speaking); the
-  trained wake words ("hey Rainbow"/"Rainbow", "hey Robot"/"Robot", "stop";
-  `training/wakeword/`, its data kept in the Mac's `rainbow_wakeword` volume)
-  tested on the robot, then recordings of the household if needed (synthetic
-  training trails "hey Jarvis" in noise and at a distance; Greek accent
-  matters); re-enable face
+  trained wake words (`training/wakeword/`, data in the Mac's `rainbow_wakeword`
+  volume) are on the robot: "hey Rainbow"/"Rainbow" works well for the owner (far
+  better than "hey Jarvis"), "stop" scores 0.5-0.9 (threshold 0.7), "hey
+  Robot"/"Robot" is not heard (under 0.3; low priority). To improve them: retrain
+  with the robot's own noise as background (`~/rainbow-wakeword-data/robot_noise/`
+  on the Mac: lidar hum + fan), then household recordings; re-enable face
   recognition in the Hailo container (photos, faces and startup localization
   depend on it); the head controller. Memory and photos/faces (steps 5-6) are
   built.
