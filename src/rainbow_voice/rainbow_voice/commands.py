@@ -17,12 +17,14 @@ class CommandRecognizer:
         self._vosk = vosk
         self.model = vosk.Model(str(model_path))
         self.phrases = []
+        self.heard = ''   # the last recognition as Vosk heard it, for the log
 
     def set_phrases(self, phrases):
         self.phrases = [p for p in phrases if p]
 
     def recognize(self, samples):
         """Return (phrase, confidence) for 16 kHz int16 samples; ('', 0.0) if none."""
+        self.heard = ''
         if not self.phrases:
             return '', 0.0
         grammar = json.dumps(self.phrases + ['[unk]'])
@@ -31,6 +33,7 @@ class CommandRecognizer:
         rec.AcceptWaveform(samples.astype('<i2').tobytes())
         result = json.loads(rec.FinalResult())
         words = [w for w in result.get('result') or [] if w.get('word')]
+        self.heard = ' '.join(f'{w["word"]} {w.get("conf", 0.0):.2f}' for w in words)
         # One trailing unknown word is fine ("go to the sofa please"); more means a
         # longer sentence, which is for the agent. One leading one too: the tail of the
         # wake word ("...bow, stop"), as the recording starts where the wake word fired.

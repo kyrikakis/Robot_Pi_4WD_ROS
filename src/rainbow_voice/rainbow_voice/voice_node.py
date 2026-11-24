@@ -101,11 +101,19 @@ class VoiceNode(Node):
             words['stop'] = model_path(stop_model, models)
         self.wake = WakeWords(words, models / 'melspectrogram.onnx',
                               models / 'embedding_model.onnx')
+        # For the log: which model fired with what score, and near misses (a model
+        # peaking at log_scores_above or more without reaching its threshold).
+        self.thresholds = {f'wake:{m}': t for m, t in zip(wake_models, thresholds)}
+        self.stop_threshold = p('stop_threshold', 0.9).value
+        if stop_model:
+            self.thresholds['stop'] = self.stop_threshold
+        self.log_floor = p('log_scores_above', 0.1).value
+        self.scores, self.peaks = {}, {}
         self.listener = Listener(
-            self.wake.process, Vad(p('vad_aggressiveness', 3).value),
+            self.score, Vad(p('vad_aggressiveness', 3).value),
             {f'wake:{m}': t for m, t in zip(wake_models, thresholds)},
             'stop' if stop_model else None,
-            stop_threshold=p('stop_threshold', 0.9).value,
+            stop_threshold=self.stop_threshold,
             end_silence=p('end_silence', 0.8).value,
             max_seconds=p('max_seconds', 10.0).value,
             follow_up=p('follow_up', 8.0).value,
@@ -208,6 +216,27 @@ class VoiceNode(Node):
                 self.arecord.kill()
                 time.sleep(2.0)
 
+    def score(self, chunk):
+        self.scores = self.wake.process(chunk)
+        return self.scores
+
+    def fired(self, names):
+        """Log the model that fired (the highest score over its threshold)."""
+        name = max(names, key=lambda n: self.scores.get(n, 0.0) / self.thresholds[n])
+        self.peaks[name] = float('inf')   # no near miss for this one
+        return f'{name.removeprefix("wake:")} {self.scores.get(name, 0.0):.2f}'
+
+    def log_near_misses(self):
+        for name, threshold in self.thresholds.items():
+            score = self.scores.get(name, 0.0)
+            if score >= self.log_floor:
+                self.peaks[name] = max(self.peaks.get(name, 0.0), score)
+            elif name in self.peaks:
+                peak = self.peaks.pop(name)
+                if peak < threshold:
+                    self.get_logger().info(
+                        f'near miss: {name.removeprefix("wake:")} {peak:.2f} (needs {threshold})')
+
     def on_chunk(self, chunk):
         with self.lock:
             events = self.listener.feed(chunk)
@@ -216,17 +245,23 @@ class VoiceNode(Node):
             if kind == 'wake':
                 if self.wake_beep and not event[1]:
                     self.play_beep()
+                if event[1]:
+                    self.get_logger().info('follow-up')
+                else:
+                    self.get_logger().info('wake word ' + self.fired(
+                        [n for n in self.thresholds if n != 'stop']))
                 self.engaged, self.engaged_since = True, time.monotonic()
                 self.wake_pub.publish(Empty())
                 self.eyes('open')
             elif kind == 'stop':
-                self.get_logger().info('stop word')
+                self.get_logger().info('stop word ' + self.fired(['stop']).split()[1])
                 self.stop_pub.publish(Empty())
             elif kind == 'nothing':
                 self.engaged = False
                 self.eyes('happy')
             elif kind == 'utterance':
                 self.publish_utterance(event[1], event[2])
+        self.log_near_misses()
 
     def publish_utterance(self, samples, follow_up):
         with self.lock:
@@ -238,7 +273,8 @@ class VoiceNode(Node):
         self.utterance_pub.publish(msg)
         self.get_logger().info(
             f'utterance {len(samples) / 16000:.1f} s{" (follow-up)" if follow_up else ""}'
-            f'{f", command {command!r} {confidence:.2f}" if command else ""}')
+            + (f', command {command!r} {confidence:.2f}' if command
+               else f', heard {self.commands.heard!r}'))
 
     def destroy_node(self):
         self.running = False
