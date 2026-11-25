@@ -234,7 +234,8 @@ class VoiceNode(Node):
             elif name in self.peaks:
                 peak = self.peaks.pop(name)
                 if peak < threshold:
-                    self.get_logger().info(
+                    # Debug: they come every few seconds (mostly "stop") and drown the log
+                    self.get_logger().debug(
                         f'near miss: {name.removeprefix("wake:")} {peak:.3f} (needs {threshold})')
 
     def on_chunk(self, chunk):
