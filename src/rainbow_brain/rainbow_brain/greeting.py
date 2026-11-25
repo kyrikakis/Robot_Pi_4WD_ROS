@@ -37,6 +37,12 @@ class Attention:
         if self.since is not None and self.last_seen is not None:
             self.since = min(self.since, self.last_seen - self.notice_after)
 
+    def extend(self, now, seconds):
+        """Keep the running look going at least seconds more (a conversation started:
+        asking a stranger their name, then saving the face, needs them in view)."""
+        if self.attending:
+            self.started = max(self.started, now + seconds - self.follow_for)
+
     def release(self):
         """Someone else took the head (a look, track or drive): the look is over."""
         self.attending = False

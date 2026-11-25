@@ -18,6 +18,19 @@ HALLUCINATIONS = {'', 'you', 'thank you', 'thank you.', 'thanks for watching!',
                   'thanks for watching.', 'bye.', 'bye', '.', 'okay.', 'so', 'uh'}
 
 
+def answer_text(text):
+    """An answer to the robot's question: only empty text is dropped. A short "yes"
+    alone comes out of Whisper as "you" or "thank you", which would otherwise be
+    dropped as silence (the owner's "yes" to "Stefanos, did I get that right?" was).
+    Returns the text to use, or '' to drop it."""
+    t = ' '.join(text.lower().split()).strip(' .!?')
+    if not t:
+        return ''
+    if t in ('you', 'yes you', 'yeah', 'yep'):
+        return 'Yes.'
+    return text.strip()
+
+
 def is_speech(text):
     """Return False for empty text, Whisper's silence hallucinations and its loops.
 

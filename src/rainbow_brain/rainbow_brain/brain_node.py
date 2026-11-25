@@ -194,6 +194,8 @@ class BrainNode(Node):
             notice_after=self.declare_parameter('greet_notice_s', 1.0).value,
             follow_for=self.declare_parameter('greet_follow_s', 20.0).value,
             gone_after=self.declare_parameter('greet_gone_s', 10.0).value)
+        # A look that turns into a conversation (greeting, asking a name) lasts this long
+        self.greet_talk_s = self.declare_parameter('greet_talk_s', 45.0).value
         self.settings_path = os.path.join(self.data_dir, 'settings.json')
         self.greet = self.load_settings().get('greet_people', True)
         # "Look around": localize_turns full turns in one go, then again if AMCL is not
@@ -757,6 +759,7 @@ class BrainNode(Node):
                 if now - self.faces_seen.get(name, -1e9) >= self.face_repeat:
                     self.get_logger().info(f'face seen: {name}')
                     self.emit({'kind': 'face_seen', 'name': name, 'greet': self.greet})
+                    self.attention.extend(time.monotonic(), self.greet_talk_s)
                     if self.greet and self.mode == 'local':
                         self.say(f'Hi {name}!')
                 self.faces_seen[name] = now
@@ -772,6 +775,8 @@ class BrainNode(Node):
             self.unknown_asked = now
             self.get_logger().info('face seen: someone unknown')
             self.emit({'kind': 'face_unknown'})
+            # Asking the name, then saving the face: keep them in view meanwhile
+            self.attention.extend(time.monotonic(), self.greet_talk_s)
             if self.mode == 'local':
                 self.say("Hello! I don't know you yet.")
 

@@ -108,7 +108,8 @@ _GIVES_NAME = re.compile(r"\b(i'?m|i\s+am|my\s+name'?s?|name\s+is|call\s+me|it'?
 # The robot checking something it heard: "Stefanos, did I get that right?"
 _CHECKING = re.compile(r'\b(right|correct|get\s+that|is\s+that|spell|are\s+you\s+the)\b',
                        re.IGNORECASE)
-_YES = re.compile(r"^\W*(yes|yeah|yep|yup|correct|right|exactly|that'?s\s+(it|right|correct))\b",
+_YES = re.compile(r'^\W*(yes|yeah|yep|yup|ok|okay|sure|correct|right|exactly'
+                  r"|that'?s\s+(it|right|correct))\b",
                   re.IGNORECASE)
 
 

@@ -61,3 +61,10 @@ def test_asked_to_watch_for_people_looks_again_at_once():
     assert run(a, 10.0, start=30.0) == []
     a.rearm()                                       # "watch for people"
     assert run(a, 1.0, start=40.0)[0] == (40.0, 'start')
+
+
+def test_a_conversation_extends_the_look():
+    a = Attention()
+    run(a, 5.0)                                     # looking since 1 s
+    a.extend(5.0, 45.0)
+    assert run(a, 60.0, start=5.0) == [(50.0, 'end')]

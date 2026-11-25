@@ -367,3 +367,12 @@ def test_questions_about_itself_want_a_tool():
     assert wants_action('Which places do you know?')
     assert wants_action('Where are you right now?')
     assert wants_action('How is your battery?')
+
+
+def test_a_short_answer_to_a_question_is_kept():
+    from rainbow_agent.stt import answer_text
+    assert answer_text('You.') == 'Yes.'
+    assert answer_text(' Thank you. ') == 'Thank you.'
+    assert answer_text('Okay.') == 'Okay.'
+    assert answer_text('') == '' and answer_text(' . ') == ''
+    assert wants_action('Okay.', 'Stefanos, did I get that right?')

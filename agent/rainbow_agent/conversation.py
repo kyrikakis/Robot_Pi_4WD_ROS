@@ -207,6 +207,16 @@ class Conversation:
         if self.messages and time.monotonic() - self.last_turn > self.cfg.session_idle:
             self.new_session()
 
+    def asked_question(self):
+        """The robot's latest words were a question (its answer is coming)."""
+        for m in reversed(self.messages):
+            if m['role'] == 'assistant' and m.get('content'):
+                return m['content'].rstrip().endswith('?')
+            if m['role'] == 'user' and isinstance(m['content'], str) \
+                    and not m['content'].startswith(EVENT_PREFIX):
+                return False
+        return False
+
     def _last_reply(self):
         """The robot's last spoken reply before the person's latest words."""
         seen_user = False
