@@ -798,6 +798,8 @@ class BrainNode(Node):
 
     def set_greet(self, enabled):
         self.greet = bool(enabled)
+        if self.greet:
+            self.attention.rearm()      # look at whoever is here now, not only newcomers
         settings = self.load_settings()
         settings['greet_people'] = self.greet
         try:

@@ -53,3 +53,11 @@ def test_switched_off_ends_the_look():
     a = Attention()
     run(a, 5.0)
     assert run(a, 1.0, start=5.0, enabled=False)[0] == (5.0, 'end')
+
+
+def test_asked_to_watch_for_people_looks_again_at_once():
+    a = Attention()
+    run(a, 30.0)                                    # looked at, still there
+    assert run(a, 10.0, start=30.0) == []
+    a.rearm()                                       # "watch for people"
+    assert run(a, 1.0, start=40.0)[0] == (40.0, 'start')
