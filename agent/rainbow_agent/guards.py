@@ -36,6 +36,8 @@ _ACTION = re.compile(r"""
   | \bfollow\s+(me|the|him|her|it|them)\s+with\s+your\s+(eyes|head)\b
   | \bstop\s+(watching|following|tracking)\b
   | \bremember\s+my\s+face\b
+  | \b(which|what)\s+places\b | \bwhere\s+are\s+you\b | \byour\s+battery\b  # ask the tools
+  | \b(stop|don'?t|no\s+more)\s+greet | \bgreet\s+(people|everyone|us)\b | \bleave\s+me\s+alone\b
   | \bforget\s+(my|me|his|her|their)\b.*\bface\b | \bforget\s+\w+'s\s+face\b
 """, re.IGNORECASE | re.VERBOSE)
 

@@ -58,6 +58,7 @@ class SimRobot:
         self.time_scale = time_scale    # 0 = instant (tests)
         self.battery = battery
         self.battery_low = False        # as the brain's low-battery mode
+        self.greet = True               # greeting people (the brain's greet_people)
         self.activity = 'idle'
         self.tracking = ''
         self.faces = {}                 # name -> True; the face in view is 'in_view'
@@ -221,6 +222,11 @@ class SimRobot:
         self.faces[name] = True
         self.face_in_view = name
         return {'ok': True, 'message': f'I will remember {name}'}
+
+    async def _greet_people(self, enabled):
+        self.greet = enabled in (True, 'true', 'True', 1)
+        return {'ok': True, 'message': 'I will greet people I see' if self.greet
+                else 'I will not turn to people or greet them until you say so'}
 
     async def _forget_face(self, name):
         name = str(name).strip()

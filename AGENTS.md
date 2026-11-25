@@ -295,6 +295,11 @@ when new work comes up, add it here.
   head's tilt limit (36 deg up), so only the pan follows. Still to measure: the
   camera FOV and `frame_latency_s` (0.15 s). Later: ToF + camera fusion, the
   distance of what the camera sees, placed in the map.
+- Greeting people (brain + agent, `docs/brain.md` "Camera and faces"): built
+  2026-11-25, tested on the Mac only (logic unit tests, agent eval 50/50). On the
+  robot: a person walking in, the head tilting up to the face (the 36 deg limit
+  may keep a standing person's face out of view up close), the greeting, the
+  20 s follow, and that driving takes the head back.
 - Low-battery mode (brain, `docs/brain.md` "Modes"): built 2026-11-25, tested
   on the Mac only (logic unit tests, agent eval). On the robot: check that it
   stops and restarts the programs (supervisorctl from the brain) and speaks;

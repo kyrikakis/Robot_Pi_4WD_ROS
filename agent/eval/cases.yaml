@@ -111,6 +111,21 @@
   say: ["Remember my face, I'm Stefanos.", "Yes.", "That's wrong, I'm not Bambu.", "Yes."]
   expect: [{name: remember_face}, {name: forget_face, args: {name: Bambu}},
            {name: remember_face, args: {name: Stefanos}}]
+- id: greet-known-face
+  event: {kind: face_seen, name: Stefanos, greet: true}
+  say: "Hi Rainbow!"
+  reply_has: [Stefanos]
+  forbid: [remember_face, forget_face, go_to_place]
+- id: stop-greeting
+  say: "Please stop greeting people."
+  expect: [{name: greet_people, args: {enabled: false}}]
+- id: greet-again
+  say: "You can greet people again."
+  expect: [{name: greet_people, args: {enabled: true}}]
+- id: stop-watching-is-not-greeting
+  say: "Stop watching me."
+  expect: [{name: stop_tracking}]
+  forbid: [greet_people]
 - id: forget-face
   robot: {faces: {Martin: true}}
   say: "Forget Martin's face."

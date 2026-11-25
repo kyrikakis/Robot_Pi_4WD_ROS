@@ -72,6 +72,9 @@ def describe_event(event):
     if kind == 'localized':
         return 'I looked around and now I know where I am'
     if kind == 'face_seen':
+        if event.get('greet'):
+            return (f"I can see {event.get('name')} (face recognition), who just came by: "
+                    'greet them by name in a few words')
         return f"I can see {event.get('name')} (face recognition)"
     if kind == 'battery_low':
         return (f"my battery is empty ({event.get('volts')} V): I stopped everything and "
@@ -189,7 +192,9 @@ class Conversation:
     async def robot_event(self, event):
         """An event from the robot. Returns a reply to speak, or None."""
         note = describe_event(event)
-        if event.get('kind') not in SPOKEN_EVENTS:
+        spoken = event.get('kind') in SPOKEN_EVENTS or (
+            event.get('kind') == 'face_seen' and event.get('greet'))
+        if not spoken:
             self.pending_events.append(note)
             return None
         async with self.lock:

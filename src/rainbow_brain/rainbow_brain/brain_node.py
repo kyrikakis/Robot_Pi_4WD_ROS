@@ -41,6 +41,13 @@ face_seen events, and a face it does not know, steadily in view for unknown_afte
 seconds, a face_unknown event (the agent then asks the name); remember_face and
 forget_face ask the Hailo node to save or delete a face.
 set_pose_estimate publishes /initialpose for AMCL (startup localization).
+Greeting people (rainbow_brain.greeting, on unless switched off with the
+greet_people skill; saved in <data_dir>/settings.json): someone in view (a person
+or a face) for a second while the robot is idle gets one look: the tracker
+follows "face" for greet_follow_s, then the head centres. A known face is a
+face_seen event the agent answers with a greeting (in local mode the brain says
+hi itself); an unknown one is face_unknown. Driving, a look or track asked for,
+or low battery take the head back.
 Low battery (rainbow_brain.battery: <= 7.0 V for 30 s, until >= 7.6 V for 1 min):
 every motion is cancelled and refused, the head centred, battery_stop_programs
 stopped with supervisorctl (no dock yet, so driving is pointless and Nav2's CPU
@@ -71,6 +78,7 @@ from nav2_msgs.action import DriveOnHeading, NavigateToPose, Spin
 from nav_msgs.msg import Odometry
 from rainbow_brain.battery import BatteryMonitor
 from rainbow_brain.commands import parse, phrases
+from rainbow_brain.greeting import Attention
 from rainbow_brain.link import LinkServer, load_token
 from rainbow_brain.places import PlaceStore
 from rainbow_interfaces.action import Drive, GoToPlace, MoveHead, Turn
@@ -181,6 +189,12 @@ class BrainNode(Node):
         self.unknown_since = None
         self.unknown_last = -1e9
         self.unknown_asked = -1e9
+        self.attention = Attention(
+            notice_after=self.declare_parameter('greet_notice_s', 1.0).value,
+            follow_for=self.declare_parameter('greet_follow_s', 20.0).value,
+            gone_after=self.declare_parameter('greet_gone_s', 10.0).value)
+        self.settings_path = os.path.join(self.data_dir, 'settings.json')
+        self.greet = self.load_settings().get('greet_people', True)
         # "Look around": localize_turns full turns in one go, then again if AMCL is not
         # sure yet, at most localize_rounds times
         self.localize_turns = self.declare_parameter('localize_turns', 4).value
@@ -241,6 +255,7 @@ class BrainNode(Node):
         self.status_pub = self.create_publisher(BrainStatus, '/brain/status', LATCHED)
         self.agent_log_pub = self.create_publisher(Log, '/agent/log', 50)
         self.create_timer(status_period, self.publish_status)
+        self.create_timer(1.0, self.update_attention)
         self.create_subscription(PoseStamped, '/places/pick', self.on_pick, 10)
         self.markers_pub = self.create_publisher(MarkerArray, '/places/markers', LATCHED)
         self.grammar_pub = self.create_publisher(String, '/voice/grammar', LATCHED)
@@ -530,6 +545,7 @@ class BrainNode(Node):
                'position_std': round(pos_std, 2), 'yaw_std': round(yaw_std, 2),
                'battery_volts': round(float(self.battery or 0.0), 1),
                'battery_low': self.low_battery,
+               'greeting_people': self.greet,
                'activity': current['label'] if current else 'idle', 'places': names}
         if self.tracking:
             out['head_following'] = self.tracking
@@ -550,6 +566,10 @@ class BrainNode(Node):
         """Run one Nav2 action; returns (success, message). goal_handle: our action's, or None."""
         if self.low_battery:
             return False, BATTERY_EMPTY
+        if self.attention.attending:
+            # The ToF in the head has to look ahead while driving
+            self.release_attention()
+            self.stop_tracking()
         if not client.wait_for_server(timeout_sec=1.0):
             return False, 'navigation is not running'
         entry = {'label': label, 'handle': goal_handle, 'nav': None, 'replaced': False}
@@ -720,20 +740,27 @@ class BrainNode(Node):
         """Tell the agent who is in view; the Hailo node puts names in class_id."""
         now = self.get_clock().now().nanoseconds * 1e-9
         unknown = False
+        someone = False
         for detection in msg.detections:
             for result in detection.results:
                 label, _, name = result.hypothesis.class_id.partition(':')
-                name = name.strip()
-                if label.strip() != 'face':
+                label, name = label.strip(), name.strip()
+                if label in ('face', 'person') and result.hypothesis.score >= 0.5:
+                    someone = True
+                if label != 'face':
                     continue        # the object detector's boxes (person, chair, ...)
                 if not name or name.lower() == 'unknown':
                     unknown = unknown or result.hypothesis.score >= 0.5
                     continue
                 if now - self.faces_seen.get(name, -1e9) >= self.face_repeat:
                     self.get_logger().info(f'face seen: {name}')
-                    self.emit({'kind': 'face_seen', 'name': name})
+                    self.emit({'kind': 'face_seen', 'name': name, 'greet': self.greet})
+                    if self.greet and self.mode == 'local':
+                        self.say(f'Hi {name}!')
                 self.faces_seen[name] = now
-        if not unknown:
+        if someone:
+            self.attention.seen(time.monotonic())
+        if not unknown or not self.greet:
             return
         if now - self.unknown_last > 1.0:
             self.unknown_since = now
@@ -743,6 +770,46 @@ class BrainNode(Node):
             self.unknown_asked = now
             self.get_logger().info('face seen: someone unknown')
             self.emit({'kind': 'face_unknown'})
+
+    # Greeting people
+
+    def update_attention(self):
+        idle = self.current is None and not self.low_battery
+        busy_head = bool(self.tracking) and not self.attention.attending
+        change = self.attention.update(time.monotonic(), idle, self.greet, busy_head)
+        if change == 'start':
+            self.get_logger().info('someone is here: looking at them')
+            self.executor.create_task(self.track, 'face')
+        elif change == 'end':
+            self.get_logger().info('done looking at them')
+            self.stop_tracking()
+
+    def release_attention(self):
+        """The head is wanted for something else (a look, track or drive)."""
+        self.attention.release()
+
+    def load_settings(self):
+        try:
+            with open(self.settings_path) as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return {}
+
+    def set_greet(self, enabled):
+        self.greet = bool(enabled)
+        settings = self.load_settings()
+        settings['greet_people'] = self.greet
+        try:
+            os.makedirs(self.data_dir, exist_ok=True)
+            with open(self.settings_path, 'w') as f:
+                json.dump(settings, f)
+        except OSError as e:
+            self.get_logger().error(f'could not save {self.settings_path}: {e}')
+        if not self.greet and self.attention.attending:
+            self.attention.release()
+            self.stop_tracking()
+        self.get_logger().info(f'greeting people: {"on" if self.greet else "off"}')
+        self.state_changed()
 
     def names_in_view(self, within=2.0):
         now = self.get_clock().now().nanoseconds * 1e-9
@@ -758,7 +825,10 @@ class BrainNode(Node):
             self.state_changed()
         if lost and not self.tracking_lost:
             self.get_logger().info(f'tracking: lost {msg.target}')
-            self.emit({'kind': 'track_lost', 'target': msg.target})
+            if self.attention.attending:
+                self.attention.release()   # a look of its own: the agent did not ask
+            else:
+                self.emit({'kind': 'track_lost', 'target': msg.target})
         self.tracking_lost = lost
 
     async def track(self, target):
@@ -774,6 +844,7 @@ class BrainNode(Node):
 
     async def look(self, pan_deg, tilt_deg):
         """Point the head (degrees, 0, 0 = straight ahead); returns (ok, message, pan, tilt)."""
+        self.release_attention()
         # The tracker would turn the head straight back (and replace this move)
         if self.untrack_client.service_is_ready():
             await self.untrack_client.call_async(Trigger.Request())
@@ -1253,6 +1324,7 @@ class LinkHandler:
         return out
 
     async def skill_track(self, what):
+        self.node.release_attention()      # asked for: not ended by the greeting's timer
         ok, message = await self.node.track(str(what).strip())
         out = {'ok': ok, 'message': message}
         if ok:
@@ -1262,6 +1334,7 @@ class LinkHandler:
         return out
 
     def skill_stop_tracking(self):
+        self.node.release_attention()
         self.node.stop_tracking()
         return {'ok': True, 'message': 'stopped following; my head is back in the middle'}
 
@@ -1275,6 +1348,11 @@ class LinkHandler:
     async def skill_remember_face(self, name):
         ok, message = await self.node.remember_face(str(name).strip())
         return {'ok': ok, 'message': message}
+
+    def skill_greet_people(self, enabled):
+        self.node.set_greet(enabled in (True, 'true', 'True', 1))
+        return {'ok': True, 'message': 'I will greet people I see' if self.node.greet
+                else 'I will not turn to people or greet them until you say so'}
 
     async def skill_forget_face(self, name):
         ok, message = await self.node.forget_face(str(name).strip())

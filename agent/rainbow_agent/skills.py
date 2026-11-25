@@ -83,6 +83,11 @@ TOOLS = [
           'Remember the face of the person in front of the camera under their name. First '
           'say the name back and get a yes; never guess a name. Only one person in view.',
           {'name': _TEXT}, ['name']),
+    _tool('greet_people',
+          'Turn on or off turning your head to people you see and greeting them. '
+          '"stop greeting people", "leave me alone", "don\'t look at everyone": false; '
+          '"you can greet people again": true. ("stop watching" is stop_tracking.)',
+          {'enabled': {'type': 'boolean'}}, ['enabled']),
     _tool('forget_face',
           'Forget the face saved under a name.',
           {'name': _TEXT}, ['name']),

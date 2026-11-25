@@ -207,6 +207,7 @@ The head has `look` (see [Head](#head)).
 | `capture_photo()` | A still JPEG from the RGB camera, with the pose it was taken at; skips frames while the head moves |
 | `look(pan_degrees, tilt_degrees)` | Point the head (+ left, + up from straight ahead); returns once it has settled |
 | `track(what)`, `stop_tracking()` | Keep the head on a face, a person (by name) or a detected thing; `track_lost` event when it goes out of view; stopping centres the head |
+| `greet_people(enabled)` | Turn greeting people who come by on or off (saved; on by default) |
 | `remember_face(name)`, `forget_face(name)` | Save the face in view under a name (after the person confirmed it), or delete one |
 | `turn(angle)`, `drive(distance)` | Corner cases: Nav2 Spin / DriveOnHeading (forward only) |
 | `say(text)` | espeak |
@@ -470,6 +471,19 @@ load with it on).
   already saved under another name is refused with that name ("I already know
   this face as Bambu"); `forget_face(name)` (`.../delete_face`) removes one, and
   after it the agent saves the confirmed name.
+- **Greeting people** (`rainbow_brain/greeting.py`): someone in view (COCO's
+  `person`, e.g. legs, or a face) for 1 s while the robot is idle gets one
+  look: the brain has the tracker follow "face" (falling back to the body's top),
+  for 20 s, then the head centres. Face recognition then names them: a
+  `face_seen` event with `greet` true, which the agent answers at once with a
+  greeting (in local mode the brain says "Hi <name>!"); an unknown face is
+  `face_unknown` (asks the name). One look per presence: they must be out of view
+  for 10 s to be noticed again; a person is greeted at most once per 10 min. Not
+  while driving (the ToF in the head must look ahead), in low battery, or while
+  the head follows something asked for; driving, `look` and `track` take the head
+  back. `greet_people(false)` ("stop greeting people") switches it off, also the
+  unknown-face question; saved in `<data_dir>/settings.json`. "stop watching"
+  only ends the current follow.
 
 Tested on the Pi on domain 77 with fake Hailo topics: photo in 0.1-0.5 s,
 no subscription left behind, one face event per person, the pose estimate.

@@ -361,3 +361,9 @@ def test_wants_photo():
     assert wants_photo("What's in front of you?")
     assert not wants_photo('Look down.')
     assert not wants_photo('Where are you?')
+
+
+def test_questions_about_itself_want_a_tool():
+    assert wants_action('Which places do you know?')
+    assert wants_action('Where are you right now?')
+    assert wants_action('How is your battery?')
