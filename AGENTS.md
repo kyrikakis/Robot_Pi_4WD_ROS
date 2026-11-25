@@ -314,10 +314,12 @@ when new work comes up, add it here.
   are in `~/rainbow-firmware` on the Mac, not the `YB_Car_Node` source: it
   would be rebuilt from the samples (motor PID included) and re-tested. Digital
   metal-gear servos would also glide better (hobby servos have a ~1 deg deadband).
-- Eyes drop off I2C while the robot moves (2026-11-25: Remote I/O errors at 0x71,
-  then the HT16K33 back with its display off; the Pi's 5 V stayed fine). The eyes
-  node now survives this and turns the display on again every 2 s, but the cause
-  is the eyes' power or the cable/connector to the head: check it.
+- Eyes went dark (2026-11-25, around when the robot started moving): the HT16K33
+  at 0x71 gave Remote I/O errors (the node crashed and respawned), then answered
+  again but with its display off. Cause unknown (the Pi's 5 V input and its
+  undervoltage flag showed nothing then; power, wiring or an I2C bus problem are
+  all guesses). The eyes node now survives the errors and turns the display on
+  again every 2 s; its "not answering on I2C" warnings show when it happens.
 - Calibrate the Camera Module 3 (the files in `calibration/` are for the IMX296).
 - Whisper on the Hailo (speech to text without the Mac): later, after the brain.
 - Hailo face recognition (with object detection) was re-enabled on 2026-11-25

@@ -7,8 +7,8 @@ Interfaces:
 Expressions: happy (smile with a blink), sad (frown with a blink; low battery), open,
 closed, off.
 
-The HT16K33 drops off the bus now and then while the robot moves (2026-11-25: Remote
-I/O errors, then the chip back with its display off and the eyes dark until a reboot).
+The HT16K33 can stop answering on I2C (2026-11-25: Remote I/O errors, then the chip
+back with its display off and the eyes dark until a reboot; cause unknown).
 So I2C errors do not stop the node, and every `refresh_period` seconds it turns the
 chip's oscillator and display on again and redraws the current frame.
 """
