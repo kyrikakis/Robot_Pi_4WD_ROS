@@ -263,21 +263,17 @@ when new work comes up, add it here.
   photos/faces (steps 5-6) are built; face recognition is on again (2026-11-25).
 - Head controller (`docs/brain.md` step 7, branch `head-controller`): built and
   tested on the Mac (motion profile unit tests; the node in a `ros:jazzy`
-  container on domain 77; agent eval 37/37). On the robot (2026-11-25) both
-  checkouts are on `head-controller` and built, the brain runs the new skills and
-  the tracker; the head is still the old one inside `rainbow_base` (it ignores
-  `/head/target` and `/head/move`). To finish: restart `rainbow_base` (owner's
-  call), then copy `supervisor/rainbow.conf` to `/etc/supervisor/conf.d/` and
-  `supervisorctl reread && supervisorctl update` (starts `rainbow_head`), in
-  that order, or two heads drive the servos; rebuild the image (build only).
-  Then, with the owner watching: speed (30 deg/s, accel 60 deg/s^2:
+  container on domain 77; agent eval 37/37). Running on the robot since
+  2026-11-25 (`rainbow_head`, added to the running container by hand with the
+  conf from git; the rebuilt image has it), not yet moved. With the owner
+  watching: speed (30 deg/s, accel 60 deg/s^2:
   calm, may jitter at 1 deg steps), the settle time (estimated 0.2 s + 5 ms/deg;
   measure with the ToF image going still, robot at rest) and `servo_latency_s`
   (0.05 s, estimated). Then photos in several directions for startup
   localization. Tracking (`track` skill, tracker node in `rainbow_brain`,
   docs/brain.md "Tracking") is tested in the container with a fake detector and
   on the robot against the Hailo's real detections (a backpack: targets at
-  15 Hz, nothing moved, the old head ignores them). Still to do: the first moves
+  15 Hz, sent while the old head still ignored them). Still to do: the first moves
   with the owner watching, the camera FOV measured, `frame_latency_s` (0.15 s)
   measured. Later: ToF + camera fusion, the
   distance of what the camera sees, placed in the map.
