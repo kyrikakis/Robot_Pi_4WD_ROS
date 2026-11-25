@@ -262,7 +262,17 @@
         },
         {
           "title": "Places",
-          "layout": "3D!places"
+          "layout": {
+            "direction": "row",
+            "splitPercentage": 72,
+            "first": "3D!places",
+            "second": {
+              "direction": "column",
+              "splitPercentage": 55,
+              "first": "CallService!place",
+              "second": "CallService!delete_place"
+            }
+          }
         },
         {
           "title": "Status",
@@ -300,20 +310,25 @@
           "title": "Head",
           "layout": {
             "direction": "column",
-            "splitPercentage": 30,
+            "splitPercentage": 40,
             "first": {
               "direction": "row",
-              "splitPercentage": 50,
-              "first": {
-                "direction": "row",
-                "first": "CallService!head",
-                "second": "CallService!head_center",
-                "splitPercentage": 60
-              },
+              "splitPercentage": 30,
+              "first": "Teleop!head",
               "second": {
                 "direction": "row",
-                "first": "Indicator!head",
-                "second": "CallService!eyes"
+                "splitPercentage": 50,
+                "first": {
+                  "direction": "row",
+                  "first": "CallService!head",
+                  "second": "CallService!head_center",
+                  "splitPercentage": 60
+                },
+                "second": {
+                  "direction": "row",
+                  "first": "Indicator!head",
+                  "second": "CallService!eyes"
+                }
               }
             },
             "second": "Plot!head"
@@ -526,6 +541,51 @@
       "isSynced": true,
       "xAxisVal": "timestamp",
       "followingViewWidth": 20
+    },
+    "Gauge!temperature": {
+      "foxglovePanelTitle": "Pi temperature (deg C; throttles from 80-85)",
+      "path": "/rpi5_temperature.temperature",
+      "minValue": 30,
+      "maxValue": 85,
+      "colorMode": "colormap",
+      "colorMap": "red-yellow-green",
+      "gradient": [
+        "#ff0000ff",
+        "#00ff00ff"
+      ],
+      "reverse": true,
+      "showTicks": true,
+      "tickInterval": 5
+    },
+    "CallService!delete_place": {
+      "serviceName": "/places/delete",
+      "requestPayload": "{\n  \"name\": \"kitchen\"\n}",
+      "layout": "vertical",
+      "editingMode": true,
+      "buttonText": "Delete place",
+      "buttonTooltip": "Edit the name, then press: removes that place from this map's places",
+      "buttonColor": "#c62828"
+    },
+    "Teleop!head": {
+      "foxglovePanelTitle": "Head (hold: up/down tilts, left/right pans)",
+      "topic": "/head/jog",
+      "publishRate": 10,
+      "upButton": {
+        "field": "linear-x",
+        "value": 0.8
+      },
+      "downButton": {
+        "field": "linear-x",
+        "value": -0.8
+      },
+      "leftButton": {
+        "field": "angular-z",
+        "value": 0.8
+      },
+      "rightButton": {
+        "field": "angular-z",
+        "value": -0.8
+      }
     }
   },
   "globalVariables": {},
@@ -552,7 +612,7 @@
           "second": {
             "direction": "row",
             "first": "CallService!relocalize",
-            "second": "CallService!place",
+            "second": "Gauge!temperature",
             "splitPercentage": 40
           },
           "splitPercentage": 30

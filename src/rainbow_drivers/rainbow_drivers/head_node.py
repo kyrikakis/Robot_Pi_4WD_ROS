@@ -15,6 +15,10 @@ Interfaces:
   ~/move          rainbow_interfaces/action/MoveHead   move and wait until settled
   /head/target    rainbow_interfaces/msg/HeadTarget    continuous tracking (e.g.
                                                        faces): latest message wins
+  /head/jog       geometry_msgs/Twist                  teleop style (Foxglove's
+                                                       Teleop panel): angular.z
+                                                       turns left/right, linear.x
+                                                       up/down, in rad/s while held
   ~/set_pose      rainbow_interfaces/srv/SetHeadPose   start a move, no waiting
   ~/center        std_srvs/srv/Trigger                 move back to 0, 0
   /head/z_rotation, /head/y_rotation  std_msgs/Int32   pan/tilt in degrees
@@ -44,6 +48,7 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallb
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
+from geometry_msgs.msg import Twist
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool, Int32
 from std_srvs.srv import Trigger
@@ -81,6 +86,10 @@ class HeadNode(Node):
         control_rate = param('control_rate', 50.0).value
         idle_rate = param('joint_state_rate', 10.0).value
         resend = param('servo_resend_period', 1.0).value
+        # A held jog button sends a message every 1/publish rate; the first one
+        # (or one after a gap) moves the target this far ahead in time
+        self.jog_step = param('jog_step_s', 0.2).value
+        self.last_jog = 0.0
 
         self.lock = threading.Lock()
         self.generation = 0      # bumped by every new target: replaces running goals
@@ -105,6 +114,7 @@ class HeadNode(Node):
                                  callback_group=group)
         self.create_subscription(HeadTarget, '/head/target', self.on_target, 10,
                                  callback_group=group)
+        self.create_subscription(Twist, '/head/jog', self.on_jog, 10, callback_group=group)
         self.create_service(SetHeadPose, '~/set_pose', self.on_set_pose, callback_group=group)
         self.create_service(Trigger, '~/center', self.on_center, callback_group=group)
         self.move_server = ActionServer(
@@ -202,6 +212,21 @@ class HeadNode(Node):
     def on_target(self, msg):
         self.set_target(math.degrees(msg.pan), math.degrees(msg.tilt),
                         math.degrees(msg.speed))
+
+    def on_jog(self, msg):
+        # The up button (linear.x > 0) raises the head: tilt + is down
+        pan_rate = math.degrees(msg.angular.z)
+        tilt_rate = -math.degrees(msg.linear.x)
+        now = time.monotonic()
+        dt = min(now - self.last_jog, self.jog_step)
+        self.last_jog = now
+        if pan_rate == 0.0 and tilt_rate == 0.0:
+            return
+        with self.lock:
+            pan, tilt = self.motion.target
+        # A little faster than the rate, so the head keeps up with the target
+        speed = 1.5 * max(abs(pan_rate), abs(tilt_rate))
+        self.set_target(pan + pan_rate * dt, tilt + tilt_rate * dt, speed)
 
     def on_set_pose(self, request, response):
         _, pan, tilt = self.set_target(math.degrees(request.pan), math.degrees(request.tilt))

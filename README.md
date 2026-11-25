@@ -155,11 +155,13 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=cmd_
 Connect the Foxglove app to `ws://<robot-ip>:8765` (Foxglove WebSocket; the IP is
 published on `/rpi5_ip`), then import the layout `foxglove/rainbow.json`. It has the
 3D view (click to send a Nav2 goal), a Places tab (its pose tool picks a pose
-for `/places/save` with `from_pick: true`), teleop, buttons to stop (cancel
-every goal), relocalize (AMCL searches the whole map again) and save a picked place, the
-battery, the face-recognition camera and the log, a Status tab (`/brain/status`:
-the brain's state and health, the Mac agent's state and log) and a Head tab
-(point and centre the head, whether it is moving, its angles over time, and the
+for the Save place button, `/places/save` with `from_pick: true`; Delete place
+removes one by name), teleop, buttons to stop (cancel every goal) and relocalize
+(AMCL searches the whole map again), the battery, the Pi's CPU temperature
+(`/rpi5_temperature`), the face-recognition camera and the log, a Status tab
+(`/brain/status`: the brain's state and health, the Mac agent's state and log)
+and a Head tab (hold the Head teleop's arrows to turn or tilt it, `/head/jog`;
+point and centre the head, whether it is moving, its angles over time, and the
 eyes' expression). The ToF cloud is heavy
 over Wi-Fi; hide `/point_cloud` in the 3D view if it lags.
 
