@@ -662,6 +662,7 @@ class BrainNode(Node):
         return await self.run_nav2('driving', self.drive_client, goal, goal_handle, feedback)
 
     def stop(self):
+        self.release_attention()
         self.stop_tracking()
         with self.lock:
             current = self.current
@@ -1028,6 +1029,21 @@ class BrainNode(Node):
         elif command['action'] == 'localize':
             self.executor.create_task(self.spin_localize)
             done = 'started turning in place until I know where I am'
+        elif command['action'] == 'stop_watching':
+            self.release_attention()
+            self.stop_tracking()
+            self.set_greet(False)
+            done = 'stopped following with my head and switched greeting people off'
+            self.say("Okay, I'll stop watching.")
+        elif command['action'] == 'greet_on':
+            self.set_greet(True)
+            done = 'switched greeting people on'
+            self.say("Okay, I'll look out for people.")
+        elif command['action'] == 'watch_me':
+            self.release_attention()        # asked for: not ended by the greeting's timer
+            self.executor.create_task(self.track, 'face')
+            done = 'started following the face in front of me with my head'
+            self.say("Okay, I'm watching you.")
         else:
             try:
                 place = self.find_place(command['place'])

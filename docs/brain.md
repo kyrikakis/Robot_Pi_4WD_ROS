@@ -181,6 +181,11 @@ brain on `/voice/grammar` whenever the places change:
 - "go to the <place>", "go to <place>" (place names from the places file;
   words Vosk does not know cannot be recognised and go to the agent)
 - "come back", "go home", "come home" (the place named "home")
+- "look around", "find yourself", "localize"
+- The head, so it can be controlled without the Mac: "stop watching", "stop
+  following" (ends any tracking, centres the head and switches greeting people
+  off), "watch for people", "greet people" (switches it on), "watch me" (follows
+  the face in front of it)
 
 One unknown word after a phrase is accepted ("go to the sofa please"); more
 means a longer sentence, which goes to the agent. On test clips nothing that
@@ -474,7 +479,8 @@ load with it on).
 - **Greeting people** (`rainbow_brain/greeting.py`): someone in view (COCO's
   `person`, e.g. legs, or a face) for 1 s while the robot is idle gets one
   look: the brain has the tracker follow "face" (falling back to the body's top),
-  for 20 s, then the head centres. Face recognition then names them: a
+  for 20 s, then the head centres. The tracker moves the head at 200 deg/s, calmer
+  than the head's 400 deg/s default (full speed looked jumpy when following). Face recognition then names them: a
   `face_seen` event with `greet` true, which the agent answers at once with a
   greeting (in local mode the brain says "Hi <name>!"); an unknown face is
   `face_unknown` (asks the name). One look per presence: they must be out of view
