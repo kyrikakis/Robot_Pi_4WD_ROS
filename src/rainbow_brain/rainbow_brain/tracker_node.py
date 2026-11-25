@@ -5,7 +5,9 @@ rainbow_brain.tracking matches them), it follows the matching detection on
 detection_topics (vision_msgs/Detection2DArray: the Hailo's face recognition
 and object detector) by sending /head/target. Each step aims from the head
 pose at the time the frame was taken (from /joint_states), so the head's own
-motion and the detector's delay do not make it overshoot. The head stays still
+motion and the detector's delay do not make it overshoot. Following "face" with a
+person in view but neither a face nor a usable body box (the Hailo sends NaN boxes
+for near, big things), the head tilts up a step every search_period_s. The head stays still
 while the target is in a quiet zone in the middle of the view (zone_pan_deg /
 zone_tilt_deg). When the target is lost (out of view for lost_after_s) the head
 goes back to the centre.
@@ -30,7 +32,7 @@ import math
 import threading
 
 from rainbow_brain.tracking import (aim_point, FALLBACK, has_label, head_target, matches, normalize,
-                                    pick, pixel_to_angles)
+                                    pick, pixel_to_angles, search_up)
 from rainbow_interfaces.msg import HeadTarget, TrackerStatus
 from rainbow_interfaces.srv import Track
 import rclpy
@@ -74,6 +76,9 @@ class TrackerNode(Node):
         # when the stamp is missing or off), in s
         self.frame_latency = param('frame_latency_s', 0.15).value
         self.lost_after = param('lost_after_s', 3.0).value
+        # Someone in view without a usable face or body box: tilt up a step this often (s)
+        self.search_period = int(param('search_period_s', 0.8).value * 1e9)
+        self.last_search = 0
         self.pan_joint = param('pan_joint', 'head_pan_joint').value
         self.tilt_joint = param('tilt_joint', 'head_tilt_joint').value
 
@@ -153,11 +158,35 @@ class TrackerNode(Node):
                 label = result.hypothesis.class_id
                 if result.hypothesis.score >= self.min_score and wanted(label):
                     box = detection.bbox
+                    if not all(math.isfinite(v) for v in (
+                            box.center.position.x, box.center.position.y,
+                            box.size_x, box.size_y)):
+                        break           # the Hailo sends NaN boxes for near, big things
                     x, y = aim_point(label, box.center.position.x, box.center.position.y,
                                      box.size_x, box.size_y)
                     found.append((x, y, box.size_x, box.size_y, label))
                     break
         return found
+
+    def search(self, target):
+        """Someone is in view, but no face or usable body box: tilt up a step."""
+        now = self.now_ns()
+        with self.lock:
+            if self.target != target or now - self.last_search < self.search_period:
+                return
+            self.last_search = now
+            self.last_seen = now        # someone is there: not lost
+            self.label = FALLBACK[target]
+        if not self.joints:
+            return
+        pan, tilt = self.joints[-1][1:]
+        tilt = search_up(tilt)
+        if tilt is None:
+            return
+        self.get_logger().info(f'no face in view: looking up ({tilt:.0f} deg)',
+                               throttle_duration_sec=5.0)
+        self.target_pub.publish(HeadTarget(pan=math.radians(pan), tilt=math.radians(tilt),
+                                           speed=self.speed))
 
     def on_detections(self, msg):
         with self.lock:
@@ -168,6 +197,11 @@ class TrackerNode(Node):
         if not found and target in FALLBACK:
             found = self.matching(msg, lambda label: has_label(FALLBACK[target], label))
         if not found:
+            if target in FALLBACK and any(
+                    has_label(FALLBACK[target], r.hypothesis.class_id)
+                    and r.hypothesis.score >= self.min_score
+                    for d in msg.detections for r in d.results):
+                self.search(target)
             return
         now = self.now_ns()
         with self.lock:

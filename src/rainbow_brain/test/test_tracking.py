@@ -2,7 +2,7 @@
 
 import pytest
 from rainbow_brain.tracking import (aim_point, FALLBACK, has_label, head_target, labels, matches,
-                                    normalize, pick, pixel_to_angles)
+                                    normalize, pick, pixel_to_angles, search_up)
 
 
 def test_normalize_aliases():
@@ -70,3 +70,9 @@ def test_person_fallback_aims_at_the_head():
     # A body box 0.2-0.8 high: the head is near its top
     assert aim_point('person', 0.5, 0.5, 0.3, 0.6) == pytest.approx((0.5, 0.272))
     assert aim_point('face: Stefanos', 0.5, 0.5, 0.1, 0.1) == (0.5, 0.5)
+
+
+def test_search_up_steps_to_the_limit():
+    assert search_up(0.0) == -8.0          # tilt + is down: up is negative
+    assert search_up(-32.0) == -36.0
+    assert search_up(-36.0) is None

@@ -118,3 +118,12 @@ def head_target(head_pan, head_tilt, off_pan, off_tilt, gain=0.8, zone_pan=8.0,
     if pan is None and tilt is None:
         return None
     return pan, tilt
+
+
+def search_up(head_tilt, step=8.0, up_limit=-36.0):
+    """Next tilt (deg, + down) when someone is in view but neither their face nor a
+    usable body box is (the Hailo's boxes of near, big things came as NaN): a step
+    up, where a standing person's face is; None at the limit."""
+    if head_tilt <= up_limit + 0.5:
+        return None
+    return max(up_limit, head_tilt - step)
