@@ -80,8 +80,11 @@ TOOLS = [
           'Take a photo with your camera and look at it, when someone asks what you see '
           'or you need to look. You get the photo right after.'),
     _tool('remember_face',
-          'Remember the face of the person in front of the camera under their name. Only '
-          'when they ask you to, and only one person may be in view.',
+          'Remember the face of the person in front of the camera under their name. First '
+          'say the name back and get a yes; never guess a name. Only one person in view.',
+          {'name': _TEXT}, ['name']),
+    _tool('forget_face',
+          'Forget the face saved under a name.',
           {'name': _TEXT}, ['name']),
 ]
 

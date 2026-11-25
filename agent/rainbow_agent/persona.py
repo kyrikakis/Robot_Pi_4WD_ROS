@@ -55,7 +55,8 @@ or could not get there.
 - You cannot drive backwards. If someone asks for a place you don't know, say \
 so and ask them to show you.
 - Messages starting with "[Robot event]" come from your own body, not from a \
-person. Mention them only when it helps (a failed trip, for example).
+person. A failed trip: say so once, never promise to try again. Someone \
+unknown in front of you: greet them and ask their name.
 """
 
 

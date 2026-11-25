@@ -196,7 +196,8 @@ The head has `look` (see [Head](#head)).
 | `edit_place(name, new_name, description, room, confirm)`, `delete_place` | Rename, re-describe or confirm a place; delete it |
 | `capture_photo()` | A still JPEG from the RGB camera, with the pose it was taken at; skips frames while the head moves |
 | `look(pan_degrees, tilt_degrees)` | Point the head (+ left, + up from straight ahead); returns once it has settled |
-| `track(what)`, `stop_tracking()` | Keep the head on a face, a person (by name) or a detected thing; `track_lost` event when it goes out of view |
+| `track(what)`, `stop_tracking()` | Keep the head on a face, a person (by name) or a detected thing; `track_lost` event when it goes out of view; stopping centres the head |
+| `remember_face(name)`, `forget_face(name)` | Save the face in view under a name (after the person confirmed it), or delete one |
 | `turn(angle)`, `drive(distance)` | Corner cases: Nav2 Spin / DriveOnHeading (forward only) |
 | `say(text)` | espeak |
 | `set_expression(name)` | Eyes |
@@ -447,10 +448,18 @@ load with it on).
 - **Faces**: the node publishes `/hailo_face_recognition/detections`
   (`vision_msgs/Detection2DArray`) with the name in the class id
   (`"<label>: <name>"`). The brain sends the agent a `face_seen` event, at most
-  once per person per 10 min (`face_repeat`). The agent notes it (speaking
-  first is for later).
+  once per person per 10 min (`face_repeat`). The agent notes it. A face it
+  does not know (only the face boxes count, not COCO's), in view for 3 s
+  (`unknown_after`), becomes a `face_unknown` event, at most once per 10 min;
+  the agent answers it at once: it greets them and asks their name.
 - **Remembering faces**: `remember_face(name)` calls
-  `/hailo_face_recognition/save_face` (`hailo_msgs/srv/SaveGalleryItem`).
+  `/hailo_face_recognition/save_face` (`hailo_msgs/srv/SaveGalleryItem`); an
+  all-lowercase name is saved capitalised. The agent says the name back and
+  saves only after a yes; a guard in `agent/rainbow_agent/guards.py` enforces it
+  (the model saved names at once, and invented "Alex" when none was said). A face
+  already saved under another name is refused with that name ("I already know
+  this face as Bambu"); `forget_face(name)` (`.../delete_face`) removes one, and
+  after it the agent saves the confirmed name.
 
 Tested on the Pi on domain 77 with fake Hailo topics: photo in 0.1-0.5 s,
 no subscription left behind, one face event per person, the pose estimate.

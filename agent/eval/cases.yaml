@@ -84,6 +84,42 @@
   say: You can stop watching me now.
   expect: [{name: stop_tracking}]
   forbid: [go_to_place]
+# Faces: a name is said back and saved only once the person confirms it
+- id: meet-stranger
+  event: {kind: face_unknown}
+  say: ["I'm Stefanos.", "Yes."]
+  expect: [{name: remember_face, args: {name: Stefanos}}]
+  reply_has: [name, Stefanos]
+- id: name-confirmed-first
+  say: "Remember my face, I'm Stefanos."
+  forbid: [remember_face]
+  reply_has: [Stefanos]
+- id: name-misheard
+  say: ["Remember my face, my name is Stefan.", "No, it's Stefanos, S T E F A N O S.", "Yes, that's right."]
+  expect: [{name: remember_face, args: {name: Stefanos}}]
+- id: name-not-guessed
+  say: "Remember my face."
+  forbid: [remember_face]
+  reply_has: [name]
+- id: face-known-as-other
+  robot: {face_in_view: Bambu}
+  say: ["Remember my face, I'm Stefanos.", "Yes."]
+  expect: [{name: remember_face, args: {name: Stefanos}}]
+  reply_has: [Bambu]
+- id: face-fix-wrong-name
+  robot: {face_in_view: Bambu}
+  say: ["Remember my face, I'm Stefanos.", "Yes.", "That's wrong, I'm not Bambu.", "Yes."]
+  expect: [{name: remember_face}, {name: forget_face, args: {name: Bambu}},
+           {name: remember_face, args: {name: Stefanos}}]
+- id: forget-face
+  robot: {faces: {Martin: true}}
+  say: "Forget Martin's face."
+  expect: [{name: forget_face, args: {name: Martin}}]
+# A failed trip is reported once, without promises, and not repeated
+- id: trip-fails-no-promise
+  say: ["Go to the balcony.", "Where are you?"]
+  expect: [{name: go_to_place, args: {place: balcony}}]
+  reply_not: [again, "I will try", "I'll try"]
 - id: unknown-place
   say: Go to the garage.
   forbid: [save_place, delete_place, edit_place]

@@ -37,7 +37,9 @@ track / stop_tracking start and stop the tracker node (/tracker/start, /tracker/
 stop and look stop tracking too. A target lost from view becomes a track_lost event.
 Camera and faces (the Hailo container, docs/brain.md): capture_photo takes one
 frame from photo_topic on demand; recognised faces on faces_topic become
-face_seen events; remember_face asks the Hailo node to save a face.
+face_seen events, and a face it does not know, steadily in view for unknown_after
+seconds, a face_unknown event (the agent then asks the name); remember_face and
+forget_face ask the Hailo node to save or delete a face.
 set_pose_estimate publishes /initialpose for AMCL (startup localization).
 Reads: TF map -> base_footprint, /amcl_pose, /battery; /scan and /odom_raw only
 for their arrival times (not deserialized)
@@ -57,7 +59,7 @@ import time
 from action_msgs.msg import GoalStatus
 from action_msgs.srv import CancelGoal
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
-from hailo_msgs.srv import SaveGalleryItem
+from hailo_msgs.srv import DeleteGalleryItem, SaveGalleryItem
 from nav2_msgs.action import DriveOnHeading, NavigateToPose, Spin
 from nav_msgs.msg import Odometry
 from rainbow_brain.commands import parse, phrases
@@ -164,6 +166,12 @@ class BrainNode(Node):
         # Seconds before the same face is announced to the agent again
         self.face_repeat = self.declare_parameter('face_repeat', 600.0).value
         self.faces_seen = {}
+        # A face it does not know, in view this long (gaps under 1 s), becomes a
+        # face_unknown event, at most once per face_repeat
+        self.unknown_after = self.declare_parameter('unknown_after', 3.0).value
+        self.unknown_since = None
+        self.unknown_last = -1e9
+        self.unknown_asked = -1e9
         # "Look around": localize_turns full turns in one go, then again if AMCL is not
         # sure yet, at most localize_rounds times
         self.localize_turns = self.declare_parameter('localize_turns', 4).value
@@ -244,6 +252,8 @@ class BrainNode(Node):
         self.say_client = self.create_client(Say, '/speech/say', **g)
         self.save_face_client = self.create_client(
             SaveGalleryItem, '/hailo_face_recognition/save_face', **g)
+        self.delete_face_client = self.create_client(
+            DeleteGalleryItem, '/hailo_face_recognition/delete_face', **g)
 
         cancel = {'cancel_callback': self.on_cancel_request, **g}
         self.action_servers = [
@@ -600,16 +610,34 @@ class BrainNode(Node):
     def on_faces(self, msg):
         """Tell the agent who is in view; the Hailo node puts names in class_id."""
         now = self.get_clock().now().nanoseconds * 1e-9
+        unknown = False
         for detection in msg.detections:
             for result in detection.results:
-                label, _, name = result.hypothesis.class_id.partition(': ')
+                label, _, name = result.hypothesis.class_id.partition(':')
                 name = name.strip()
+                if label.strip() != 'face':
+                    continue        # the object detector's boxes (person, chair, ...)
                 if not name or name.lower() == 'unknown':
+                    unknown = unknown or result.hypothesis.score >= 0.5
                     continue
                 if now - self.faces_seen.get(name, -1e9) >= self.face_repeat:
                     self.get_logger().info(f'face seen: {name}')
                     self.emit({'kind': 'face_seen', 'name': name})
                 self.faces_seen[name] = now
+        if not unknown:
+            return
+        if now - self.unknown_last > 1.0:
+            self.unknown_since = now
+        self.unknown_last = now
+        if now - self.unknown_since >= self.unknown_after and \
+                now - self.unknown_asked >= self.face_repeat:
+            self.unknown_asked = now
+            self.get_logger().info('face seen: someone unknown')
+            self.emit({'kind': 'face_unknown'})
+
+    def names_in_view(self, within=2.0):
+        now = self.get_clock().now().nanoseconds * 1e-9
+        return [n for n, t in self.faces_seen.items() if now - t < within]
 
     def on_head_moving(self, msg):
         self.head_moving = msg.data
@@ -694,16 +722,39 @@ class BrainNode(Node):
         """Ask the Hailo node to save the face in view as name; returns (ok, message)."""
         if not self.save_face_client.service_is_ready():
             return False, 'face recognition is not running'
+        if name.islower():
+            name = name.title()     # one spelling per person: "stefanos" -> "Stefanos"
+        known = [n for n in self.names_in_view() if n != name]
         response = await self.save_face_client.call_async(
             SaveGalleryItem.Request(id=name, append=False))
+        if response.result == 0:
+            self.unknown_asked = self.get_clock().now().nanoseconds * 1e-9
         # hailo_msgs/srv/SaveGalleryItem result codes
+        other = (f'I already know this face as {known[0]}' if len(known) == 1
+                 else 'I already know this face under another name')
         messages = {0: f'I will remember {name}',
                     1: f'I already know you, {name}',
-                    2: 'I already know this face under another name',
+                    2: other,
                     3: f'I know someone else called {name}',
                     4: 'I see more than one face; only one person please',
                     5: "I can't see a face"}
         return response.result in (0, 1), messages.get(response.result, response.message)
+
+    async def forget_face(self, name):
+        """Ask the Hailo node to delete a face; returns (ok, message)."""
+        if not self.delete_face_client.service_is_ready():
+            return False, 'face recognition is not running'
+        # The gallery's ids are exact: try the usual spellings
+        for candidate in dict.fromkeys([name, name.title(), name.lower(), name.capitalize()]):
+            response = await self.delete_face_client.call_async(
+                DeleteGalleryItem.Request(id=candidate))
+            if response.result == 0:
+                self.faces_seen.pop(candidate, None)
+                self.get_logger().info(f'forgot the face of {candidate}')
+                return True, f'I forgot the face of {candidate}'
+            if response.result != 1:
+                return False, response.message or 'face recognition failed'
+        return False, f'I do not know a face called {name}'
 
     def set_pose_estimate(self, place):
         """Tell AMCL the robot is at a place (startup localization from a photo)."""
@@ -1112,6 +1163,10 @@ class LinkHandler:
 
     async def skill_remember_face(self, name):
         ok, message = await self.node.remember_face(str(name).strip())
+        return {'ok': ok, 'message': message}
+
+    async def skill_forget_face(self, name):
+        ok, message = await self.node.forget_face(str(name).strip())
         return {'ok': ok, 'message': message}
 
     def skill_set_pose_estimate(self, place):

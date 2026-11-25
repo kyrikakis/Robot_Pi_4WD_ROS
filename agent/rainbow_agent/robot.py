@@ -58,6 +58,8 @@ class SimRobot:
         self.battery = battery
         self.activity = 'idle'
         self.tracking = ''
+        self.faces = {}                 # name -> True; the face in view is 'in_view'
+        self.face_in_view = ''          # name the face in front is saved under, '' = unknown
         self.events = asyncio.Queue()
         self.calls = []                 # (name, args) of every call, for tests and eval
         self._move = None
@@ -205,7 +207,24 @@ class SimRobot:
         return {'ok': False, 'message': 'my camera is off (simulated robot)'}
 
     async def _remember_face(self, name):
-        return {'ok': False, 'message': 'face recognition is off (simulated robot)'}
+        name = str(name).strip()
+        if self.face_in_view and self.face_in_view != name:
+            return {'ok': False, 'message': f'I already know this face as {self.face_in_view}'}
+        if name in self.faces and self.face_in_view != name:
+            return {'ok': False, 'message': f'I know someone else called {name}'}
+        self.faces[name] = True
+        self.face_in_view = name
+        return {'ok': True, 'message': f'I will remember {name}'}
+
+    async def _forget_face(self, name):
+        name = str(name).strip()
+        match = next((n for n in self.faces if n.lower() == name.lower()), None)
+        if match is None and self.face_in_view.lower() != name.lower():
+            return {'ok': False, 'message': f'I do not know a face called {name}'}
+        self.faces.pop(match, None)
+        if self.face_in_view.lower() == name.lower():
+            self.face_in_view = ''
+        return {'ok': True, 'message': f'I forgot the face of {match or name}'}
 
     async def _delete_place(self, name):
         key = _norm(name)
