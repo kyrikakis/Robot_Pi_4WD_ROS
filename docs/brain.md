@@ -523,9 +523,10 @@ anything.
 For now only faces can be tracked, and only once face recognition is re-enabled
 in the Hailo container; things need an object detector publishing detections
 (another Hailo pipeline, to discuss). The camera's FOV (66 x 41 deg, the Camera
-Module 3's datasheet) and the frame delay (0.15 s, used when detections carry
-no stamp) are not measured yet; the image size is read from the first frame of
-`photo_topic`, which assumes the boxes are in that image's pixels. Speed, settle time and latency are estimates until
+Module 3's datasheet) and the frame delay (0.15 s: the Hailo stamps detections
+when it publishes them, after the frame was taken) are not measured yet. The
+Hailo's boxes are normalized (0-1); a detector sending pixels needs
+`normalized_boxes` false. Speed, settle time and latency are estimates until
 measured on the robot with the owner watching.
 
 ## Build order

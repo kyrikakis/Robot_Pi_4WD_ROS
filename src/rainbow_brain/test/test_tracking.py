@@ -43,6 +43,9 @@ def test_pixel_to_angles():
     # The bottom edge is half the vertical FOV down (tilt +)
     pan, tilt = pixel_to_angles(640, 720, 1280, 720, 66, 41)
     assert tilt == pytest.approx(20.5)
+    # Normalized boxes (the Hailo's): the same with width = height = 1
+    assert pixel_to_angles(0.0, 0.5, 1.0, 1.0, 66, 41) == pytest.approx((33.0, 0.0))
+    assert pixel_to_angles(0.5, 1.0, 1.0, 1.0, 66, 41) == pytest.approx((0.0, 20.5))
 
 
 def test_head_target_uses_pose_at_frame_time():

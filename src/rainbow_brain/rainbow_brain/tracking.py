@@ -43,8 +43,9 @@ def matches(target, class_id):
 def pick(candidates, previous=None):
     """Choose one detection to follow.
 
-    candidates: [(cx, cy, w, h)] in pixels. With a previous centre, the nearest
-    one (keep following the same thing); otherwise the largest (the closest).
+    candidates: [(cx, cy, w, h)] in image units (pixels or normalized). With a
+    previous centre, the nearest one (keep following the same thing); otherwise
+    the largest (the closest).
     """
     if not candidates:
         return None
@@ -55,7 +56,9 @@ def pick(candidates, previous=None):
 
 
 def pixel_to_angles(cx, cy, width, height, hfov_deg, vfov_deg):
-    """Angles (deg) from the image centre to a pixel, in head terms.
+    """Angles (deg) from the image centre to a point, in head terms.
+
+    cx, cy, width, height in the same units: pixels, or 0-1 with width = height = 1.
 
     Pan positive = left (the pixel is left of the centre), tilt positive = down
     (the pixel is below the centre), like the head's joints.

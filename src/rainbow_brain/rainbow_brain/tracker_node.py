@@ -8,10 +8,13 @@ pose at the time the frame was taken (from /joint_states), so the head's own
 motion and the detector's delay do not make it overshoot. When the target is
 out of view the head stays where it is.
 
-The detections' pixels are turned into angles with the camera's field of view
-(hfov_deg / vfov_deg) and the image size (image_width / image_height; 0 = read
-once from the first frame on photo_topic). The FOV defaults are the Camera
-Module 3's datasheet values, not measured on the robot.
+The detections' boxes are turned into angles with the camera's field of view
+(hfov_deg / vfov_deg). The Hailo's boxes are normalized (0-1, normalized_boxes);
+for a detector that sends pixels, set normalized_boxes false and the image size
+(image_width / image_height; 0 = read once from the first frame on photo_topic).
+The FOV defaults are the Camera Module 3's datasheet values, not measured on the
+robot. The Hailo stamps its detections when it publishes them, after the frame
+was taken: frame_latency_s is taken off every stamp (estimated, to be measured).
 
 Interfaces (node name tracker):
   ~/start   rainbow_interfaces/srv/Track   start (or switch) tracking
@@ -47,8 +50,11 @@ class TrackerNode(Node):
         topics = param('detection_topics', ['/hailo_face_recognition/detections']).value
         self.photo_topic = param(
             'photo_topic', '/hailo_face_recognition/image_bbx/compressed').value
-        self.width = param('image_width', 0).value
-        self.height = param('image_height', 0).value
+        if param('normalized_boxes', True).value:
+            self.width = self.height = 1.0
+        else:
+            self.width = param('image_width', 0).value
+            self.height = param('image_height', 0).value
         # Camera Module 3 (standard lens) datasheet; to be measured
         self.hfov = param('hfov_deg', 66.0).value
         self.vfov = param('vfov_deg', 41.0).value
@@ -57,7 +63,8 @@ class TrackerNode(Node):
         self.gain = param('gain', 0.8).value
         self.deadband = param('deadband_deg', 1.5).value
         self.speed = math.radians(param('speed_deg_s', 40.0).value)
-        # Frames without a usable stamp: taken this long before they arrived (s)
+        # Frame taken this long before its detections' stamp (or their arrival
+        # when the stamp is missing or off), in s
         self.frame_latency = param('frame_latency_s', 0.15).value
         self.lost_after = param('lost_after_s', 3.0).value
         self.pan_joint = param('pan_joint', 'head_pan_joint').value
@@ -67,7 +74,7 @@ class TrackerNode(Node):
         self.target = ''
         self.started = None
         self.last_seen = None
-        self.previous = None       # centre (px) of the detection followed last
+        self.previous = None       # centre of the detection followed last
         self.label = ''
         self.sent_status = None
         self.joints = deque(maxlen=200)   # (ns, pan deg, tilt deg)
@@ -159,7 +166,8 @@ class TrackerNode(Node):
             self.last_seen = now
         stamp = Time.from_msg(msg.header.stamp).nanoseconds
         if stamp == 0 or abs(now - stamp) > 1e9:
-            stamp = now - int(self.frame_latency * 1e9)
+            stamp = now
+        stamp -= int(self.frame_latency * 1e9)
         head = self.head_at(stamp)
         if head is None:
             return
