@@ -20,6 +20,14 @@ ALIASES = {
 }
 
 
+# No match for the target: follow this instead ("face": a person's body when no
+# face is visible, e.g. turned away or too far). Not for names: a body box does
+# not say who it is.
+FALLBACK = {'face': 'person'}
+# Where the head is in a person box: this fraction of its height from the top
+HEAD_FROM_TOP = 0.12
+
+
 def clean(text):
     words = str(text).lower().replace('_', ' ').split()
     while words and words[0] in ('the', 'a', 'an', 'my', 'that', 'this'):
@@ -48,7 +56,20 @@ def labels(class_id):
 
 
 def matches(target, class_id):
+    """Whether a detection is what someone asked to follow (aliases applied)."""
     return normalize(target) in labels(class_id)
+
+
+def has_label(label, class_id):
+    """Whether a detection has exactly this detector label (no aliases)."""
+    return clean(label) in labels(class_id)
+
+
+def aim_point(class_id, cx, cy, w, h):
+    """The point to aim at in a box: its centre, or the head for a person's body."""
+    if 'person' in labels(class_id):
+        return cx, cy - h / 2.0 + HEAD_FROM_TOP * h
+    return cx, cy
 
 
 def pick(candidates, previous=None):
@@ -81,13 +102,19 @@ def pixel_to_angles(cx, cy, width, height, hfov_deg, vfov_deg):
     return pan, tilt
 
 
-def head_target(head_pan, head_tilt, off_pan, off_tilt, gain=0.8, deadband=1.5):
-    """Where to point the head (deg), or None if the target is close enough to centre.
+def head_target(head_pan, head_tilt, off_pan, off_tilt, gain=0.8, zone_pan=8.0,
+                zone_tilt=6.0):
+    """Where to point the head (deg): (pan, tilt), None for an axis to leave alone.
 
+    None altogether while the target is inside the quiet zone in the middle of
+    the view (offsets under zone_pan / zone_tilt): the head does not move all
+    the time. Each axis moves only when its offset leaves the zone.
     head_pan/tilt: the head's pose when the frame was taken (not now: the head
     may have moved since, and adding the offset to the current pose would
     overshoot). gain < 1 damps the steps (detections are noisy).
     """
-    if abs(off_pan) < deadband and abs(off_tilt) < deadband:
+    pan = head_pan + gain * off_pan if abs(off_pan) >= zone_pan else None
+    tilt = head_tilt + gain * off_tilt if abs(off_tilt) >= zone_tilt else None
+    if pan is None and tilt is None:
         return None
-    return head_pan + gain * off_pan, head_tilt + gain * off_tilt
+    return pan, tilt

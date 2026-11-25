@@ -1,7 +1,8 @@
 """Tests for the tracking logic (no ROS needed): python3 -m pytest src/rainbow_brain/test."""
 
 import pytest
-from rainbow_brain.tracking import head_target, labels, matches, normalize, pick, pixel_to_angles
+from rainbow_brain.tracking import (aim_point, FALLBACK, has_label, head_target, labels, matches,
+                                    normalize, pick, pixel_to_angles)
 
 
 def test_normalize_aliases():
@@ -55,5 +56,17 @@ def test_pixel_to_angles():
 
 
 def test_head_target_uses_pose_at_frame_time():
-    assert head_target(10.0, 0.0, 0.5, -0.5) is None          # inside the deadband
+    assert head_target(10.0, 0.0, 5.0, -4.0) is None          # inside the quiet zone
     assert head_target(10.0, 5.0, 20.0, -10.0, gain=0.5) == pytest.approx((20.0, 0.0))
+    # Only the axis outside the zone moves
+    assert head_target(10.0, 5.0, 20.0, -2.0, gain=0.5) == (20.0, None)
+    assert head_target(10.0, 5.0, 3.0, 10.0, gain=0.5) == (None, 10.0)
+
+
+def test_person_fallback_aims_at_the_head():
+    assert FALLBACK[normalize('me')] == 'person'
+    assert has_label(FALLBACK['face'], 'person')
+    assert not has_label(FALLBACK['face'], 'face: Stefanos')
+    # A body box 0.2-0.8 high: the head is near its top
+    assert aim_point('person', 0.5, 0.5, 0.3, 0.6) == pytest.approx((0.5, 0.272))
+    assert aim_point('face: Stefanos', 0.5, 0.5, 0.1, 0.1) == (0.5, 0.5)

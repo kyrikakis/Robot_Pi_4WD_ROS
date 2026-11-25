@@ -518,8 +518,12 @@ noisy boxes, offsets under 1.5 deg are ignored. Targets
 (`rainbow_brain/tracking.py`): "face" (anyone; "me", "someone" map to it), a
 person's name (face recognition's `face: <name>`), or an object detector's
 label ("ball" maps to COCO's "sports ball"). Several matches: the one nearest the
-last, or at the start the largest. Out of view, the head stays where it is;
-after 3 s the status says lost and the agent gets a `track_lost` event. `stop`
+last, or at the start the largest. "face" falls back to a person's body
+(COCO's `person`, aimed at the top of the box) when no face is visible. The
+head stays still while the target is in a quiet zone in the middle of the view
+(8 deg pan, 6 deg tilt off centre). Out of view, the head stays where it is
+for 3 s; then the status says lost, the head goes back to the centre and the
+agent gets a `track_lost` event. `stop`
 and `look` end tracking. Only the head moves: the robot does not drive after
 anything.
 

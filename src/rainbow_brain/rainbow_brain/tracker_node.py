@@ -5,8 +5,10 @@ rainbow_brain.tracking matches them), it follows the matching detection on
 detection_topics (vision_msgs/Detection2DArray: the Hailo's face recognition
 and object detector) by sending /head/target. Each step aims from the head
 pose at the time the frame was taken (from /joint_states), so the head's own
-motion and the detector's delay do not make it overshoot. When the target is
-out of view the head stays where it is.
+motion and the detector's delay do not make it overshoot. The head stays still
+while the target is in a quiet zone in the middle of the view (zone_pan_deg /
+zone_tilt_deg). When the target is lost (out of view for lost_after_s) the head
+goes back to the centre.
 
 The detections' boxes are turned into angles with the camera's field of view
 (hfov_deg / vfov_deg). The Hailo's boxes are normalized (0-1, normalized_boxes);
@@ -27,7 +29,8 @@ from collections import deque
 import math
 import threading
 
-from rainbow_brain.tracking import head_target, matches, normalize, pick, pixel_to_angles
+from rainbow_brain.tracking import (aim_point, FALLBACK, has_label, head_target, matches, normalize,
+                                    pick, pixel_to_angles)
 from rainbow_interfaces.msg import HeadTarget, TrackerStatus
 from rainbow_interfaces.srv import Track
 import rclpy
@@ -59,9 +62,11 @@ class TrackerNode(Node):
         self.hfov = param('hfov_deg', 66.0).value
         self.vfov = param('vfov_deg', 41.0).value
         self.min_score = param('min_score', 0.4).value
-        # Fraction of the offset corrected per detection, and offsets ignored (deg)
+        # Fraction of the offset corrected per detection, and the quiet zone in
+        # the middle of the view where the head does not move (deg off centre)
         self.gain = param('gain', 0.8).value
-        self.deadband = param('deadband_deg', 1.5).value
+        self.zone_pan = param('zone_pan_deg', 8.0).value
+        self.zone_tilt = param('zone_tilt_deg', 6.0).value
         # 0 = the head's default speed
         self.speed = math.radians(param('speed_deg_s', 0.0).value)
         # Frame taken this long before its detections' stamp (or their arrival
@@ -139,20 +144,28 @@ class TrackerNode(Node):
             pan, tilt = p, q
         return pan, tilt
 
+    def matching(self, msg, wanted):
+        """[(x, y, w, h, label)] of the detections whose label is wanted; x, y the aim point."""
+        found = []
+        for detection in msg.detections:
+            for result in detection.results:
+                label = result.hypothesis.class_id
+                if result.hypothesis.score >= self.min_score and wanted(label):
+                    box = detection.bbox
+                    x, y = aim_point(label, box.center.position.x, box.center.position.y,
+                                     box.size_x, box.size_y)
+                    found.append((x, y, box.size_x, box.size_y, label))
+                    break
+        return found
+
     def on_detections(self, msg):
         with self.lock:
             target = self.target
         if not target or not (self.width and self.height):
             return
-        found = []
-        for detection in msg.detections:
-            for result in detection.results:
-                if result.hypothesis.score >= self.min_score and \
-                        matches(target, result.hypothesis.class_id):
-                    box = detection.bbox
-                    found.append((box.center.position.x, box.center.position.y,
-                                  box.size_x, box.size_y, result.hypothesis.class_id))
-                    break
+        found = self.matching(msg, lambda label: matches(target, label))
+        if not found and target in FALLBACK:
+            found = self.matching(msg, lambda label: has_label(FALLBACK[target], label))
         if not found:
             return
         now = self.now_ns()
@@ -176,10 +189,15 @@ class TrackerNode(Node):
             return
         off = pixel_to_angles(chosen[0], chosen[1], self.width, self.height,
                               self.hfov, self.vfov)
-        aim = head_target(head[0], head[1], off[0], off[1], self.gain, self.deadband)
+        aim = head_target(head[0], head[1], off[0], off[1], self.gain, self.zone_pan,
+                          self.zone_tilt)
         if aim is not None:
-            self.target_pub.publish(HeadTarget(pan=math.radians(aim[0]),
-                                               tilt=math.radians(aim[1]), speed=self.speed))
+            # An axis inside the zone keeps where the head is now
+            now_pan, now_tilt = self.joints[-1][1:]
+            pan = now_pan if aim[0] is None else aim[0]
+            tilt = now_tilt if aim[1] is None else aim[1]
+            self.target_pub.publish(HeadTarget(pan=math.radians(pan), tilt=math.radians(tilt),
+                                               speed=self.speed))
         self.publish_status()
 
     # Services
@@ -230,6 +248,9 @@ class TrackerNode(Node):
 
     def publish_status(self, force=False):
         msg = self.status()
+        # Just lost: back to the centre
+        if msg.lost and not (self.sent_status and self.sent_status[2]):
+            self.target_pub.publish(HeadTarget(pan=0.0, tilt=0.0, speed=self.speed))
         key = (msg.target, msg.seen, msg.lost, msg.label)
         if force or key != self.sent_status:
             self.sent_status = key
