@@ -52,6 +52,10 @@ _PHOTO = re.compile(r"""
 """, re.IGNORECASE | re.VERBOSE)
 
 
+def said_yes(text):
+    return bool(_YES.search(text or ''))
+
+
 def wants_photo(text):
     """The person asked what the robot sees: answering needs a photo."""
     return bool(_PHOTO.search(text or ''))
@@ -102,7 +106,8 @@ _ASKED_NAME = re.compile(r'\byour\s+name\b', re.IGNORECASE)
 _GIVES_NAME = re.compile(r"\b(i'?m|i\s+am|my\s+name'?s?|name\s+is|call\s+me|it'?s)\b",
                          re.IGNORECASE)
 # The robot checking something it heard: "Stefanos, did I get that right?"
-_CHECKING = re.compile(r'\b(right|correct|get\s+that|is\s+that|spell)\b', re.IGNORECASE)
+_CHECKING = re.compile(r'\b(right|correct|get\s+that|is\s+that|spell|are\s+you\s+the)\b',
+                       re.IGNORECASE)
 _YES = re.compile(r"^\W*(yes|yeah|yep|yup|correct|right|exactly|that'?s\s+(it|right|correct))\b",
                   re.IGNORECASE)
 

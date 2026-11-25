@@ -213,15 +213,33 @@ class SimRobot:
     async def _capture_photo(self):
         return {'ok': False, 'message': 'my camera is off (simulated robot)'}
 
-    async def _remember_face(self, name):
+    async def _remember_face(self, name, same_person=False):
+        # As the brain answers (rainbow_brain.faces): face_in_view is the name the face in
+        # front matches, '' for a face it does not know
         name = str(name).strip()
+        same = same_person in (True, 'true', 'True', 1)
         if self.face_in_view and self.face_in_view != name:
             return {'ok': False, 'message': f'I already know this face as {self.face_in_view}'}
-        if name in self.faces and self.face_in_view != name:
-            return {'ok': False, 'message': f'I know someone else called {name}'}
-        self.faces[name] = True
+        if self.face_in_view == name:
+            if same:
+                self.faces[name] = self.faces.get(name, 1) + 1
+                return {'ok': True, 'message': f'I added this view of {name}'}
+            return {'ok': True, 'message': f'I already know you, {name}'}
+        if name in self.faces:
+            if same:
+                self.faces[name] = self.faces.get(name, 1) + 1
+                self.face_in_view = name
+                return {'ok': True, 'message': f'I added this view of {name}'}
+            return {'ok': False, 'message': f'I know a face called {name} that looks different',
+                    'next': (f'ask if they are the {name} you know (another angle or other '
+                             f'light); if yes, call remember_face again with same_person true; '
+                             f'if not, ask for another name, like with their last name')}
+        self.faces[name] = 1
         self.face_in_view = name
-        return {'ok': True, 'message': f'I will remember {name}'}
+        return {'ok': True,
+                'message': (f'I will remember {name}. Tell them to turn their head slowly to '
+                            f'one side and the other, so I learn their face from more angles'),
+                'next': 'the extra views are added by themselves: call nothing'}
 
     async def _greet_people(self, enabled):
         self.greet = enabled in (True, 'true', 'True', 1)

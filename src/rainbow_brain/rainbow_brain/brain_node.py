@@ -78,6 +78,7 @@ from nav2_msgs.action import DriveOnHeading, NavigateToPose, Spin
 from nav_msgs.msg import Odometry
 from rainbow_brain.battery import BatteryMonitor
 from rainbow_brain.commands import parse, phrases
+from rainbow_brain.faces import save_outcome
 from rainbow_brain.greeting import Attention
 from rainbow_brain.link import LinkServer, load_token
 from rainbow_brain.places import PlaceStore
@@ -771,6 +772,8 @@ class BrainNode(Node):
             self.unknown_asked = now
             self.get_logger().info('face seen: someone unknown')
             self.emit({'kind': 'face_unknown'})
+            if self.mode == 'local':
+                self.say("Hello! I don't know you yet.")
 
     # Greeting people
 
@@ -780,6 +783,7 @@ class BrainNode(Node):
         change = self.attention.update(time.monotonic(), idle, self.greet, busy_head)
         if change == 'start':
             self.get_logger().info('someone is here: looking at them')
+            self.unknown_asked = -1e9   # a stranger in this look is asked their name
             self.executor.create_task(self.track, 'face')
         elif change == 'end':
             self.get_logger().info('done looking at them')
@@ -813,6 +817,12 @@ class BrainNode(Node):
             self.stop_tracking()
         self.get_logger().info(f'greeting people: {"on" if self.greet else "off"}')
         self.state_changed()
+
+    def faces_again(self):
+        """Report the faces in view again (agent just connected, or a new look):
+        face events sent while nobody answered them are not lost."""
+        self.faces_seen = {}
+        self.unknown_asked = -1e9
 
     def names_in_view(self, within=2.0):
         now = self.get_clock().now().nanoseconds * 1e-9
@@ -901,27 +911,77 @@ class BrainNode(Node):
         ok, out = cv2.imencode('.jpg', image, [cv2.IMWRITE_JPEG_QUALITY, 80])
         return out.tobytes() if ok else jpeg
 
-    async def remember_face(self, name):
-        """Ask the Hailo node to save the face in view as name; returns (ok, message)."""
+    async def remember_face(self, name, same_person=False):
+        """Ask the Hailo node to save the face in view as name; returns (ok, message, next).
+
+        same_person: they confirmed they are the one already saved under name (another
+        angle or light), or this is one more view while enrolling: a face that looks
+        different from the saved one is then added to that name. next: what the agent
+        should do after (more views of a new face), or ''.
+        """
         if not self.save_face_client.service_is_ready():
-            return False, 'face recognition is not running'
+            return False, 'face recognition is not running', ''
         if name.islower():
             name = name.title()     # one spelling per person: "stefanos" -> "Stefanos"
         known = [n for n in self.names_in_view() if n != name]
-        response = await self.save_face_client.call_async(
-            SaveGalleryItem.Request(id=name, append=False))
-        if response.result == 0:
+
+        async def save(append):
+            r = await self.save_face_client.call_async(
+                SaveGalleryItem.Request(id=name, append=append))
+            return save_outcome(r.result, r.message), r.message
+
+        outcome, raw = await save(False)
+        if outcome == 'distant' and same_person:
+            # Safe here: append only renames when the face is close to another name's
+            outcome, raw = await save(True)
+            if outcome == 'added':
+                self.get_logger().info(f'added a view of {name}')
+                return True, f'I added this view of {name}', ''
+        self.get_logger().info(f'remember face {name}: {outcome} ({raw})')
+        if outcome == 'added':
             self.unknown_asked = self.get_clock().now().nanoseconds * 1e-9
-        # hailo_msgs/srv/SaveGalleryItem result codes
-        other = (f'I already know this face as {known[0]}' if len(known) == 1
-                 else 'I already know this face under another name')
-        messages = {0: f'I will remember {name}',
-                    1: f'I already know you, {name}',
-                    2: other,
-                    3: f'I know someone else called {name}',
-                    4: 'I see more than one face; only one person please',
-                    5: "I can't see a face"}
-        return response.result in (0, 1), messages.get(response.result, response.message)
+            if same_person:
+                return True, f'I added this view of {name}', ''
+            self.executor.create_task(self.collect_views, name)
+            return True, (f'I will remember {name}. Tell them to turn their head slowly to '
+                          f'one side and the other, so I learn their face from more angles'), (
+                'the extra views are added by themselves: call nothing')
+        if outcome == 'same':
+            return True, (f'I already know this view of {name}' if same_person
+                          else f'I already know you, {name}'), ''
+        if outcome == 'other_name':
+            return False, (f'I already know this face as {known[0]}' if len(known) == 1
+                           else 'I already know this face under another name'), ''
+        if outcome == 'distant':
+            return False, (f'I know a face called {name} that looks different'), (
+                f'ask if they are the {name} you know (another angle or other light); if '
+                f'yes, call remember_face again with same_person true; if not, ask for '
+                f'another name, like with their last name')
+        if outcome == 'many':
+            return False, 'I see more than one face; only one person please', ''
+        if outcome == 'none':
+            return False, "I can't see a face", ''
+        return False, raw or 'face recognition failed', ''
+
+    async def collect_views(self, name, seconds=12.0, views=2):
+        """After a new face: add up to views more views of it while they turn their head
+        (one photo from one angle recognises poorly). A view only goes in when it looks
+        different from the saved ones ('distant'), so append cannot rename anyone."""
+        added = 0
+        end = time.monotonic() + seconds
+        while added < views and time.monotonic() < end:
+            await self.sleep(1.0)
+            r = await self.save_face_client.call_async(
+                SaveGalleryItem.Request(id=name, append=False))
+            outcome = save_outcome(r.result, r.message)
+            if outcome in ('other_name', 'many'):
+                break               # someone else, or more than one face: stop
+            if outcome == 'distant':
+                r = await self.save_face_client.call_async(
+                    SaveGalleryItem.Request(id=name, append=True))
+                if save_outcome(r.result, r.message) == 'added':
+                    added += 1
+        self.get_logger().info(f'{name}: {added} more view(s) saved')
 
     async def forget_face(self, name):
         """Ask the Hailo node to delete a face; returns (ok, message)."""
@@ -962,7 +1022,11 @@ class BrainNode(Node):
 
     def on_utterance(self, msg):
         command = None
-        if msg.command and msg.command_confidence >= self.command_confidence:
+        # An answer to the agent's question goes to the agent: Vosk squeezes anything
+        # into its few phrases ("Stefanos", the answer to "what is your name?", came out
+        # as "stop" at 1.00). "stop" still works then: the stop word is its own detector.
+        answer = msg.follow_up and self.mode == 'remote'
+        if msg.command and msg.command_confidence >= self.command_confidence and not answer:
             command = parse(msg.command, self.place_names())
         if command is not None:
             self.local_command(msg.command, command)
@@ -1224,6 +1288,7 @@ class LinkHandler:
             node.on_agent_status({'phase': 'offline', 'skill': ''})
         else:
             node.publish_status()
+            node.faces_again()      # who is in view now gets greeted or asked
 
     def on_agent_status(self, status):
         self.node.on_agent_status(status)
@@ -1363,9 +1428,13 @@ class LinkHandler:
         return {'ok': True, 'image': base64.b64encode(jpeg).decode('ascii'),
                 'where': self.node.where_am_i()['description']}
 
-    async def skill_remember_face(self, name):
-        ok, message = await self.node.remember_face(str(name).strip())
-        return {'ok': ok, 'message': message}
+    async def skill_remember_face(self, name, same_person=False):
+        ok, message, next_step = await self.node.remember_face(
+            str(name).strip(), same_person in (True, 'true', 'True', 1))
+        out = {'ok': ok, 'message': message}
+        if next_step:
+            out['next'] = next_step
+        return out
 
     def skill_greet_people(self, enabled):
         self.node.set_greet(enabled in (True, 'true', 'True', 1))

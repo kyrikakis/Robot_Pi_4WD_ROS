@@ -81,8 +81,10 @@ TOOLS = [
           'or you need to look. You get the photo right after.'),
     _tool('remember_face',
           'Remember the face of the person in front of the camera under their name. First '
-          'say the name back and get a yes; never guess a name. Only one person in view.',
-          {'name': _TEXT}, ['name']),
+          'say the name back and get a yes; never guess a name. Only one person in view. '
+          'same_person: true when they said they are the one already saved under that '
+          'name, or to add another view of them (the result says when).',
+          {'name': _TEXT, 'same_person': {'type': 'boolean'}}, ['name']),
     _tool('greet_people',
           'Turn on or off turning your head to people you see and greeting them. '
           '"stop greeting people", "leave me alone", "don\'t look at everyone": false; '

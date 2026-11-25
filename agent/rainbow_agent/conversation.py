@@ -28,8 +28,8 @@ import json
 import re
 import time
 
-from rainbow_agent.guards import (check_remember_face, ground_args, MOVES, wants_action,
-                                  wants_photo)
+from rainbow_agent.guards import (check_remember_face, ground_args, MOVES, said_yes,
+                                  wants_action, wants_photo)
 from rainbow_agent.persona import system_prompt
 from rainbow_agent.skills import TOOLS
 from rainbow_agent.status import Status
@@ -115,6 +115,7 @@ class Conversation:
         self.messages = []
         self.pending_events = []
         self.confirmed_names = set()   # names the person said yes to (remember_face)
+        self.looks_different = set()   # names saved with a face unlike the one in view
         self.last_turn = 0.0
         self.memory = memory
         self.log = log
@@ -135,6 +136,7 @@ class Conversation:
         self.messages = []
         self.pending_events = []
         self.confirmed_names = set()   # names the person said yes to (remember_face)
+        self.looks_different = set()   # names saved with a face unlike the one in view
         self.memories = []
         self.session_started = time.time()
         self.turns = 0
@@ -301,6 +303,12 @@ class Conversation:
                     args = None
                 name = c.function.name
                 called.add(name)
+                if name == 'remember_face' and isinstance(args, dict) and \
+                        args.get('same_person') and not (
+                            str(args.get('name', '')).strip().lower() in self.looks_different
+                            and said_yes(self._recent_user_words(1))):
+                    # Only after "a face called X that looks different" and their yes
+                    args = dict(args, same_person=False)
                 if not isinstance(args, dict):
                     result = {'ok': False, 'message': 'arguments were not a JSON object'}
                 elif name == 'remember_face' and (problem := check_remember_face(
@@ -323,6 +331,8 @@ class Conversation:
                     if name == 'remember_face':
                         # Said yes to it: it stays confirmed (e.g. for after a forget_face)
                         self.confirmed_names.add(str(args.get('name', '')).strip())
+                        if 'looks different' in str(result.get('message', '')):
+                            self.looks_different.add(str(args.get('name', '')).strip().lower())
                     waiting = [n for n in self.confirmed_names
                                if n.lower() != str(args.get('name', '')).strip().lower()]
                     if name == 'forget_face' and result.get('ok') and waiting:

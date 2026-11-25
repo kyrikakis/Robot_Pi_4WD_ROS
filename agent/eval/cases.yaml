@@ -126,6 +126,21 @@
   say: "Stop watching me."
   expect: [{name: stop_tracking}]
   forbid: [greet_people]
+- id: enroll-more-views
+  say: ["Remember my face, I'm Maria.", "Yes."]
+  expect: [{name: remember_face, args: {name: Maria}}]
+  reply_has: [head]
+- id: same-name-other-angle
+  robot: {faces: {Stefanos: 1}}
+  say: ["Remember my face, I'm Stefanos.", "Yes.", "Yes, that's me."]
+  expect: [{name: remember_face, args: {name: Stefanos, same_person: {empty: true}}},
+           {name: remember_face, args: {name: Stefanos, same_person: true}}]
+- id: same-name-other-person
+  robot: {faces: {Stefanos: 1}}
+  say: ["Remember my face, I'm Stefanos.", "Yes.", "No, I'm a different Stefanos."]
+  expect: [{name: remember_face, args: {name: Stefanos}}]
+  forbid: [forget_face]
+  reply_has: [name]
 - id: forget-face
   robot: {faces: {Martin: true}}
   say: "Forget Martin's face."

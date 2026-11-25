@@ -475,7 +475,20 @@ load with it on).
   (the model saved names at once, and invented "Alex" when none was said). A face
   already saved under another name is refused with that name ("I already know
   this face as Bambu"); `forget_face(name)` (`.../delete_face`) removes one, and
-  after it the agent saves the confirmed name.
+  after it the agent saves the confirmed name. The Hailo node answers 1 for all
+  three "already known" cases and tells them apart only in its message
+  (`rainbow_brain/faces.py`). A name saved with a face unlike the one in view
+  ("I know a face called Stefanos that looks different") makes the agent ask if
+  it is the same person (another angle or light); only after a yes does
+  `remember_face(name, same_person=true)` add this view to that name (Hailo
+  `append`; the agent's guard drops a same_person the person did not confirm).
+  `append` with a face close to someone else's renames them, so it is used only
+  after that answer. After a new face is saved the brain collects up to two more
+  views itself for 12 s while the person turns their head (the agent asks them
+  to). Face events sent while the agent was offline are not lost: when it
+  connects, and when a look starts, the faces in view are reported again. Answers
+  to the agent's questions skip the local phrase list (Vosk heard "Stefanos" as
+  "stop"); the stop word still works then.
 - **Greeting people** (`rainbow_brain/greeting.py`): someone in view (COCO's
   `person`, e.g. legs, or a face) for 1 s while the robot is idle gets one
   look: the brain has the tracker follow "face" (falling back to the body's top),
