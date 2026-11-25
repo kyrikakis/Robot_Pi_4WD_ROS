@@ -21,6 +21,7 @@ LOOK_SEEN = 'nothing yet: call capture_photo to see what is there'
 TRACK_MESSAGE = 'I will turn my head after the {} whenever I can see it'
 TRACK_SEEN = ('not known: you do not know if it is in view now; you are told if it is '
               'lost; call capture_photo to see')
+BATTERY_EMPTY = 'my battery is empty, so I am not driving; please charge me'
 STOP_TRACKING = 'stopped following; my head is back in the middle'
 
 
@@ -56,6 +57,7 @@ class SimRobot:
         self.speed = speed              # m/s, for how long a move takes
         self.time_scale = time_scale    # 0 = instant (tests)
         self.battery = battery
+        self.battery_low = False        # as the brain's low-battery mode
         self.activity = 'idle'
         self.tracking = ''
         self.faces = {}                 # name -> True; the face in view is 'in_view'
@@ -76,7 +78,9 @@ class SimRobot:
 
     def snapshot(self):
         """A short state summary for the model's context."""
-        return (f'Activity: {self.activity}. Battery {self.battery:.1f} V. '
+        low = (' Battery empty: everything is paused and you cannot drive until you are '
+               'charged.' if self.battery_low else '')
+        return (f'Activity: {self.activity}. Battery {self.battery:.1f} V.{low} '
                 f'Known places: {", ".join(sorted(self.places))}.')
 
     # Moves
@@ -99,6 +103,8 @@ class SimRobot:
         self._move = asyncio.ensure_future(run())
 
     async def _go_to_place(self, place):
+        if self.battery_low:
+            return {'ok': False, 'message': BATTERY_EMPTY}
         key = _norm(place)
         if key not in self.places:
             return {'ok': False, 'message': f"I don't know a place called {key}"}

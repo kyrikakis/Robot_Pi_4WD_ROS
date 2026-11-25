@@ -4,7 +4,8 @@ Interfaces:
   ~/set_expression  rainbow_interfaces/srv/SetExpression
   /eyes             std_msgs/String   expression name (kept from the old node)
 
-Expressions: happy (smile with a blink), open, closed, off.
+Expressions: happy (smile with a blink), sad (frown with a blink; low battery), open,
+closed, off.
 """
 
 from rainbow_interfaces.srv import SetExpression
@@ -21,6 +22,16 @@ SMILE = [
     [_, _, _, _, _, _, _, _],
     [_, _, X, _, _, X, _, _],
     [_, _, _, X, X, _, _, _],
+    [_, _, _, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _],
+]
+FROWN = [
+    [_, _, _, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _],
+    [_, _, _, X, X, _, _, _],
+    [_, _, X, _, _, X, _, _],
     [_, _, _, _, _, _, _, _],
     [_, _, _, _, _, _, _, _],
     [_, _, _, _, _, _, _, _],
@@ -51,6 +62,7 @@ BLANK = [[_] * 8 for _row in range(8)]
 # Each expression is a list of (frame, seconds) shown in a loop.
 EXPRESSIONS = {
     'happy': [(SMILE, 3.0), (SHUT, 1.0)],
+    'sad': [(FROWN, 3.0), (SHUT, 1.0)],
     'open': [(OPEN, None)],
     'closed': [(SHUT, None)],
     'off': [(BLANK, None)],

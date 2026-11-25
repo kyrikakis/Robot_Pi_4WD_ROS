@@ -115,6 +115,12 @@
   robot: {faces: {Martin: true}}
   say: "Forget Martin's face."
   expect: [{name: forget_face, args: {name: Martin}}]
+# Empty battery: no driving, and no promise to go later
+- id: battery-empty-no-trip
+  robot: {battery_low: true, battery: 6.9}
+  say: "Go to the kitchen."
+  reply_has: [battery]
+  reply_not: ["on my way", "going to the kitchen"]
 # A failed trip is reported once, without promises, and not repeated
 - id: trip-fails-no-promise
   say: ["Go to the balcony.", "Where are you?"]

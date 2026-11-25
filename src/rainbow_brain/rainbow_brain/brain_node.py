@@ -41,6 +41,12 @@ face_seen events, and a face it does not know, steadily in view for unknown_afte
 seconds, a face_unknown event (the agent then asks the name); remember_face and
 forget_face ask the Hailo node to save or delete a face.
 set_pose_estimate publishes /initialpose for AMCL (startup localization).
+Low battery (rainbow_brain.battery: <= 7.0 V for 30 s, until >= 7.6 V for 1 min):
+every motion is cancelled and refused, the head centred, battery_stop_programs
+stopped with supervisorctl (no dock yet, so driving is pointless and Nav2's CPU
+is wasted), and every battery_repeat_s the robot says it is out of battery with
+sad eyes; a battery_low event goes to the agent. Once charged the stopped
+programs start again (battery_ok event).
 Reads: TF map -> base_footprint, /amcl_pose, /battery; /scan and /odom_raw only
 for their arrival times (not deserialized)
 Link: WebSocket on link_port (8766); token in <data_dir>/link_token.
@@ -53,6 +59,7 @@ import base64
 import json
 import math
 import os
+import subprocess
 import threading
 import time
 
@@ -62,14 +69,15 @@ from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from hailo_msgs.srv import DeleteGalleryItem, SaveGalleryItem
 from nav2_msgs.action import DriveOnHeading, NavigateToPose, Spin
 from nav_msgs.msg import Odometry
+from rainbow_brain.battery import BatteryMonitor
 from rainbow_brain.commands import parse, phrases
 from rainbow_brain.link import LinkServer, load_token
 from rainbow_brain.places import PlaceStore
 from rainbow_interfaces.action import Drive, GoToPlace, MoveHead, Turn
 from rainbow_interfaces.msg import (AgentStatus, BrainStatus, Place as PlaceMsg, TrackerStatus,
                                     Utterance)
-from rainbow_interfaces.srv import (DeletePlace, EditPlace, GetState, ListPlaces,
-                                    SavePlace, Say, Track, WhereAmI)
+from rainbow_interfaces.srv import (DeletePlace, EditPlace, GetState, ListPlaces, SavePlace, Say,
+                                    SetExpression, Track, WhereAmI)
 from rcl_interfaces.msg import Log
 import rclpy
 from rclpy.action import ActionClient, ActionServer, CancelResponse
@@ -90,6 +98,7 @@ LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
                      reliability=ReliabilityPolicy.RELIABLE)
 
 # Nav2 actions cancelled by stop
+BATTERY_EMPTY = 'my battery is empty, so I am not driving; please charge me'
 NAV2_ACTIONS = ['navigate_to_pose', 'navigate_through_poses', 'follow_path', 'spin',
                 'drive_on_heading', 'backup', 'assisted_teleop', 'wait']
 
@@ -196,6 +205,22 @@ class BrainNode(Node):
 
         self.amcl = None
         self.battery = None
+        param = self.declare_parameter
+        self.battery_monitor = BatteryMonitor(
+            low_volts=param('battery_low_volts', 7.0).value,
+            low_for=param('battery_low_seconds', 30.0).value,
+            ok_volts=param('battery_ok_volts', 7.6).value,
+            ok_for=param('battery_ok_seconds', 60.0).value)
+        self.battery_repeat = param('battery_repeat_s', 120.0).value
+        # Supervisor programs stopped in low-battery mode, in the order to start them
+        # again (the map before Nav2)
+        self.battery_programs = list(param(
+            'battery_stop_programs',
+            ['rainbow_localization', 'rainbow_tof', 'rainbow_slam',
+             'rainbow_navigation']).value)
+        self.low_battery = False
+        self.battery_stopped = []       # those of them that were running
+        self.battery_timer = None
         self.pick = None
         self.pick_time = None
         self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.on_amcl, LATCHED)
@@ -250,6 +275,8 @@ class BrainNode(Node):
         self.cancel_clients = [self.create_client(CancelGoal, f'{a}/_action/cancel_goal', **g)
                                for a in NAV2_ACTIONS]
         self.say_client = self.create_client(Say, '/speech/say', **g)
+        self.eyes_client = self.create_client(SetExpression, '/eyes/set_expression', **g)
+        self.center_client = self.create_client(Trigger, '/head/center', **g)
         self.save_face_client = self.create_client(
             SaveGalleryItem, '/hailo_face_recognition/save_face', **g)
         self.delete_face_client = self.create_client(
@@ -353,6 +380,85 @@ class BrainNode(Node):
     def on_battery(self, msg):
         self.battery = msg.data / 10.0
         self.mark('battery')
+        change = self.battery_monitor.update(time.monotonic(), self.battery)
+        if change == 'low':
+            self.enter_low_battery()
+        elif change == 'ok':
+            self.leave_low_battery()
+
+    # Low battery
+
+    def enter_low_battery(self):
+        self.get_logger().warn(f'battery low ({self.battery:.1f} V): pausing everything')
+        self.low_battery = True
+        self.stop()
+        if self.center_client.service_is_ready():
+            self.center_client.call_async(Trigger.Request())
+        threading.Thread(target=self.stop_programs, daemon=True).start()
+        self.announce_low_battery()
+        if self.battery_timer is None:
+            self.battery_timer = self.create_timer(self.battery_repeat,
+                                                   self.announce_low_battery)
+        self.emit({'kind': 'battery_low', 'volts': round(self.battery, 1)})
+        self.state_changed()
+
+    def leave_low_battery(self):
+        self.get_logger().info(f'battery charged ({self.battery:.1f} V): resuming')
+        self.low_battery = False
+        if self.battery_timer is not None:
+            self.destroy_timer(self.battery_timer)
+            self.battery_timer = None
+        threading.Thread(target=self.start_programs, daemon=True).start()
+        self.set_eyes('happy')
+        self.say('Thank you! My battery is charged again.')
+        self.emit({'kind': 'battery_ok', 'volts': round(self.battery, 1)})
+        self.state_changed()
+
+    def announce_low_battery(self):
+        self.set_eyes('sad', fallback='closed')
+        self.say('My battery is empty. Please charge me.')
+
+    def set_eyes(self, expression, fallback=None):
+        if not self.eyes_client.service_is_ready():
+            return
+        future = self.eyes_client.call_async(SetExpression.Request(expression=expression))
+        if fallback:
+            # An eyes node without this expression (not restarted yet) says so
+            future.add_done_callback(
+                lambda f: f.result() is not None and not f.result().success
+                and self.eyes_client.call_async(SetExpression.Request(expression=fallback)))
+
+    def supervisorctl(self, *args):
+        try:
+            out = subprocess.run(['supervisorctl', *args], capture_output=True, text=True,
+                                 timeout=60)
+            return out.stdout
+        except (OSError, subprocess.SubprocessError) as e:
+            self.get_logger().error(f'supervisorctl {" ".join(args)}: {e}')
+            return ''
+
+    def stop_programs(self):
+        status = self.supervisorctl('status', *self.battery_programs)
+        running = [line.split()[0] for line in status.splitlines()
+                   if len(line.split()) > 1 and line.split()[1] in ('RUNNING', 'STARTING')]
+        # Remember what ran, unless already stopped by an earlier low (brain restarted)
+        if running or not self.battery_stopped:
+            self.battery_stopped = running
+        if running:
+            self.get_logger().info(f'low battery: stopping {" ".join(running)}')
+            self.supervisorctl('stop', *running)
+
+    def start_programs(self):
+        # Those that ran, in the configured order; after a brain restart in low-battery
+        # mode nothing is remembered: then all but SLAM (mapping is started by hand)
+        wanted = self.battery_stopped or [p for p in self.battery_programs
+                                          if p != 'rainbow_slam']
+        wanted = [p for p in self.battery_programs if p in wanted]
+        if wanted:
+            self.get_logger().info(f'battery charged: starting {" ".join(wanted)}')
+            for program in wanted:
+                self.supervisorctl('start', program)
+        self.battery_stopped = []
 
     def on_pick(self, msg):
         if msg.header.frame_id != self.map_frame:
@@ -423,6 +529,7 @@ class BrainNode(Node):
                'localized': pose is not None and word == 'sure', 'certainty': word,
                'position_std': round(pos_std, 2), 'yaw_std': round(yaw_std, 2),
                'battery_volts': round(float(self.battery or 0.0), 1),
+               'battery_low': self.low_battery,
                'activity': current['label'] if current else 'idle', 'places': names}
         if self.tracking:
             out['head_following'] = self.tracking
@@ -441,6 +548,8 @@ class BrainNode(Node):
 
     async def run_nav2(self, label, client, goal, goal_handle=None, feedback=None):
         """Run one Nav2 action; returns (success, message). goal_handle: our action's, or None."""
+        if self.low_battery:
+            return False, BATTERY_EMPTY
         if not client.wait_for_server(timeout_sec=1.0):
             return False, 'navigation is not running'
         entry = {'label': label, 'handle': goal_handle, 'nav': None, 'replaced': False}
@@ -1083,6 +1192,8 @@ class LinkHandler:
 
     def skill_go_to_place(self, place):
         node = self.node
+        if node.low_battery:
+            return {'ok': False, 'message': BATTERY_EMPTY}
         target = node.find_place(place)
         node.executor.create_task(node.go_to, target)
         return {'ok': True, 'message': f'started going to {target.name}'}

@@ -295,10 +295,13 @@ when new work comes up, add it here.
   head's tilt limit (36 deg up), so only the pan follows. Still to measure: the
   camera FOV and `frame_latency_s` (0.15 s). Later: ToF + camera fusion, the
   distance of what the camera sees, placed in the map.
-- Battery: warn around 7.0 V (log, eyes or speech) and cancel Nav2 goals /
-  stop at the cutoff (~6.6-6.9 V, judged at rest). The firmware's own low-voltage
-  behaviour is unknown. Not part of the brain work for now; later it becomes a
-  brain mode that refuses motion.
+- Low-battery mode (brain, `docs/brain.md` "Modes"): built 2026-11-25, tested
+  on the Mac only (logic unit tests, agent eval). On the robot: check that it
+  stops and restarts the programs (supervisorctl from the brain) and speaks;
+  a test on domain 77 must set `battery_stop_programs` to [] (supervisorctl
+  is not per domain). The sad eyes need a `rainbow_base` restart (owner's call);
+  until then it shows `closed`. The firmware's own low-voltage behaviour is
+  unknown.
 - ESP firmware (later, a project of its own): smooth head motion needs finer
   servo commands (the firmware takes whole degrees as an 8-bit angle, though its
   PWM is set in microseconds) or, better, the ramp done on the ESP (target +

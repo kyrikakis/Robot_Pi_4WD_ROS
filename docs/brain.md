@@ -140,8 +140,18 @@ One node, with these parts.
 | REMOTE | Mac connected (heartbeat within 3 s) | Runs the agent's skill calls; routes utterances to it |
 | LOCAL | Mac not connected | Local commands only; says "I'm offline, I can only do simple things" for anything else |
 
-A third mode that refuses motion (battery cutoff) comes with the battery work,
-which is not part of this design yet.
+**Low battery** comes on top of either mode (`rainbow_brain/battery.py`): at
+<= 7.0 V for 30 s (the pack dips while driving, so one reading means little)
+the brain cancels every motion, refuses new ones ("my battery is empty"),
+centres the head and stops `rainbow_localization`, `rainbow_tof`, `rainbow_slam`
+and `rainbow_navigation` with `supervisorctl` (there is no dock yet, so driving
+is pointless, and Nav2 alone costs ~40% of a core). The ESP link, base (eyes,
+EKF), voice, brain and Foxglove keep running: it can still be talked to and
+seen. Every 2 min (`battery_repeat_s`) it says "My battery is empty. Please
+charge me." with sad eyes. The agent gets a `battery_low` event (not spoken
+again) and sees it in the state. Once >= 7.6 V has held for 1 min (a charged
+battery) the stopped programs start again, the map first, and it says thank
+you (`battery_ok`).
 
 Losing the link in the middle of a goal does not cancel it; the brain just takes
 no new decisions from the agent. When the link comes back, the brain sends the
@@ -581,5 +591,3 @@ Each step is discussed with the owner before it is built.
 
 ## Open questions
 
-- Battery: warning and cutoff are out of scope for now; when they are added, the
-  brain gets a mode that refuses motion and the agent a battery event.

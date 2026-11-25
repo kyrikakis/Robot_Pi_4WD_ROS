@@ -73,6 +73,11 @@ def describe_event(event):
         return 'I looked around and now I know where I am'
     if kind == 'face_seen':
         return f"I can see {event.get('name')} (face recognition)"
+    if kind == 'battery_low':
+        return (f"my battery is empty ({event.get('volts')} V): I stopped everything and "
+                'will not drive until I am charged; I already said so out loud')
+    if kind == 'battery_ok':
+        return 'my battery is charged again; I can drive again'
     if kind == 'face_unknown':
         return 'someone I do not know has been in front of my camera for a few seconds'
     if kind == 'track_lost':
