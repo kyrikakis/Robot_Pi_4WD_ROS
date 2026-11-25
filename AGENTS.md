@@ -291,6 +291,13 @@ when new work comes up, add it here.
   stop at the cutoff (~6.6-6.9 V, judged at rest). The firmware's own low-voltage
   behaviour is unknown. Not part of the brain work for now; later it becomes a
   brain mode that refuses motion.
+- ESP firmware (later, a project of its own): smooth head motion needs finer
+  servo commands (the firmware takes whole degrees as an 8-bit angle, though its
+  PWM is set in microseconds) or, better, the ramp done on the ESP (target +
+  speed, at the servos' 50 Hz). Only Yahboom's factory binary and ESP-IDF samples
+  are in `~/rainbow-firmware` on the Mac, not the `YB_Car_Node` source: it
+  would be rebuilt from the samples (motor PID included) and re-tested. Digital
+  metal-gear servos would also glide better (hobby servos have a ~1 deg deadband).
 - Calibrate the Camera Module 3 (the files in `calibration/` are for the IMX296).
 - Whisper on the Hailo (speech to text without the Mac): later, after the brain.
 - Hailo face recognition (with object detection) was re-enabled on 2026-11-25
