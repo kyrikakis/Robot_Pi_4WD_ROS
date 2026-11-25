@@ -107,8 +107,9 @@ The code you edit is the code the robot runs. Lessons learned:
   restart rainbow_navigation once the ESP is back. Avoid restarting `rainbow_microros`: after the
   agent stops, the ESP itself needs a board reset (with the agent running).
 - The ToF is in both costmaps (STVL). The node does the floor filtering and
-  publishes `/tof/obstacles` (2-16 cm above the floor within 0.7 m, 2.5-16 cm
-  beyond; Nav2 marks only from this), after dropping flying pixels and the image
+  publishes `/tof/obstacles` (1.2-16 cm above the floor within 0.8 m, 2.5-16 cm
+  beyond; Nav2 marks only from this; 1.2 cm catches a desk foot on the hard floor
+  beside the carpet, which reads only ~2 cm above the carpet), after dropping flying pixels and the image
   edges. The floor test is levelled with the BNO055's roll/pitch (relative to a
   5 s average) and measured from a floor plane fitted in each frame (the robot
   resting tilted on a carpet edge made the floor read ~1.5 cm low, hiding a
