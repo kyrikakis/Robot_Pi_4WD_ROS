@@ -265,6 +265,7 @@ class VoiceNode(Node):
                 self.get_logger().info('stop word ' + self.fired(['stop']).split()[1])
                 self.stop_pub.publish(Empty())
             elif kind == 'nothing':
+                self.get_logger().info(f'recording dropped: {event[1]}')
                 self.engaged = False
                 self.eyes('happy')
             elif kind == 'utterance':

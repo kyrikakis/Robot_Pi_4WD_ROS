@@ -5,7 +5,7 @@ Fed one 80 ms chunk (1280 samples) at a time, it returns events:
                                    or speech in the follow-up window (True)
   ('stop',)                        the stop word (any time, even while the robot talks)
   ('utterance', samples, follow_up)  a finished utterance (int16); follow_up: no wake word
-  ('nothing',)                     woke, but nobody spoke
+  ('nothing', reason)             dropped: nobody spoke, or a follow-up without a pause
 
     LISTENING --wake word--> RECORDING --end_silence of quiet, or max_seconds--> utterance
        |  \\--speech within follow_up s after the robot spoke--> RECORDING (no wake word)
@@ -115,6 +115,7 @@ class Listener:
         self.stop_quiet_until = 0.0
         self.voiced_run = 0
         self._recording = None
+        self.question = False         # the next follow-up answers the robot's question
 
     def speaking(self, on):
         """Tell the listener the robot started (True) or stopped (False) talking."""
@@ -130,6 +131,7 @@ class Listener:
         always listened for, even after max_follow_ups (the robot asking someone their
         name on its own got no answer: the wake word was needed again)."""
         self.follow_ups = 0
+        self.question = True    # its answer is kept even without a pause
         if not self.muted:      # speaking(False) came first: open the window now
             self.follow_up_until = self.clock() + self.follow_up
 
@@ -188,7 +190,9 @@ class Listener:
         self.follow_up_until = 0.0
         self._recording = {'chunks': list(preroll), 'follow_up': follow_up, 'spoke': False,
                            'silence': 0, 'time': 0, 'run': 0,
+                           'question': follow_up and self.question,
                            'skip': 0 if follow_up else self.skip_after_wake}
+        self.question = False
 
     def _record(self, chunk):
         r = self._recording
@@ -208,10 +212,11 @@ class Listener:
         done = (r['spoke'] and r['silence'] >= self.end_silence) or r['time'] >= self.max_chunks
         if not r['spoke'] and r['time'] >= self.no_speech:
             self.state, self._recording = 'listening', None
-            return [('nothing',)]
+            return [('nothing', 'nobody spoke')]
         if done:
             self.state, self._recording = 'listening', None
-            if r['follow_up'] and r['time'] >= self.max_chunks:
-                return [('nothing',)]  # talk that never pauses: background, not a question
+            if r['follow_up'] and r['time'] >= self.max_chunks and not r['question']:
+                # talk that never pauses: background, not a question
+                return [('nothing', f'no pause in {self.max_chunks * SECONDS:.0f} s')]
             return [('utterance', np.concatenate(r['chunks']), r['follow_up'])]
         return []

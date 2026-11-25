@@ -218,3 +218,16 @@ def test_question_before_the_end_of_speech_too():
     s.listener.asked()                                   # arrives while still muted
     s.listener.speaking(False)
     assert kinds(s.feed(LOUD, 6) + s.feed(QUIET, 12)) == ['wake', 'utterance']
+
+
+def test_the_answer_to_a_question_is_kept_without_a_pause():
+    s = Script(follow_up=8.0, max_seconds=2.0)
+    s.listener.speaking(True)
+    s.listener.speaking(False)
+    s.listener.asked()
+    events = s.feed(LOUD, 40)                            # noisy room: no pause
+    assert kinds(events) == ['wake', 'utterance']
+    # Not for the next follow-up, which is no answer
+    s.listener.speaking(True)
+    s.listener.speaking(False)
+    assert kinds(s.feed(LOUD, 40)) == ['wake', 'nothing']
