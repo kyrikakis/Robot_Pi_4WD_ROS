@@ -83,6 +83,13 @@ The code you edit is the code the robot runs. Lessons learned:
 - After building a new message type, restart `rainbow_foxglove`: the bridge keeps
   the interface library it loaded at start and cannot subscribe to the new type
   ("typesupport library ... could not be found"), so Foxglove panels stay empty.
+- Nav2 can become undiscoverable to anything started after it (2026-11-25, after
+  `rainbow_base` and `rainbow_foxglove` were restarted): it keeps working on the
+  topics it already has, but `ros2 node list` shows none of its nodes, its topics
+  (`/local_costmap/voxel_grid`, costmaps) have "no publisher", and Foxglove panels
+  stay empty. A Fast DDS shared-memory error (`RTPS_TRANSPORT_SHM ...
+  open_and_lock_file failed`) points to a stale lock. Restarting `rainbow_navigation`
+  brings it back.
 - `supervisorctl tail` can fail on non-UTF-8 log output; read
   `/var/log/supervisor/<program>-stdout*.log` directly.
 - **ROS params files** (`config/*.yaml`) must only have node names at the top
