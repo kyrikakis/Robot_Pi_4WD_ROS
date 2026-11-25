@@ -7,7 +7,9 @@ from rainbow_brain.tracking import head_target, labels, matches, normalize, pick
 def test_normalize_aliases():
     assert normalize('Me') == 'face'
     assert normalize('the ball') == 'sports ball'
-    assert normalize('  My  Teddy  ') == 'teddy'
+    assert normalize('  My  Teddy  ') == 'teddy bear'
+    assert normalize('my phone') == 'cell phone'
+    assert normalize('backpack') == 'backpack'
     assert normalize('Stefanos') == 'stefanos'
 
 

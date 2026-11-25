@@ -2,8 +2,8 @@
 
 Started with a target ("face", a person's name, or an object detector's label;
 rainbow_brain.tracking matches them), it follows the matching detection on
-detection_topics (vision_msgs/Detection2DArray: the Hailo face recognition now,
-an object detector later) by sending /head/target. Each step aims from the head
+detection_topics (vision_msgs/Detection2DArray: the Hailo's face recognition
+and object detector) by sending /head/target. Each step aims from the head
 pose at the time the frame was taken (from /joint_states), so the head's own
 motion and the detector's delay do not make it overshoot. When the target is
 out of view the head stays where it is.
@@ -170,6 +170,8 @@ class TrackerNode(Node):
         stamp -= int(self.frame_latency * 1e9)
         head = self.head_at(stamp)
         if head is None:
+            self.get_logger().warn('target seen, but no /joint_states from the head: '
+                                   'not aiming', throttle_duration_sec=10.0)
             return
         off = pixel_to_angles(chosen[0], chosen[1], self.width, self.height,
                               self.hfov, self.vfov)

@@ -520,9 +520,10 @@ after 3 s the status says lost and the agent gets a `track_lost` event. `stop`
 and `look` end tracking. Only the head moves: the robot does not drive after
 anything.
 
-For now only faces can be tracked, and only once face recognition is re-enabled
-in the Hailo container; things need an object detector publishing detections
-(another Hailo pipeline, to discuss). The camera's FOV (66 x 41 deg, the Camera
+The Hailo container runs face recognition and an object detector (COCO's 80
+classes: person, sports ball, backpack, cup, ...) in one pipeline, so faces,
+known people and those things can be tracked; tracking.py maps everyday words
+("ball", "phone") to COCO's names. The camera's FOV (66 x 41 deg, the Camera
 Module 3's datasheet) and the frame delay (0.15 s: the Hailo stamps detections
 when it publishes them, after the frame was taken) are not measured yet. The
 Hailo's boxes are normalized (0-1); a detector sending pixels needs

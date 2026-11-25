@@ -19,7 +19,7 @@ compose setup lives in `~/hailo_tappas_ros2` on the host.
 |---|---|---|
 | ESP32 board (micro-ROS over `/dev/ttyUSB_ROS`) | Motor PID, head servos, lidar, battery, an IMU | No. Firmware is out of scope; treat its topics as a fixed contract |
 | `robot` container (this repo) | Everything in `src/`, run by supervisor | Yes |
-| Hailo container ([hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2)) | Face recognition on the Hailo, capturing the RGB camera itself | No. Only `hailo_msgs` is built here, to read its messages |
+| Hailo container ([hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2)) | Face recognition and object detection (COCO) on the Hailo, capturing the RGB camera itself | No. Only `hailo_msgs` is built here, to read its messages |
 
 Contracts with the ESP firmware (node `YB_Car_Node`, do not rename): it
 subscribes to `cmd_vel` (skid-steer: it ignores `linear.y`, tested with the wheels
@@ -259,24 +259,27 @@ when new work comes up, add it here.
   better than "hey Jarvis"), "stop" scores 0.5-0.9 (threshold 0.7), "hey
   Robot"/"Robot" is not heard (under 0.3; low priority). To improve them: retrain
   with the robot's own noise as background (lidar hum + fan; see
-  `training/wakeword/README.md`), then household recordings; re-enable face
-  recognition in the Hailo container (photos, faces and startup localization
-  depend on it). Memory and photos/faces (steps 5-6) are built.
+  `training/wakeword/README.md`), then household recordings. Memory and
+  photos/faces (steps 5-6) are built; face recognition is on again (2026-11-25).
 - Head controller (`docs/brain.md` step 7, branch `head-controller`): built and
   tested on the Mac (motion profile unit tests; the node in a `ros:jazzy`
-  container on domain 77; agent eval 34/34), not yet on the robot. The head moved
-  out of `rainbow_base` into its own program `rainbow_head`: the running
-  container needs the new supervisor conf (image rebuild) and one base restart
-  (owner's call), or the old head in the base and the new one both drive the
-  servos. Then, with the owner watching: speed (30 deg/s, accel 60 deg/s^2:
+  container on domain 77; agent eval 37/37). On the robot (2026-11-25) both
+  checkouts are on `head-controller` and built, the brain runs the new skills and
+  the tracker; the head is still the old one inside `rainbow_base` (it ignores
+  `/head/target` and `/head/move`). To finish: restart `rainbow_base` (owner's
+  call), then copy `supervisor/rainbow.conf` to `/etc/supervisor/conf.d/` and
+  `supervisorctl reread && supervisorctl update` (starts `rainbow_head`), in
+  that order, or two heads drive the servos; rebuild the image (build only).
+  Then, with the owner watching: speed (30 deg/s, accel 60 deg/s^2:
   calm, may jitter at 1 deg steps), the settle time (estimated 0.2 s + 5 ms/deg;
   measure with the ToF image going still, robot at rest) and `servo_latency_s`
   (0.05 s, estimated). Then photos in several directions for startup
   localization. Tracking (`track` skill, tracker node in `rainbow_brain`,
-  docs/brain.md "Tracking") is built and tested in the container with a fake
-  detector; on the robot it needs face recognition re-enabled in the Hailo
-  container, the camera FOV measured, and for things (a ball) an object
-  detector publishing `Detection2DArray`. Later: ToF + camera fusion, the
+  docs/brain.md "Tracking") is tested in the container with a fake detector and
+  on the robot against the Hailo's real detections (a backpack: targets at
+  15 Hz, nothing moved, the old head ignores them). Still to do: the first moves
+  with the owner watching, the camera FOV measured, `frame_latency_s` (0.15 s)
+  measured. Later: ToF + camera fusion, the
   distance of what the camera sees, placed in the map.
 - Battery: warn around 7.0 V (log, eyes or speech) and cancel Nav2 goals /
   stop at the cutoff (~6.6-6.9 V, judged at rest). The firmware's own low-voltage
@@ -284,8 +287,12 @@ when new work comes up, add it here.
   brain mode that refuses motion.
 - Calibrate the Camera Module 3 (the files in `calibration/` are for the IMX296).
 - Whisper on the Hailo (speech to text without the Mac): later, after the brain.
-- Hailo face recognition is disabled inside its container to save CPU; it is to
-  be re-enabled for the brain (stills and face names, see `docs/brain.md`).
+- Hailo face recognition (with object detection) was re-enabled on 2026-11-25
+  in its container's `/etc/supervisor/conf.d/hailo.conf` (it costs ~45% of a
+  core; just after boot the Pi then had ~25% idle). Its boxes are normalized
+  (0-1) and stamped on publishing. The Pi host's `~/hailo_tappas_ros2` git has
+  4 empty objects from April 2025 (an unpushed local commit, "Create a PR to bump
+  the version"; GitHub is ahead at v1.0.3): reset it to `origin/main` some time.
 - Host: Hailo, kernel (6.6, contains the Hailo driver) and camera packages are
   held with apt-mark. Update them together later, with the Hailo container
   and a rebuild of the ALFA Wi-Fi driver (rtl8812au) for the new kernel.

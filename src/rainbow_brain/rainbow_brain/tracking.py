@@ -2,9 +2,9 @@
 
 Detections come from any detector publishing vision_msgs/Detection2DArray. Each
 result's class_id is a label, optionally followed by a name: the Hailo face
-recognition sends "face: <name>" or "face: unknown"; an object detector would
-send e.g. "sports ball". A target matches a detection when it equals the label
-or the name ("face" = anyone's face, "stefanos" = that person's face).
+recognition sends "face: <name>" or "face: unknown"; its object detector sends
+COCO's class names, e.g. "sports ball". A target matches a detection when it
+equals the label or the name ("face" = anyone's face, "stefanos" = that person's face).
 """
 
 import math
@@ -13,7 +13,10 @@ import math
 ALIASES = {
     'me': 'face', 'someone': 'face', 'anyone': 'face', 'somebody': 'face',
     'anybody': 'face', 'people': 'face', 'person': 'face', 'faces': 'face',
-    'ball': 'sports ball',
+    # The Hailo's object detector uses COCO's class names
+    'ball': 'sports ball', 'football': 'sports ball', 'phone': 'cell phone',
+    'mobile': 'cell phone', 'mobile phone': 'cell phone', 'teddy': 'teddy bear',
+    'plant': 'potted plant', 'sofa': 'couch', 'television': 'tv',
 }
 
 
