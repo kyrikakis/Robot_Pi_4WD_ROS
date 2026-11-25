@@ -258,7 +258,12 @@
       "tabs": [
         {
           "title": "Drive",
-          "layout": "3D!rainbow"
+          "layout": {
+            "direction": "column",
+            "splitPercentage": 40,
+            "first": "Image!faces",
+            "second": "3D!rainbow"
+          }
         },
         {
           "title": "Places",
@@ -619,12 +624,7 @@
         },
         "splitPercentage": 55
       },
-      "second": {
-        "direction": "column",
-        "first": "Image!faces",
-        "second": "RosOut!log",
-        "splitPercentage": 55
-      },
+      "second": "RosOut!log",
       "splitPercentage": 55
     },
     "splitPercentage": 62
