@@ -89,7 +89,15 @@ The code you edit is the code the robot runs. Lessons learned:
   (`/local_costmap/voxel_grid`, costmaps) have "no publisher", and Foxglove panels
   stay empty. A Fast DDS shared-memory error (`RTPS_TRANSPORT_SHM ...
   open_and_lock_file failed`) points to a stale lock. Restarting `rainbow_navigation`
-  brings it back.
+  brings it back. A cause found the same day: restarts left the old process
+  running. Supervisor signals the program's group; `ros2 launch` exited at once
+  while the Nav2 container ignored SIGTERM, so supervisor saw the program stopped
+  and never sent SIGKILL. Two Nav2s with the same node names: every trip failed
+  with "navigation is not running". `scripts/rainbow_launch.sh` now stays in
+  front until its whole group is gone (SIGINT to launch, then SIGTERM/SIGKILL to
+  what is left, by process group). Programs started before that change still
+  leave their old process once on their next restart: check with
+  `ps -eo pid,pgid,etime,args | grep [c]omponent_container` and stop extras by PID.
 - `supervisorctl tail` can fail on non-UTF-8 log output; read
   `/var/log/supervisor/<program>-stdout*.log` directly.
 - **ROS params files** (`config/*.yaml`) must only have node names at the top
