@@ -64,6 +64,19 @@ def read_wav(path):
         return samples[::w.getnchannels()]
 
 
+def known_names(path, extra=()):
+    """The household's names: one per line in path (# comments), plus extra."""
+    names = []
+    try:
+        for line in open(path):
+            line = line.split('#')[0].strip()
+            if line:
+                names.append(line)
+    except OSError:
+        pass
+    return list(dict.fromkeys(names + [n for n in extra if n]))
+
+
 class Whisper:
 
     def __init__(self, model_dir):
@@ -71,11 +84,17 @@ class Whisper:
         self._transcribe = mlx_whisper.transcribe
         self.model_dir = str(model_dir)
 
-    def transcribe(self, audio):
-        """audio: a WAV path or 16 kHz float32 samples. Returns (text, seconds)."""
+    def transcribe(self, audio, names=()):
+        """audio: a WAV path or 16 kHz float32 samples. Returns (text, seconds).
+
+        names: people's names to expect. Whisper writes uncommon names its own way
+        ("Stefanos" came out as "Stefano" and "Stephalos"); a prompt that lists them
+        makes it spell them like that.
+        """
         if not isinstance(audio, np.ndarray):
             audio = read_wav(audio)
         start = time.monotonic()
+        prompt = ('Names: ' + ', '.join(names) + '.') if names else None
         result = self._transcribe(audio, path_or_hf_repo=self.model_dir, language='en',
-                                  condition_on_previous_text=False)
+                                  condition_on_previous_text=False, initial_prompt=prompt)
         return result['text'].strip(), time.monotonic() - start

@@ -7,7 +7,7 @@ from types import SimpleNamespace as NS
 from rainbow_agent.config import Config
 from rainbow_agent.conversation import Conversation, EVENT_PREFIX
 from rainbow_agent.evaluate import check, value_matches
-from rainbow_agent.guards import check_remember_face, wants_action, wants_photo
+from rainbow_agent.guards import check_remember_face, said_no, wants_action, wants_photo
 from rainbow_agent.robot import SimRobot
 from rainbow_agent.skills import NAMES
 import yaml
@@ -376,3 +376,16 @@ def test_a_short_answer_to_a_question_is_kept():
     assert answer_text('Okay.') == 'Okay.'
     assert answer_text('') == '' and answer_text(' . ') == ''
     assert wants_action('Okay.', 'Stefanos, did I get that right?')
+
+
+def test_names_for_whisper(tmp_path):
+    from rainbow_agent.stt import known_names
+    f = tmp_path / 'names.txt'
+    f.write_text('Stefanos\n# a comment\n\nMyrto  # the kids\n')
+    assert known_names(f, {'Maria'}) == ['Stefanos', 'Myrto', 'Maria']
+    assert known_names(tmp_path / 'missing.txt') == []
+
+
+def test_said_no():
+    assert said_no('No.') and said_no("No, it's Stefanos") and said_no("That's wrong")
+    assert not said_no('Yes.') and not said_no('Nobody knows')

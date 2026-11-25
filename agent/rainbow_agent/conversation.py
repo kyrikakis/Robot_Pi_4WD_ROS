@@ -28,7 +28,7 @@ import json
 import re
 import time
 
-from rainbow_agent.guards import (check_remember_face, ground_args, MOVES, said_yes,
+from rainbow_agent.guards import (check_remember_face, ground_args, MOVES, said_no, said_yes,
                                   wants_action, wants_photo)
 from rainbow_agent.persona import system_prompt
 from rainbow_agent.skills import TOOLS
@@ -39,6 +39,7 @@ EVENT_PREFIX = '[Robot event] '
 SPOKEN_EVENTS = {'failed', 'face_unknown'}
 NUDGE = (EVENT_PREFIX + 'You answered without calling a tool, so nothing happened. '
          'Call the matching tool now; do not reply with text.')
+NAME_CHECK = re.compile(r'did\s+i\s+get\s+(that|your\s+name)\s+right', re.IGNORECASE)
 PHOTO_NUDGE = (EVENT_PREFIX + 'You have not taken a photo, so you cannot know what is there. '
                'Call capture_photo now; do not reply with text.')
 MAX_SENTENCES = 3
@@ -180,6 +181,12 @@ class Conversation:
                 self.messages.append({'role': 'user', 'content': EVENT_PREFIX + note})
             self.pending_events = []
             self.messages.append({'role': 'user', 'content': text})
+            if said_no(text) and NAME_CHECK.search(self._latest_reply()):
+                # Misheard a name (Whisper spells uncommon names its own way): asking
+                # again gets the same mistake; letters are heard right
+                self.messages.append({'role': 'user', 'content': EVENT_PREFIX +
+                                      'I misheard their name: ask them to spell it, letter '
+                                      'by letter.'})
             return await self._reported_turn(text)
 
     async def handled_locally(self, text, action):
@@ -206,6 +213,12 @@ class Conversation:
     def _maybe_new_session(self):
         if self.messages and time.monotonic() - self.last_turn > self.cfg.session_idle:
             self.new_session()
+
+    def _latest_reply(self):
+        for m in reversed(self.messages[:-1]):
+            if m['role'] == 'assistant' and m.get('content'):
+                return m['content']
+        return ''
 
     def asked_question(self):
         """The robot's latest words were a question (its answer is coming)."""

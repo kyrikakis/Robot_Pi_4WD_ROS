@@ -97,6 +97,10 @@
 - id: name-misheard
   say: ["Remember my face, my name is Stefan.", "No, it's Stefanos, S T E F A N O S.", "Yes, that's right."]
   expect: [{name: remember_face, args: {name: Stefanos}}]
+- id: misheard-name-asks-to-spell
+  say: ["Remember my face, I'm Stefano.", "No."]
+  forbid: [remember_face]
+  reply_has: [spell]
 - id: name-not-guessed
   say: "Remember my face."
   forbid: [remember_face]

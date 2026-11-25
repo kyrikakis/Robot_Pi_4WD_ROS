@@ -56,6 +56,11 @@ def said_yes(text):
     return bool(_YES.search(text or ''))
 
 
+def said_no(text):
+    return bool(re.search(r"^\W*(no|nope|wrong|not\s+(quite|right)|that'?s\s+(not|wrong))\b",
+                          text or '', re.IGNORECASE))
+
+
 def wants_photo(text):
     """The person asked what the robot sees: answering needs a photo."""
     return bool(_PHOTO.search(text or ''))

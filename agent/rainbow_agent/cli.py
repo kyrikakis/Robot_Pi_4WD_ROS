@@ -215,7 +215,7 @@ async def chat(cfg, real=False):
 
 async def run_agent(cfg):
     """Listen to the robot: utterances -> Whisper -> conversation -> spoken reply."""
-    from rainbow_agent.stt import answer_text, is_speech, pcm16_to_float, Whisper
+    from rainbow_agent.stt import answer_text, is_speech, known_names, pcm16_to_float, Whisper
     whisper = Whisper(cfg.whisper_model)
     await asyncio.to_thread(whisper.transcribe, pcm16_to_float(bytes(32000)))  # load it
     robot, status, note, memory, conversation, photos = start_agent(cfg, real=True)
@@ -247,7 +247,8 @@ async def run_agent(cfg):
                 continue
             status.set(phase='transcribing')
             audio = pcm16_to_float(base64.b64decode(u.get('audio', '')))
-            text, seconds = await asyncio.to_thread(whisper.transcribe, audio)
+            names = known_names(cfg.data / 'names.txt', conversation.confirmed_names)
+            text, seconds = await asyncio.to_thread(whisper.transcribe, audio, names)
             status.set(phase='idle', stt_seconds=round(seconds, 2))
             if conversation.asked_question():
                 text = answer_text(text)        # a short "yes" must not be dropped
