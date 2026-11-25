@@ -296,17 +296,17 @@ when new work comes up, add it here.
   camera FOV and `frame_latency_s` (0.15 s). Later: ToF + camera fusion, the
   distance of what the camera sees, placed in the map.
 - Greeting people (brain + agent, `docs/brain.md` "Camera and faces"): built
-  2026-11-25, tested on the Mac only (logic unit tests, agent eval 50/50). On the
-  robot: a person walking in, the head tilting up to the face (the 36 deg limit
-  may keep a standing person's face out of view up close), the greeting, the
-  20 s follow, and that driving takes the head back.
+  2026-11-25 (agent eval 50/50), running on the robot since: right after the
+  brain started it noticed someone, followed "face" for 21 s and let go, and sent
+  face_unknown (the face gallery was emptied that day). Still to see with the
+  owner: the greeting by name through the agent, the head tilting up to a
+  standing person's face (the 36 deg limit), and that driving takes the head back.
 - Low-battery mode (brain, `docs/brain.md` "Modes"): built 2026-11-25, tested
   on the Mac only (logic unit tests, agent eval). On the robot: check that it
   stops and restarts the programs (supervisorctl from the brain) and speaks;
   a test on domain 77 must set `battery_stop_programs` to [] (supervisorctl
-  is not per domain). The sad eyes need a `rainbow_base` restart (owner's call);
-  until then it shows `closed`. The firmware's own low-voltage behaviour is
-  unknown.
+  is not per domain). The sad eyes are on the robot (base restarted
+  2026-11-25). The firmware's own low-voltage behaviour is unknown.
 - ESP firmware (later, a project of its own): smooth head motion needs finer
   servo commands (the firmware takes whole degrees as an 8-bit angle, though its
   PWM is set in microseconds) or, better, the ramp done on the ESP (target +
