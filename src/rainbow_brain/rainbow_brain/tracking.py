@@ -20,19 +20,27 @@ ALIASES = {
 }
 
 
-def normalize(text):
+def clean(text):
     words = str(text).lower().replace('_', ' ').split()
     while words and words[0] in ('the', 'a', 'an', 'my', 'that', 'this'):
         words = words[1:]
-    text = ' '.join(words)
+    return ' '.join(words)
+
+
+def normalize(text):
+    """What someone asked to follow, as a detector label (aliases applied)."""
+    text = clean(text)
     return ALIASES.get(text, text)
 
 
 def labels(class_id):
-    """{'face', 'stefanos'} from 'face: Stefanos'; 'unknown' is not a name."""
+    """{'face', 'stefanos'} from 'face: Stefanos'; 'unknown' is not a name.
+
+    No aliases here: the detector's own 'person' (a whole body) is not a face.
+    """
     label, _, name = str(class_id).partition(':')
-    out = {normalize(label)}
-    name = normalize(name)
+    out = {clean(label)}
+    name = clean(name)
     if name and name != 'unknown':
         out.add(name)
     out.discard('')

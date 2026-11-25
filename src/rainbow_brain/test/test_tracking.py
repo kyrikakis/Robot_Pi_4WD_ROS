@@ -18,6 +18,10 @@ def test_labels():
     assert labels('face: unknown') == {'face'}
     assert labels('sports ball') == {'sports ball'}
     assert labels('') == set()
+    # COCO's whole-body 'person' must not count as a face
+    assert labels('person') == {'person'}
+    assert not matches('face', 'person')
+    assert not matches('me', 'person')
 
 
 def test_matches():
