@@ -67,11 +67,14 @@ class HeadNode(Node):
         self.tilt_offset = param('tilt_servo_offset_deg', -56).value
         self.pan_joint = param('pan_joint', 'head_pan_joint').value
         self.tilt_joint = param('tilt_joint', 'head_tilt_joint').value
-        # Calm by default; settle times and latency are estimates until measured
+        # Near the servos' own speed by default: the ESP takes whole degrees and
+        # the servos step at each one, so slow glides (5-60 deg/s, tried with the
+        # owner 2026-11-25) all looked jerky; a quick move looked best. Settle
+        # times and latency are estimates until measured
         self.motion = HeadMotion(
             pan_limits, tilt_limits,
-            speed=param('speed_deg_s', 30.0).value,
-            accel=param('accel_deg_s2', 60.0).value,
+            speed=param('speed_deg_s', 400.0).value,
+            accel=param('accel_deg_s2', 4000.0).value,
             settle_base=param('settle_base_s', 0.2).value,
             settle_per_deg=param('settle_per_deg_s', 0.005).value)
         self.latency = param('servo_latency_s', 0.05).value

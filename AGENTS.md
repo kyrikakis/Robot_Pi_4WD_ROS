@@ -273,9 +273,11 @@ when new work comes up, add it here.
   tested on the Mac (motion profile unit tests; the node in a `ros:jazzy`
   container on domain 77; agent eval 37/37). Running on the robot since
   2026-11-25 (`rainbow_head`, added to the running container by hand with the
-  conf from git; the rebuilt image has it), not yet moved. With the owner
-  watching: speed (30 deg/s, accel 60 deg/s^2:
-  calm, may jitter at 1 deg steps), the settle time (estimated 0.2 s + 5 ms/deg;
+  conf from git; the rebuilt image has it). Speed set with the owner watching
+  (2026-11-25): glides at 5-60 deg/s all looked jerky (whole-degree servo
+  commands, the servos step at each), a quick move (400 deg/s, accel 4000
+  deg/s^2) looked best; finer motion would need firmware changes. Still to
+  measure: the settle time (estimated 0.2 s + 5 ms/deg;
   measure with the ToF image going still, robot at rest) and `servo_latency_s`
   (0.05 s, estimated). Then photos in several directions for startup
   localization. Tracking (`track` skill, tracker node in `rainbow_brain`,

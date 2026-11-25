@@ -483,11 +483,14 @@ With the head controller (see [Head](#head)) this can use several head direction
 
 The servos have no position feedback and jump at full speed to whatever angle
 the ESP is sent, so the head node (`rainbow_drivers/head_node.py`, its own
-supervisor program `rainbow_head`) does the smoothing:
+supervisor program `rainbow_head`) controls the motion:
 
 - The commanded angle moves towards the target with limited speed and
-  acceleration (calm by default: 30 deg/s, 60 deg/s^2), braking to stop on the
-  target; both axes are scaled to arrive together. Code:
+  acceleration, braking to stop on the target; both axes are scaled to arrive
+  together. The default is near the servos' own speed (400 deg/s, 4000
+  deg/s^2: a 30 deg move takes ~0.2 s): the ESP takes whole degrees and the
+  servos visibly step at each one, so slow glides (5 to 60 deg/s, tried with
+  the owner) all looked jerky. A goal can still ask for a slower speed. Code:
   `rainbow_drivers/head_motion.py`, tested without ROS.
 - A new target blends in from the current motion, so a stream of targets is one
   continuous movement: `/head/target` (`HeadTarget`, latest wins) is for

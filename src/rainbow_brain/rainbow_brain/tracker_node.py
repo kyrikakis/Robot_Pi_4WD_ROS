@@ -62,7 +62,8 @@ class TrackerNode(Node):
         # Fraction of the offset corrected per detection, and offsets ignored (deg)
         self.gain = param('gain', 0.8).value
         self.deadband = param('deadband_deg', 1.5).value
-        self.speed = math.radians(param('speed_deg_s', 40.0).value)
+        # 0 = the head's default speed
+        self.speed = math.radians(param('speed_deg_s', 0.0).value)
         # Frame taken this long before its detections' stamp (or their arrival
         # when the stamp is missing or off), in s
         self.frame_latency = param('frame_latency_s', 0.15).value

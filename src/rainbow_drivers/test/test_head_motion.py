@@ -136,3 +136,15 @@ def test_custom_speed():
     run(m, 10.0, record=trace)
     speeds = [abs(b[1][0] - a[1][0]) / DT for a, b in zip(trace, trace[1:])]
     assert max(speeds) <= 10.0 + 1e-6
+
+
+def test_fast_default_no_overshoot():
+    # The robot's defaults (400 deg/s, 4000 deg/s^2): 30 deg in ~0.2 s, no overshoot
+    m = head(speed=400.0, accel=4000.0)
+    m.set_target(30.0, 0.0)
+    trace = []
+    done = run(m, 2.0, record=trace)
+    moving = [t for t, p in trace if p[0] < 30.0]
+    assert 0.12 <= moving[-1] <= 0.3
+    assert max(p[0] for _, p in trace) <= 30.0
+    assert done == pytest.approx(moving[-1] + 0.35, abs=0.08)
