@@ -20,6 +20,7 @@ setup(
     entry_points={
         'console_scripts': [
             'brain = rainbow_brain.brain_node:main',
+            'tracker = rainbow_brain.tracker_node:main',
         ],
     },
 )

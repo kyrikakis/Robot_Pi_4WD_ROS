@@ -17,6 +17,11 @@ import math
 
 # In look's result: the head moving shows the model nothing (it made up what was there)
 LOOK_SEEN = 'nothing yet: call capture_photo to see what is there'
+# The same for track and stop_tracking (it made up where things were)
+TRACK_MESSAGE = 'I will turn my head after the {} whenever I can see it'
+TRACK_SEEN = ('not known: you do not know if it is in view now; you are told if it is '
+              'lost; call capture_photo to see')
+STOP_TRACKING = 'stopped following; my head stays where it is'
 
 
 def _norm(name):
@@ -52,6 +57,7 @@ class SimRobot:
         self.time_scale = time_scale    # 0 = instant (tests)
         self.battery = battery
         self.activity = 'idle'
+        self.tracking = ''
         self.events = asyncio.Queue()
         self.calls = []                 # (name, args) of every call, for tests and eval
         self._move = None
@@ -183,6 +189,17 @@ class SimRobot:
         tilt = max(-19.0, min(36.0, float(tilt_degrees)))
         return {'ok': True, 'message': f'looking {pan:.0f} deg left, {tilt:.0f} deg up',
                 'pan_degrees': round(pan), 'tilt_degrees': round(tilt), 'seen': LOOK_SEEN}
+
+    async def _track(self, what):
+        what = str(what).strip().lower()
+        if not what:
+            return {'ok': False, 'message': 'tell me what to follow'}
+        self.tracking = what
+        return {'ok': True, 'message': TRACK_MESSAGE.format(what), 'seen': TRACK_SEEN}
+
+    async def _stop_tracking(self):
+        self.tracking = ''
+        return {'ok': True, 'message': STOP_TRACKING}
 
     async def _capture_photo(self):
         return {'ok': False, 'message': 'my camera is off (simulated robot)'}

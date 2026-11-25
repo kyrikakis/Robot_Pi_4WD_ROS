@@ -272,8 +272,12 @@ when new work comes up, add it here.
   calm, may jitter at 1 deg steps), the settle time (estimated 0.2 s + 5 ms/deg;
   measure with the ToF image going still, robot at rest) and `servo_latency_s`
   (0.05 s, estimated). Then photos in several directions for startup
-  localization. Later: following faces (`/head/target`), and ToF + camera
-  fusion, the distance of what the camera sees, placed in the map.
+  localization. Tracking (`track` skill, tracker node in `rainbow_brain`,
+  docs/brain.md "Tracking") is built and tested in the container with a fake
+  detector; on the robot it needs face recognition re-enabled in the Hailo
+  container, the camera FOV measured, and for things (a ball) an object
+  detector publishing `Detection2DArray`. Later: ToF + camera fusion, the
+  distance of what the camera sees, placed in the map.
 - Battery: warn around 7.0 V (log, eyes or speech) and cancel Nav2 goals /
   stop at the cutoff (~6.6-6.9 V, judged at rest). The firmware's own low-voltage
   behaviour is unknown. Not part of the brain work for now; later it becomes a

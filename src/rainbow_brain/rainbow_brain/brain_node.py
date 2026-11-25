@@ -33,6 +33,8 @@ Topics:
   /agent/log          rcl_interfaces/Log   the agent's log lines (from the link)
 Head: look points the head (the head node's /head/move action, which returns once
 the head has settled); capture_photo skips frames while /head/moving is true.
+track / stop_tracking start and stop the tracker node (/tracker/start, /tracker/stop);
+stop and look stop tracking too. A target lost from view becomes a track_lost event.
 Camera and faces (the Hailo container, docs/brain.md): capture_photo takes one
 frame from photo_topic on demand; recognised faces on faces_topic become
 face_seen events; remember_face asks the Hailo node to save a face.
@@ -62,9 +64,10 @@ from rainbow_brain.commands import parse, phrases
 from rainbow_brain.link import LinkServer, load_token
 from rainbow_brain.places import PlaceStore
 from rainbow_interfaces.action import Drive, GoToPlace, MoveHead, Turn
-from rainbow_interfaces.msg import AgentStatus, BrainStatus, Place as PlaceMsg, Utterance
+from rainbow_interfaces.msg import (AgentStatus, BrainStatus, Place as PlaceMsg, TrackerStatus,
+                                    Utterance)
 from rainbow_interfaces.srv import (DeletePlace, EditPlace, GetState, ListPlaces,
-                                    SavePlace, Say, WhereAmI)
+                                    SavePlace, Say, Track, WhereAmI)
 from rcl_interfaces.msg import Log
 import rclpy
 from rclpy.action import ActionClient, ActionServer, CancelResponse
@@ -219,6 +222,10 @@ class BrainNode(Node):
         # The head node's state: no photos while it moves or settles
         self.head_moving = False
         self.create_subscription(Bool, '/head/moving', self.on_head_moving, LATCHED)
+        self.tracking_lost = False
+        self.tracking = ''          # what the head follows ('' = nothing)
+        self.create_subscription(TrackerStatus, '/tracker/status', self.on_tracker_status,
+                                 LATCHED, callback_group=self.group)
 
         # The running move: {'label', 'handle' (ours, or None from the link),
         # 'nav' (Nav2's), 'replaced'}
@@ -230,6 +237,8 @@ class BrainNode(Node):
         self.spin_client = ActionClient(self, Spin, 'spin', **g)
         self.drive_client = ActionClient(self, DriveOnHeading, 'drive_on_heading', **g)
         self.head_client = ActionClient(self, MoveHead, '/head/move', **g)
+        self.track_client = self.create_client(Track, '/tracker/start', **g)
+        self.untrack_client = self.create_client(Trigger, '/tracker/stop', **g)
         self.cancel_clients = [self.create_client(CancelGoal, f'{a}/_action/cancel_goal', **g)
                                for a in NAV2_ACTIONS]
         self.say_client = self.create_client(Say, '/speech/say', **g)
@@ -405,6 +414,8 @@ class BrainNode(Node):
                'position_std': round(pos_std, 2), 'yaw_std': round(yaw_std, 2),
                'battery_volts': round(float(self.battery or 0.0), 1),
                'activity': current['label'] if current else 'idle', 'places': names}
+        if self.tracking:
+            out['head_following'] = self.tracking
         if pose is not None:
             out['x'], out['y'], out['yaw'] = (round(v, 2) for v in pose)
         return out
@@ -512,6 +523,7 @@ class BrainNode(Node):
         return await self.run_nav2('driving', self.drive_client, goal, goal_handle, feedback)
 
     def stop(self):
+        self.stop_tracking()
         with self.lock:
             current = self.current
         if current is not None and current['nav']:
@@ -602,8 +614,32 @@ class BrainNode(Node):
     def on_head_moving(self, msg):
         self.head_moving = msg.data
 
+    def on_tracker_status(self, msg):
+        lost = msg.active and msg.lost
+        if msg.target != self.tracking:
+            self.tracking = msg.target
+            self.state_changed()
+        if lost and not self.tracking_lost:
+            self.get_logger().info(f'tracking: lost {msg.target}')
+            self.emit({'kind': 'track_lost', 'target': msg.target})
+        self.tracking_lost = lost
+
+    async def track(self, target):
+        """Follow target with the head (tracker node); returns (ok, message)."""
+        if not self.track_client.service_is_ready():
+            return False, 'my head tracking is not running'
+        response = await self.track_client.call_async(Track.Request(target=target))
+        return response.success, response.message
+
+    def stop_tracking(self):
+        if self.untrack_client.service_is_ready():
+            self.untrack_client.call_async(Trigger.Request())
+
     async def look(self, pan_deg, tilt_deg):
         """Point the head (degrees, 0, 0 = straight ahead); returns (ok, message, pan, tilt)."""
+        # The tracker would turn the head straight back (and replace this move)
+        if self.untrack_client.service_is_ready():
+            await self.untrack_client.call_async(Trigger.Request())
         if not self.head_client.wait_for_server(timeout_sec=1.0):
             return False, 'my head is not working right now', None, None
         goal = MoveHead.Goal(pan=math.radians(pan_deg), tilt=math.radians(tilt_deg))
@@ -1053,6 +1089,19 @@ class LinkHandler:
                 # Without this the model made up what was there
                 out['seen'] = 'nothing yet: call capture_photo to see what is there'
         return out
+
+    async def skill_track(self, what):
+        ok, message = await self.node.track(str(what).strip())
+        out = {'ok': ok, 'message': message}
+        if ok:
+            # As for look: without this the model made up where the thing was
+            out['seen'] = ('not known: you do not know if it is in view now; you are '
+                           'told if it is lost; call capture_photo to see')
+        return out
+
+    def skill_stop_tracking(self):
+        self.node.stop_tracking()
+        return {'ok': True, 'message': 'stopped following; my head stays where it is'}
 
     async def skill_capture_photo(self):
         jpeg = await self.node.capture_photo()

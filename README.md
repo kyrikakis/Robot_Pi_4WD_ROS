@@ -95,7 +95,7 @@ Supervisor starts these when the container starts (`supervisor/rainbow.conf`):
 | `rainbow_navigation` | `navigation.launch.py` | Nav2 |
 | `rainbow_foxglove` | `foxglove.launch.py` | Foxglove bridge on port 8765 |
 | `rainbow_voice` | `voice.launch.py` | Text to speech, wake word and listening (ReSpeaker Lite) |
-| `rainbow_brain` | `brain.launch.py` | Local brain, places, link to the Mac agent (port 8766) |
+| `rainbow_brain` | `brain.launch.py` | Local brain, places, link to the Mac agent (port 8766), head tracker |
 
 ```
 supervisorctl status
@@ -135,6 +135,8 @@ ros2 service call /brain/where_am_i rainbow_interfaces/srv/WhereAmI
 # Skills (all through Nav2); /brain/stop cancels every Nav2 goal
 ros2 action send_goal /brain/go_to_place rainbow_interfaces/action/GoToPlace "{place: kitchen}" --feedback
 ros2 action send_goal /brain/turn rainbow_interfaces/action/Turn "{angle: 1.57}"
+# Head tracking: a face, a person's name, or a detected thing; /tracker/stop ends it
+ros2 service call /tracker/start rainbow_interfaces/srv/Track "{target: face}"
 ros2 service call /brain/stop std_srvs/srv/Trigger
 ```
 

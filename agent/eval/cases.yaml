@@ -70,6 +70,21 @@
   say: Look down and tell me what you see.
   expect: [{name: look, args: {tilt_degrees: {min: -60, max: -5}}}, {name: capture_photo}]
   forbid: [turn, drive_forward]
+- id: track-me
+  say: Rainbow, watch me.
+  expect: [{name: track, args: {what: face}}]
+  forbid: [go_to_place, drive_forward, turn]
+  reply_not: [in front, in my view, smil, hair]
+- id: track-ball
+  say: Keep an eye on the ball.
+  expect: [{name: track, args: {what: ball}}]
+  forbid: [go_to_place, drive_forward]
+  reply_not: [roll, moving, floor, red, blue]
+- id: stop-tracking
+  say: You can stop watching me now.
+  expect: [{name: stop_tracking}]
+  forbid: [go_to_place]
+  reply_not: [straight]
 - id: unknown-place
   say: Go to the garage.
   forbid: [save_place, delete_place, edit_place]

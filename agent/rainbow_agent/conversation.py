@@ -68,6 +68,8 @@ def describe_event(event):
         return 'I looked around and now I know where I am'
     if kind == 'face_seen':
         return f"I can see {event.get('name')} (face recognition)"
+    if kind == 'track_lost':
+        return f"I lost sight of the {event.get('target')} I was following with my head"
     if kind == 'stopped_by_voice':
         return 'someone said stop, so I stopped'
     if kind == 'cancelled':

@@ -196,6 +196,7 @@ The head has `look` (see [Head](#head)).
 | `edit_place(name, new_name, description, room, confirm)`, `delete_place` | Rename, re-describe or confirm a place; delete it |
 | `capture_photo()` | A still JPEG from the RGB camera, with the pose it was taken at; skips frames while the head moves |
 | `look(pan_degrees, tilt_degrees)` | Point the head (+ left, + up from straight ahead); returns once it has settled |
+| `track(what)`, `stop_tracking()` | Keep the head on a face, a person (by name) or a detected thing; `track_lost` event when it goes out of view |
 | `turn(angle)`, `drive(distance)` | Corner cases: Nav2 Spin / DriveOnHeading (forward only) |
 | `say(text)` | espeak |
 | `set_expression(name)` | Eyes |
@@ -502,7 +503,29 @@ supervisor program `rainbow_head`) does the smoothing:
   `/head/center` and the old degree topics start a move without waiting.
 
 The brain's `look` uses `/head/move`; `capture_photo` skips frames while
-`/head/moving` is true. Speed, settle time and latency are estimates until
+`/head/moving` is true.
+
+**Tracking** (`rainbow_brain/tracker_node.py`, started by the brain's `track`
+skill): the tracker follows a target in the detections (any
+`vision_msgs/Detection2DArray` topic in `detection_topics`) by sending
+`/head/target` with each detection. It aims from the head pose at the time of
+the frame (`/joint_states` history), not the current one, so the head's own
+motion and the detector's delay do not make it overshoot; `gain` 0.8 damps
+noisy boxes, offsets under 1.5 deg are ignored. Targets
+(`rainbow_brain/tracking.py`): "face" (anyone; "me", "someone" map to it), a
+person's name (face recognition's `face: <name>`), or an object detector's
+label ("ball" maps to COCO's "sports ball"). Several matches: the one nearest the
+last, or at the start the largest. Out of view, the head stays where it is;
+after 3 s the status says lost and the agent gets a `track_lost` event. `stop`
+and `look` end tracking. Only the head moves: the robot does not drive after
+anything.
+
+For now only faces can be tracked, and only once face recognition is re-enabled
+in the Hailo container; things need an object detector publishing detections
+(another Hailo pipeline, to discuss). The camera's FOV (66 x 41 deg, the Camera
+Module 3's datasheet) and the frame delay (0.15 s, used when detections carry
+no stamp) are not measured yet; the image size is read from the first frame of
+`photo_topic`, which assumes the boxes are in that image's pixels. Speed, settle time and latency are estimates until
 measured on the robot with the owner watching.
 
 ## Build order

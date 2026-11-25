@@ -84,6 +84,7 @@ class HeadNode(Node):
         self.sent = None         # last servo command (ints)
         self.moving = False
         self.dt = 1.0 / control_rate
+        self.last_tick = 0.0
         self.idle_every = max(1, int(round(control_rate / idle_rate)))
         self.ticks = 0
         # Commanded positions with their times, for the servo latency
@@ -136,6 +137,11 @@ class HeadNode(Node):
 
     def tick(self):
         now = time.monotonic()
+        # A clock jump makes the timer fire its missed ticks in a burst; each tick
+        # moves the head one step, so a burst would jerk it at full speed
+        if now - self.last_tick < 0.5 * self.dt:
+            return
+        self.last_tick = now
         with self.lock:
             busy = self.motion.step(now, self.dt)
             pan, tilt = self.motion.position

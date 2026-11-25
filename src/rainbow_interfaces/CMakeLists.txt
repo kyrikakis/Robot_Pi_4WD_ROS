@@ -20,6 +20,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/Drive.action"
   "action/MoveHead.action"
   "msg/HeadTarget.msg"
+  "msg/TrackerStatus.msg"
+  "srv/Track.srv"
   "msg/Utterance.msg"
   "msg/AgentStatus.msg"
   "msg/BrainStatus.msg"

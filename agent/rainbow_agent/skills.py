@@ -67,6 +67,15 @@ TOOLS = [
           'the head is still, so a capture_photo right after sees where it points.',
           {'pan_degrees': {'type': 'number', 'description': '-40 to 38'},
            'tilt_degrees': {'type': 'number', 'description': '-19 to 36'}}),
+    _tool('track',
+          'Keep your head turned towards something while it moves (only the head; '
+          'you do not drive after it). what: "face" for whoever is in front of you, a '
+          "person's name (if you know their face), or a thing like \"ball\". Keeps "
+          'going until stop_tracking, stop or look; if it goes out of view you get a '
+          'robot event. Starting it shows you nothing: capture_photo does.',
+          {'what': {'type': 'string', 'description': 'face, a name, or a thing'}},
+          ['what']),
+    _tool('stop_tracking', 'Stop following something with your head.'),
     _tool('capture_photo',
           'Take a photo with your camera and look at it, when someone asks what you see '
           'or you need to look. You get the photo right after.'),

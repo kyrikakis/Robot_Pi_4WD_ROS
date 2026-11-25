@@ -1,4 +1,4 @@
-"""Rainbow's local brain (rainbow_brain, see docs/brain.md).
+"""Rainbow's local brain (rainbow_brain, see docs/brain.md) and the head tracker.
 
 The map name comes from config/localization.yaml (map_server's yaml_filename),
 so the places always belong to the map AMCL is using. Places are stored on the
@@ -30,4 +30,6 @@ def generate_launch_description():
             parameters=[{'map_name': map_name(), 'data_dir': '/data/rainbow'}],
             output='screen',
         ),
+        # Head tracking (the brain's track skill starts and stops it)
+        Node(package='rainbow_brain', executable='tracker', output='screen'),
     ])

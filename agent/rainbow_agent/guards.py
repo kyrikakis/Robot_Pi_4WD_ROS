@@ -27,6 +27,9 @@ _ACTION = re.compile(r"""
   | \b(what|who)\s+(do|can)\s+you\s+see\b              # seeing needs a photo
   | \bcan\s+you\s+see\b | \blook\s+(at|around)\b | \bin\s+front\s+of\s+you\b
   | \blook\s+(left|right|up|down|straight)\b
+  | \b(watch|track)\s+(me|the|him|her|it|them)\b | \bkeep\s+(looking|an\s+eye)\b
+  | \bfollow\s+(me|the|him|her|it|them)\s+with\s+your\s+(eyes|head)\b
+  | \bstop\s+(watching|following|tracking)\b
   | \bremember\s+my\s+face\b
 """, re.IGNORECASE | re.VERBOSE)
 
