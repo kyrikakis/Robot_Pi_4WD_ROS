@@ -25,6 +25,8 @@ stop": on synthetic voices 0-1 of 20 stopped with the hum, 17-18 without).
 Publishes:  /voice/wake (std_msgs/Empty), /voice/stop (std_msgs/Empty),
             /voice/utterance (rainbow_interfaces/Utterance), /eyes (std_msgs/String)
 Subscribes: /speech/speaking (std_msgs/Bool, latched): no listening while talking
+            /speech/question (std_msgs/Empty): the robot asked something; its answer
+            is listened for without the wake word, past max_follow_ups
             /voice/grammar (std_msgs/String, latched): JSON list of command phrases
             /cmd_vel (geometry_msgs/Twist): no follow-up recordings while the robot
             moves (motor noise started them)
@@ -134,6 +136,7 @@ class VoiceNode(Node):
         self.utterance_pub = self.create_publisher(Utterance, '/voice/utterance', 10)
         self.eyes_pub = self.create_publisher(String, '/eyes', EYES)
         self.create_subscription(Bool, '/speech/speaking', self.on_speaking, LATCHED)
+        self.create_subscription(Empty, '/speech/question', self.on_question, 10)
         self.create_subscription(String, '/voice/grammar', self.on_grammar, LATCHED)
         self.create_subscription(Twist, '/cmd_vel', self.on_cmd_vel, 10)
         # Back to happy eyes if no answer is ever spoken (agent away, no speech node)
@@ -154,6 +157,10 @@ class VoiceNode(Node):
         if not msg.data and self.engaged:
             self.engaged = False
             self.eyes('happy')
+
+    def on_question(self, msg):
+        with self.lock:
+            self.listener.asked()
 
     def on_cmd_vel(self, msg):
         if msg.linear.x or msg.linear.y or msg.angular.z:

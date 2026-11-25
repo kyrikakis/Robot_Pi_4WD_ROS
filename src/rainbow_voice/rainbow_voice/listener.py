@@ -125,6 +125,14 @@ class Listener:
             # only after real speech (not "not speaking" at startup), and not forever
             self.follow_up_until = self.clock() + self.follow_up
 
+    def asked(self):
+        """The robot just asked a question (its words ended with '?'): the answer is
+        always listened for, even after max_follow_ups (the robot asking someone their
+        name on its own got no answer: the wake word was needed again)."""
+        self.follow_ups = 0
+        if not self.muted:      # speaking(False) came first: open the window now
+            self.follow_up_until = self.clock() + self.follow_up
+
     def moved(self):
         """Note a move command (call for every non-zero velocity command)."""
         self.moving_until = self.clock() + self.motion_settle

@@ -6,6 +6,8 @@ Interfaces:
   /speech/amplitude  std_msgs/UInt16              set the volume, 0-200
   /speech/speaking   std_msgs/Bool (latched)      true while speaking (the voice
                                                   node does not listen meanwhile)
+  /speech/question   std_msgs/Empty               what was just said was a question:
+                                                  the voice node listens for the answer
 """
 
 import subprocess
@@ -14,7 +16,7 @@ from rainbow_interfaces.srv import Say
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
-from std_msgs.msg import Bool, String, UInt16
+from std_msgs.msg import Bool, Empty, String, UInt16
 
 
 class SpeechNode(Node):
@@ -34,6 +36,7 @@ class SpeechNode(Node):
             Bool, '/speech/speaking',
             QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.speaking_pub.publish(Bool(data=False))
+        self.question_pub = self.create_publisher(Empty, '/speech/question', 10)
 
     def speak(self, text):
         """Speak text; returns an error message, or '' on success."""
@@ -51,6 +54,8 @@ class SpeechNode(Node):
             return error
         finally:
             self.speaking_pub.publish(Bool(data=False))
+            if text.rstrip().endswith('?'):
+                self.question_pub.publish(Empty())
 
     def on_amplitude(self, msg):
         self.amplitude = msg.data

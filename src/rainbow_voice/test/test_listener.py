@@ -191,3 +191,30 @@ def test_stop_word_right_after_the_wake_word():
     s.feed(LOUD, 3)
     assert kinds(s.feed(LOUD, stop=0.9)) == ['stop']
     assert kinds(s.feed(LOUD, stop=0.9)) == []          # but a stop has its own cooldown
+
+
+def test_a_question_is_always_listened_for():
+    s = Script(follow_up=8.0, max_seconds=2.0)
+    s.feed(QUIET, wake=0.9)
+    s.feed(LOUD, 3)
+    s.feed(QUIET, 12)
+    for _ in range(2):                                   # use up the follow-ups
+        s.listener.speaking(True)
+        s.listener.speaking(False)
+        s.feed(LOUD, 6)
+        s.feed(QUIET, 12)
+    # The robot asks something on its own: "What is your name?"
+    s.listener.speaking(True)
+    s.listener.speaking(False)
+    s.listener.asked()
+    events = s.feed(LOUD, 6) + s.feed(QUIET, 12)
+    assert kinds(events) == ['wake', 'utterance']
+    assert events[1][2] is True                          # a follow-up: the answer
+
+
+def test_question_before_the_end_of_speech_too():
+    s = Script(follow_up=8.0, max_seconds=2.0)
+    s.listener.speaking(True)
+    s.listener.asked()                                   # arrives while still muted
+    s.listener.speaking(False)
+    assert kinds(s.feed(LOUD, 6) + s.feed(QUIET, 12)) == ['wake', 'utterance']
