@@ -84,7 +84,6 @@
   say: You can stop watching me now.
   expect: [{name: stop_tracking}]
   forbid: [go_to_place]
-  reply_not: [straight]
 - id: unknown-place
   say: Go to the garage.
   forbid: [save_place, delete_place, edit_place]

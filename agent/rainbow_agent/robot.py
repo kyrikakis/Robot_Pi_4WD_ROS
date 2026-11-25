@@ -21,7 +21,7 @@ LOOK_SEEN = 'nothing yet: call capture_photo to see what is there'
 TRACK_MESSAGE = 'I will turn my head after the {} whenever I can see it'
 TRACK_SEEN = ('not known: you do not know if it is in view now; you are told if it is '
               'lost; call capture_photo to see')
-STOP_TRACKING = 'stopped following; my head stays where it is'
+STOP_TRACKING = 'stopped following; my head is back in the middle'
 
 
 def _norm(name):

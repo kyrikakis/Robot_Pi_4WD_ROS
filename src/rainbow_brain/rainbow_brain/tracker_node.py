@@ -20,7 +20,7 @@ was taken: frame_latency_s is taken off every stamp (estimated, to be measured).
 
 Interfaces (node name tracker):
   ~/start   rainbow_interfaces/srv/Track   start (or switch) tracking
-  ~/stop    std_srvs/srv/Trigger           stop; the head stays where it is
+  ~/stop    std_srvs/srv/Trigger           stop; the head goes back to the centre
   ~/status  rainbow_interfaces/msg/TrackerStatus (latched), on change and every second
   /head/target  rainbow_interfaces/msg/HeadTarget (out)
 """
@@ -229,6 +229,9 @@ class TrackerNode(Node):
             self.label = ''
         if was:
             self.get_logger().info(f'stopped tracking {was}')
+            # Back to the centre (look, which stops tracking first, then sends
+            # its own move, which replaces this one)
+            self.target_pub.publish(HeadTarget(pan=0.0, tilt=0.0, speed=self.speed))
         self.publish_status(force=True)
         response.success = True
         response.message = f'stopped following {was}' if was else 'I was not following anything'

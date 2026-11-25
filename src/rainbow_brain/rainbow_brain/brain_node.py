@@ -1101,7 +1101,7 @@ class LinkHandler:
 
     def skill_stop_tracking(self):
         self.node.stop_tracking()
-        return {'ok': True, 'message': 'stopped following; my head stays where it is'}
+        return {'ok': True, 'message': 'stopped following; my head is back in the middle'}
 
     async def skill_capture_photo(self):
         jpeg = await self.node.capture_photo()

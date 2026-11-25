@@ -523,8 +523,8 @@ last, or at the start the largest. "face" falls back to a person's body
 head stays still while the target is in a quiet zone in the middle of the view
 (8 deg pan, 6 deg tilt off centre). Out of view, the head stays where it is
 for 3 s; then the status says lost, the head goes back to the centre and the
-agent gets a `track_lost` event. `stop`
-and `look` end tracking. Only the head moves: the robot does not drive after
+agent gets a `track_lost` event. `stop_tracking` and `stop` end tracking and
+centre the head; `look` ends it and turns the head where asked. Only the head moves: the robot does not drive after
 anything.
 
 The Hailo container runs face recognition and an object detector (COCO's 80
