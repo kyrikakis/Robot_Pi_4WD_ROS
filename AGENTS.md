@@ -281,11 +281,11 @@ when new work comes up, add it here.
   measure with the ToF image going still, robot at rest) and `servo_latency_s`
   (0.05 s, estimated). Then photos in several directions for startup
   localization. Tracking (`track` skill, tracker node in `rainbow_brain`,
-  docs/brain.md "Tracking") is tested in the container with a fake detector and
-  on the robot against the Hailo's real detections (a backpack: targets at
-  15 Hz, sent while the old head still ignored them). Still to do: the first moves
-  with the owner watching, the camera FOV measured, `frame_latency_s` (0.15 s)
-  measured. Later: ToF + camera fusion, the
+  docs/brain.md "Tracking") tracked the owner on the robot (2026-11-25): face,
+  then the body box when no face is visible, still in the quiet zone, back to
+  the centre when lost. Standing in front of the robot the face is above the
+  head's tilt limit (36 deg up), so only the pan follows. Still to measure: the
+  camera FOV and `frame_latency_s` (0.15 s). Later: ToF + camera fusion, the
   distance of what the camera sees, placed in the map.
 - Battery: warn around 7.0 V (log, eyes or speech) and cancel Nav2 goals /
   stop at the cutoff (~6.6-6.9 V, judged at rest). The firmware's own low-voltage
