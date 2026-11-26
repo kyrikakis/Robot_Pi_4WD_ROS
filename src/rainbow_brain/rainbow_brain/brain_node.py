@@ -31,6 +31,8 @@ Topics:
                       health (ESP messages, Nav2, speech) and the agent's status
                       (from the link), every status_period s and on every change
   /agent/log          rcl_interfaces/Log   the agent's log lines (from the link)
+  /lifted             std_msgs/Bool (latched) out: the robot is in someone's hands
+  /lidar/wanted       std_msgs/Bool out: a move needs the lidar (lidar_power)
 Head: look points the head (the head node's /head/move action, which returns once
 the head has settled); capture_photo skips frames while /head/moving is true.
 track / stop_tracking start and stop the tracker node (/tracker/start, /tracker/stop);
@@ -54,8 +56,18 @@ stopped with supervisorctl (no dock yet, so driving is pointless and Nav2's CPU
 is wasted), and every battery_repeat_s the robot says it is out of battery with
 sad eyes; a battery_low event goes to the agent. Once charged the stopped
 programs start again (battery_ok event).
-Reads: TF map -> base_footprint, /amcl_pose, /battery; /scan and /odom_raw only
-for their arrival times (not deserialized)
+Picked up (rainbow_brain.lift, from /bno055/imu: the robot rises > lift_rise_m or
+tilts > lift_tilt_deg; put down after lift_still_s still): every motion is
+cancelled and refused, /lifted (latched) is true, so the lidar goes to standby,
+and a lifted event goes to the agent. Put down: AMCL starts global localization
+again (the location is lost) and a put_down event goes to the agent; the robot
+does not move by itself, the next move or "look around" relocalizes.
+Lidar (lidar_power in rainbow_drivers keeps it in standby unless needed): every
+move asks for it on /lidar/wanted (at least once a second) and waits up to
+lidar_wait_s for the first scan before Nav2 gets the goal.
+Reads: TF map -> base_footprint, /amcl_pose, /battery, /bno055/imu, /cmd_vel (to
+know whether the robot is commanded to move); /scan and /odom_raw only for their
+arrival times (not deserialized)
 Link: WebSocket on link_port (8766); token in <data_dir>/link_token.
 
 Places are stored in <data_dir>/places/<map_name>.yaml (rainbow_brain.places).
@@ -72,7 +84,7 @@ import time
 
 from action_msgs.msg import GoalStatus
 from action_msgs.srv import CancelGoal
-from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from hailo_msgs.srv import DeleteGalleryItem, SaveGalleryItem
 from nav2_msgs.action import DriveOnHeading, NavigateToPose, Spin
 from nav_msgs.msg import Odometry
@@ -80,6 +92,7 @@ from rainbow_brain.battery import BatteryMonitor
 from rainbow_brain.commands import parse, phrases
 from rainbow_brain.faces import save_outcome
 from rainbow_brain.greeting import Attention
+from rainbow_brain.lift import LiftDetector
 from rainbow_brain.link import LinkServer, load_token
 from rainbow_brain.places import PlaceStore
 from rainbow_interfaces.action import Drive, GoToPlace, MoveHead, Turn
@@ -96,9 +109,9 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, qos_profile_sensor_data, QoSProfile, ReliabilityPolicy
 from rclpy.task import Future
 from rclpy.time import Time
-from sensor_msgs.msg import CompressedImage, LaserScan
+from sensor_msgs.msg import CompressedImage, Imu, LaserScan
 from std_msgs.msg import Bool, Empty, String, UInt16
-from std_srvs.srv import Trigger
+from std_srvs.srv import Empty as EmptySrv, Trigger
 from tf2_ros import Buffer, TransformException, TransformListener
 from vision_msgs.msg import Detection2DArray
 from visualization_msgs.msg import Marker, MarkerArray
@@ -108,6 +121,7 @@ LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
 
 # Nav2 actions cancelled by stop
 BATTERY_EMPTY = 'my battery is empty, so I am not driving; please charge me'
+CARRIED = 'someone is holding me, so I am not driving; put me down first'
 NAV2_ACTIONS = ['navigate_to_pose', 'navigate_through_poses', 'follow_path', 'spin',
                 'drive_on_heading', 'backup', 'assisted_teleop', 'wait']
 
@@ -238,6 +252,25 @@ class BrainNode(Node):
         self.low_battery = False
         self.battery_stopped = []       # those of them that were running
         self.battery_timer = None
+        # Picked up (rainbow_brain.lift)
+        self.lift = LiftDetector(rise_m=param('lift_rise_m', 0.05).value,
+                                 rise_moving_m=param('lift_rise_moving_m', 0.08).value,
+                                 tilt_deg=param('lift_tilt_deg', 20.0).value,
+                                 still_s=param('lift_still_s', 2.0).value)
+        self.lifted = False
+        self.last_motion = None         # when /cmd_vel last asked for motion (monotonic s)
+        self.lifted_pub = self.create_publisher(Bool, '/lifted', LATCHED)
+        self.lifted_pub.publish(Bool(data=False))
+        self.create_subscription(Imu, param('imu_topic', '/bno055/imu').value, self.on_imu,
+                                 qos_profile_sensor_data)
+        self.create_subscription(Twist, '/cmd_vel', self.on_cmd_vel, 10)
+        self.global_localization_client = self.create_client(
+            EmptySrv, '/reinitialize_global_localization')
+        # The lidar for moves (lidar_power): wait this long for the first scan
+        self.lidar_wait = param('lidar_wait_s', 8.0).value
+        self.lidar_users = 0            # moves running or about to (they need the lidar)
+        self.lidar_wanted_pub = self.create_publisher(Bool, '/lidar/wanted', 10)
+        self.create_timer(1.0, self.publish_lidar_wanted)
         self.pick = None
         self.pick_time = None
         self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.on_amcl, LATCHED)
@@ -404,6 +437,62 @@ class BrainNode(Node):
         elif change == 'ok':
             self.leave_low_battery()
 
+    # Picked up
+
+    def on_cmd_vel(self, msg):
+        if abs(msg.linear.x) > 1e-3 or abs(msg.angular.z) > 1e-3:
+            self.last_motion = time.monotonic()
+
+    def on_imu(self, msg):
+        now = time.monotonic()
+        moving = self.last_motion is not None and now - self.last_motion < 0.5
+        o, a, w = msg.orientation, msg.linear_acceleration, msg.angular_velocity
+        change = self.lift.update(now, (o.x, o.y, o.z, o.w), (a.x, a.y, a.z),
+                                  (w.x, w.y, w.z), moving)
+        if change == 'lifted':
+            self.on_lifted(self.lift.why)
+        elif change == 'down':
+            self.on_put_down()
+
+    def on_lifted(self, why):
+        self.get_logger().info(f'picked up ({why}): stopping; the lidar goes to standby')
+        self.lifted = True
+        self.lifted_pub.publish(Bool(data=True))
+        self.stop()
+        self.emit({'kind': 'lifted'})
+        self.state_changed()
+
+    def on_put_down(self):
+        self.lifted = False
+        self.lifted_pub.publish(Bool(data=False))
+        relocalizing = self.global_localization_client.service_is_ready()
+        if relocalizing:
+            # The location is lost: spread AMCL's particles over the whole map
+            self.global_localization_client.call_async(EmptySrv.Request())
+        self.get_logger().info('put down' + (': AMCL starts global localization again'
+                                             if relocalizing else ''))
+        self.emit({'kind': 'put_down', 'relocalizing': relocalizing})
+        self.state_changed()
+
+    # The lidar for moves
+
+    def publish_lidar_wanted(self):
+        wanted = (self.lidar_users > 0 or self.localizing) and not self.lifted
+        self.lidar_wanted_pub.publish(Bool(data=wanted))
+
+    async def wait_for_lidar(self):
+        """Ask for the lidar and wait for a fresh scan (lidar_wait_s at most)."""
+        self.publish_lidar_wanted()
+        deadline = time.monotonic() + self.lidar_wait
+        while time.monotonic() < deadline:
+            seen = self.arrived['scan']
+            if seen is not None and time.monotonic() - seen < 0.5:
+                return True
+            await self.sleep(0.2)
+        self.get_logger().warning(f'no /scan after {self.lidar_wait:.0f} s: moving without '
+                                  'the lidar')
+        return False
+
     # Low battery
 
     def enter_low_battery(self):
@@ -548,6 +637,7 @@ class BrainNode(Node):
                'position_std': round(pos_std, 2), 'yaw_std': round(yaw_std, 2),
                'battery_volts': round(float(self.battery or 0.0), 1),
                'battery_low': self.low_battery,
+               'lifted': self.lifted,
                'greeting_people': self.greet,
                'activity': current['label'] if current else 'idle', 'places': names}
         if self.tracking:
@@ -569,12 +659,25 @@ class BrainNode(Node):
         """Run one Nav2 action; returns (success, message). goal_handle: our action's, or None."""
         if self.low_battery:
             return False, BATTERY_EMPTY
+        if self.lifted:
+            return False, CARRIED
+        self.lidar_users += 1
+        try:
+            return await self._run_nav2(label, client, goal, goal_handle, feedback)
+        finally:
+            self.lidar_users -= 1
+            self.publish_lidar_wanted()
+
+    async def _run_nav2(self, label, client, goal, goal_handle, feedback):
         if self.attention.attending:
             # The ToF in the head has to look ahead while driving
             self.release_attention()
             self.stop_tracking()
         if not client.wait_for_server(timeout_sec=1.0):
             return False, 'navigation is not running'
+        await self.wait_for_lidar()
+        if self.lifted:
+            return False, CARRIED
         entry = {'label': label, 'handle': goal_handle, 'nav': None, 'replaced': False}
         with self.lock:
             previous, self.current = self.current, entry
