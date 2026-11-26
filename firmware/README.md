@@ -69,8 +69,10 @@ Check what is running: `ros2 topic echo --once /esp_firmware` (domain 20).
 Lidar, e.g.: `ros2 service call /lidar/enable std_srvs/srv/SetBool "{data: false}"`,
 `ros2 param set /YB_Car_Node lidar_speed_hz 8`. The commands are Oradar's
 (MIT-licensed MS200 SDK; the same frames are in the MS200k manual); see the top
-of `main/lidar.c`. At boot the firmware sends "run" once, so a lidar left in
-standby by an earlier session starts again.
+of `main/lidar.c`. At boot the firmware puts the lidar in standby; on the Pi,
+`lidar_power` (rainbow_drivers, started with the agent) turns it on only when
+the robot needs it: while mapping, while moving and 30 s after, while the brain
+asks (`/lidar/wanted`), never while lifted (`/lifted`).
 
 ## Code
 

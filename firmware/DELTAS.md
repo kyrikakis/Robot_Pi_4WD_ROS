@@ -43,7 +43,7 @@ were read from its NVS: domain 20, serial agent at 921600 baud, servo offsets
 | New: `/esp_firmware` | | latched version string | see what is flashed |
 | New: `lidar/enable` | | SetBool service: MS200 standby / run | lidar on/off (see below) |
 | New: `lidar_speed_hz` | | node parameter, 5-15 Hz | lidar rotation speed |
-| Lidar at boot | never sends it anything | sends "run" once | a lidar left in standby comes back |
+| Lidar at boot | spinning (never sends it anything) | standby; the Pi's `lidar_power` turns it on when needed | frugal: no hum, no wear while the robot rests |
 | Logs on the serial port | ESP-IDF logs at boot | none after the ROM bootloader | the port carries only micro-ROS |
 | Toolchain | ESP-IDF 5.1.2, micro-ROS humble | ESP-IDF 5.2.5, micro-ROS jazzy (matches the agent) | |
 

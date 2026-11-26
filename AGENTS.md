@@ -29,7 +29,13 @@ publishes `/odom_raw`, `/scan` in `laser_frame`, `/imu` in `imu_frame`, and
 unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
 Our firmware adds `/esp_firmware` (latched version string), the
 `lidar/enable` service (SetBool: MS200 standby / run; standby stops its motor)
-and the parameter `lidar_speed_hz` (5-15 Hz), both tested on the robot.
+and the parameter `lidar_speed_hz` (5-15 Hz; keep the sensor's 10 Hz: at 15 Hz
+~20 % of the 1-degree bins stay empty), both tested on the robot. The lidar is
+frugal: the ESP boots it in standby and `lidar_power` (rainbow_drivers, in
+`microros.launch.py`) turns it on only while mapping (`rainbow_slam`), while
+moving (non-zero `/cmd_vel`) and 30 s after, or while `/lidar/wanted` is true;
+never while `/lifted`. Subscribers to `/scan` (Foxglove, the brain's status) do
+not count. No `/scan` at rest is normal.
 Build with `firmware/build.sh` (Docker, Mac or Pi), flash, back up or restore on
 the Pi host with `firmware/esp.sh`. The stock firmware's whole-flash backup is in
 `~/esp-backup/` on the Pi host (not in git); restoring it was tested.

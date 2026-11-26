@@ -87,7 +87,7 @@ Supervisor starts these when the container starts (`supervisor/rainbow.conf`):
 
 | Program | Launch file | Contents |
 |---|---|---|
-| `rainbow_microros` | `microros.launch.py` | micro-ROS agent (ESP board) |
+| `rainbow_microros` | `microros.launch.py` | micro-ROS agent (ESP board), lidar power (on only while needed) |
 | `rainbow_base` | `base.launch.py` | description, BNO055, EKF, eyes, velocity watchdog, IP publisher |
 | `rainbow_tof` | `tof.launch.py` | ToF camera |
 | `rainbow_head` | `head.launch.py` | Pan/tilt head (smooth moves) |
