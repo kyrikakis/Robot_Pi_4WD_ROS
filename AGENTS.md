@@ -28,8 +28,8 @@ publishes `/odom_raw`, `/scan` in `laser_frame`, `/imu` in `imu_frame`, and
 `/battery` (UInt16, volts x 10, 1 Hz; the owner's pack runs ~6.9-8.0 V). The ESP's IMU is mounted wrongly and
 unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
 Our firmware adds `/esp_firmware` (latched version string), the
-`lidar/enable` service (SetBool: MS200 standby / run) and the parameter
-`lidar_speed_hz` (5-15 Hz).
+`lidar/enable` service (SetBool: MS200 standby / run; standby stops its motor)
+and the parameter `lidar_speed_hz` (5-15 Hz), both tested on the robot.
 Build with `firmware/build.sh` (Docker, Mac or Pi), flash, back up or restore on
 the Pi host with `firmware/esp.sh`. The stock firmware's whole-flash backup is in
 `~/esp-backup/` on the Pi host (not in git); restoring it was tested.
@@ -321,11 +321,11 @@ when new work comes up, add it here.
   2026-11-25). The firmware's own low-voltage behaviour is unknown.
 - ESP firmware (`firmware/`, branch `esp-firmware`): our own, running on the
   board since 2026-11-26 with the robot stripped (no lidar, cameras, ToF):
-  connection, reconnect, `odom_raw`, `imu`, `battery` checked; the lidar
-  commands only without a lidar.
+  connection, reconnect, `odom_raw`, `imu`, `battery`, `/scan` and the lidar
+  commands checked.
   Still to check with the owner watching: each motor's direction and the PID on
-  the floor (teleop against the gyro), the servos, `/scan` with the lidar back
-  (standby/run/speed on the real MS200; does standby stop the motor?),
+  the floor (teleop against the gyro), the servos, the scan's orientation once
+  the lidar is on the chassis,
   the buzzer heard. With the new 65 mm wheels set
   `RAINBOW_WHEEL_CIRCUMFERENCE_UM` (204200) and re-measure `angular_gain`.
   Next: smooth head

@@ -62,8 +62,10 @@ frames are in the MS200k manual), at 230400 baud:
 As in the SDK, a command is confirmed by the data stream (stopped, started, or
 the packets' speed within 10 %), commands are >= 400 ms apart, and a speed change
 goes standby -> speed -> run. While off, scans are dropped even if the sensor
-keeps sending. Whether standby also stops the motor (the hum) and whether the
-speed survives a lidar power cycle are not known yet.
+keeps sending. Tested on the robot 2026-11-26: standby stops the motor (no hum)
+in ~1.5 s, run restarts it (~4 s to "lidar running"), and 5, 7, 10 and 15 Hz all
+came out within 1 % (`/scan` rate and `scan_time`). Not known yet: whether the
+speed survives a lidar power cycle.
 
 ## Yahboom V2.0.0
 
@@ -76,9 +78,9 @@ Nothing in it to adopt.
 
 Built and run on the board 2026-11-26 with the robot stripped (no lidar,
 cameras, ToF; not driven): connection, reconnect after an agent restart, `odom_raw`, `imu`,
-`battery`, `esp_firmware` and `lidar/enable` work, `beep` is accepted (not heard). The lidar commands
-answered correctly without a lidar (speed 30 rejected, 8 accepted; "did not
-start sending" after 5 s; the node kept publishing meanwhile). Still to check with
+`battery`, `esp_firmware` and `lidar/enable` work, `beep` is accepted (not heard). With the lidar
+back: `/scan` at 10 Hz, 341 of 360 points valid; standby, run and speed work
+(above). Still to check with
 the owner watching: each motor's direction and the PID on the floor (teleop
-against the gyro), the servos (head), and `/scan` with the lidar back on: standby, run and speed
-changes on the real sensor, and whether standby stops the motor.
+against the gyro), the servos (head), the buzzer heard, and the scan's orientation (front at
+index 180) once the lidar is on the chassis.
