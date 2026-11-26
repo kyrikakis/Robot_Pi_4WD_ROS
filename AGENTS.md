@@ -231,7 +231,10 @@ The code you edit is the code the robot runs. Lessons learned:
   eyes. Ubuntu/ROS apt packages are the exception, with `apt-get upgrade`
   kept on purpose.
 - The README is curated: change it only to keep it correct, never pad it.
-- The version before the refactor is tagged `v0-legacy`.
+- Tags: `v0-legacy` is the robot before the refactor; `v1.0.0-rc.1` (on `main`,
+  2026-11-26) the refactored robot with the brain, pre-production. Tag releases
+  `vX.Y.Z` (`-rc.N` before production); the firmware's version is `git describe
+  --tags` (`firmware/build.sh`), shown on `/esp_firmware`.
 
 ## Pushing from the container
 
