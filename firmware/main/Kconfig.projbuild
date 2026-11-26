@@ -47,6 +47,14 @@ menu "Rainbow firmware"
             The Pi's velocity watchdog republishes cmd_vel at 10 Hz, so this only
             fires when the Pi side stops talking.
 
+    config RAINBOW_PUBLISH_IMU
+        bool "Publish the board IMU on /imu"
+        default n
+        help
+            The board's ICM-42670-P is mounted wrongly and nothing uses it (the
+            EKF fuses the BNO055). Off: the chip is never configured and stays in
+            its power-on sleep, and /imu is not published.
+
     config RAINBOW_SERVO_S1_OFFSET
         int "Pan servo (S1) offset, degrees"
         default 0

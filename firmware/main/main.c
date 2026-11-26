@@ -2,6 +2,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "sdkconfig.h"
 
 #include "rainbow.h"
 
@@ -12,7 +13,9 @@ void app_main(void)
     servos_init();
     beep_init();
     battery_init();
+#if CONFIG_RAINBOW_PUBLISH_IMU
     imu_init();  // optional: /imu is simply not published without it
+#endif
     lidar_init();
 
     transport_init();

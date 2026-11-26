@@ -53,7 +53,7 @@ static rcl_allocator_t s_alloc;
 static rclc_support_t s_support;
 static rcl_node_t s_node;
 static rclc_executor_t s_exec;
-static rcl_publisher_t s_pub_odom, s_pub_imu, s_pub_scan, s_pub_battery, s_pub_version;
+static rcl_publisher_t s_pub_odom, s_pub_scan, s_pub_battery, s_pub_version;
 static rcl_subscription_t s_sub_cmd, s_sub_s1, s_sub_s2, s_sub_beep;
 static rcl_service_t s_srv_lidar;
 static rclc_parameter_server_t s_params;
@@ -61,7 +61,11 @@ static bool s_params_ready;
 static rmw_request_id_t s_lidar_req_id;
 static uint32_t s_lidar_ticket;  // a lidar/enable request waiting for the lidar
 static bool s_lidar_on_requested;
-static rcl_timer_t s_tm_odom, s_tm_imu, s_tm_scan, s_tm_battery;
+static rcl_timer_t s_tm_odom, s_tm_scan, s_tm_battery;
+#if CONFIG_RAINBOW_PUBLISH_IMU
+static rcl_publisher_t s_pub_imu;
+static rcl_timer_t s_tm_imu;
+#endif
 
 static nav_msgs__msg__Odometry s_odom;
 static sensor_msgs__msg__Imu s_imu;
@@ -211,6 +215,7 @@ static void on_odom_timer(rcl_timer_t *timer, int64_t last_call)
     SOFT(rcl_publish(&s_pub_odom, &s_odom, NULL));
 }
 
+#if CONFIG_RAINBOW_PUBLISH_IMU
 static void on_imu_timer(rcl_timer_t *timer, int64_t last_call)
 {
     float a[3], g[3];
@@ -224,6 +229,7 @@ static void on_imu_timer(rcl_timer_t *timer, int64_t last_call)
     stamp(&s_imu.header.stamp);
     SOFT(rcl_publish(&s_pub_imu, &s_imu, NULL));
 }
+#endif
 
 static void on_scan_timer(rcl_timer_t *timer, int64_t last_call)
 {
@@ -263,7 +269,9 @@ static bool create_entities(void)
 
     OK(rclc_publisher_init_default(&s_pub_odom, &s_node, ROSIDL_GET_MSG_TYPE_SUPPORT(nav_msgs, msg, Odometry),
                                    "odom_raw"));
+#if CONFIG_RAINBOW_PUBLISH_IMU
     OK(rclc_publisher_init_default(&s_pub_imu, &s_node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu), "imu"));
+#endif
     OK(rclc_publisher_init_default(&s_pub_scan, &s_node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, LaserScan),
                                    "scan"));
     OK(rclc_publisher_init_default(&s_pub_battery, &s_node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, UInt16),
@@ -286,7 +294,9 @@ static bool create_entities(void)
                                  "lidar/enable"));
 
     OK(rclc_timer_init_default2(&s_tm_odom, &s_support, RCL_MS_TO_NS(ODOM_PERIOD_MS), on_odom_timer, true));
+#if CONFIG_RAINBOW_PUBLISH_IMU
     OK(rclc_timer_init_default2(&s_tm_imu, &s_support, RCL_MS_TO_NS(IMU_PERIOD_MS), on_imu_timer, true));
+#endif
     OK(rclc_timer_init_default2(&s_tm_scan, &s_support, RCL_MS_TO_NS(SCAN_POLL_MS), on_scan_timer, true));
     OK(rclc_timer_init_default2(&s_tm_battery, &s_support, RCL_MS_TO_NS(BATTERY_PERIOD_MS), on_battery_timer,
                                 true));
@@ -314,7 +324,9 @@ static bool create_entities(void)
     s_params_ready = true;
     s_lidar_ticket = 0;
     OK(rclc_executor_add_timer(&s_exec, &s_tm_odom));
+#if CONFIG_RAINBOW_PUBLISH_IMU
     OK(rclc_executor_add_timer(&s_exec, &s_tm_imu));
+#endif
     OK(rclc_executor_add_timer(&s_exec, &s_tm_scan));
     OK(rclc_executor_add_timer(&s_exec, &s_tm_battery));
 
@@ -332,7 +344,9 @@ static void destroy_entities(void)
 
     SOFT(rclc_executor_fini(&s_exec));
     SOFT(rcl_timer_fini(&s_tm_odom));
+#if CONFIG_RAINBOW_PUBLISH_IMU
     SOFT(rcl_timer_fini(&s_tm_imu));
+#endif
     SOFT(rcl_timer_fini(&s_tm_scan));
     SOFT(rcl_timer_fini(&s_tm_battery));
     SOFT(rclc_parameter_server_fini(&s_params, &s_node));
@@ -342,7 +356,9 @@ static void destroy_entities(void)
     SOFT(rcl_subscription_fini(&s_sub_s2, &s_node));
     SOFT(rcl_subscription_fini(&s_sub_beep, &s_node));
     SOFT(rcl_publisher_fini(&s_pub_odom, &s_node));
+#if CONFIG_RAINBOW_PUBLISH_IMU
     SOFT(rcl_publisher_fini(&s_pub_imu, &s_node));
+#endif
     SOFT(rcl_publisher_fini(&s_pub_scan, &s_node));
     SOFT(rcl_publisher_fini(&s_pub_battery, &s_node));
     SOFT(rcl_publisher_fini(&s_pub_version, &s_node));

@@ -24,7 +24,8 @@ compose setup lives in `~/hailo_tappas_ros2` on the host.
 Contracts with the ESP firmware (node `YB_Car_Node`, do not rename): it
 subscribes to `cmd_vel` (skid-steer: it ignores `linear.y`, tested with the wheels
 lifted 2026-11-24), `servo_s1` (pan), `servo_s2` (tilt) and `/beep`, and
-publishes `/odom_raw`, `/scan` in `laser_frame`, `/imu` in `imu_frame`, and
+publishes `/odom_raw`, `/scan` in `laser_frame`, `/imu` in `imu_frame` (our
+firmware: off by default, build option `RAINBOW_PUBLISH_IMU`), and
 `/battery` (UInt16, volts x 10, 1 Hz; the owner's pack runs ~6.9-8.0 V). The ESP's IMU is mounted wrongly and
 unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
 Our firmware adds `/esp_firmware` (latched version string), the

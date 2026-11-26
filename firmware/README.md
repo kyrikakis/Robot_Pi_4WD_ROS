@@ -59,7 +59,7 @@ Check what is running: `ros2 topic echo --once /esp_firmware` (domain 20).
 | `servo_s1`, `servo_s2` (sub) | std_msgs/Int32 | | degrees; S1 pan [-90, 90], S2 tilt [-90, 20] |
 | `beep` (sub) | std_msgs/UInt16 | | 0 off, 1 on, >= 10 on for that many ms |
 | `odom_raw` | nav_msgs/Odometry | 20 Hz | `odom_frame` -> `base_footprint`, wheel odometry |
-| `imu` | sensor_msgs/Imu | 25 Hz | `imu_frame`, the board's ICM-42670-P (mounted wrongly, unused) |
+| `imu` | sensor_msgs/Imu | 25 Hz | off by default (`RAINBOW_PUBLISH_IMU`): `imu_frame`, the board's ICM-42670-P (mounted wrongly, unused) |
 | `scan` | sensor_msgs/LaserScan | per revolution | `laser_frame`, 360 x 1 deg from -pi, 0.12-8 m, `scan_time` = measured revolution; only while the lidar sends |
 | `battery` | std_msgs/UInt16 | 1 Hz | volts x 10 |
 | `esp_firmware` | std_msgs/String | latched | version, build date, IDF version |

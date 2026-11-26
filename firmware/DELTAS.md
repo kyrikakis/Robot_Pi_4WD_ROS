@@ -35,7 +35,7 @@ were read from its NVS: domain 20, serial agent at 921600 baud, servo offsets
 | `/scan` without lidar | 12.5 Hz of zeros | not published | no fake data |
 | `/scan` missing points | keep their old value forever | 0 (invalid) for that revolution | no ghost points |
 | `/scan` timing | timer, 12.5 Hz, `scan_time` 0 | once per lidar revolution, `scan_time` = its measured duration | one scan per revolution, not repeats; the speed can change now |
-| `/imu` | orientation identity with covariance 0 (claims a perfect orientation), its own RPY filter | raw accel/gyro, `orientation_covariance[0] = -1` (no orientation, REP 145), +-4 g, +-500 deg/s | honest data; nothing uses it |
+| `/imu` | always, 25 Hz; orientation identity with covariance 0 (claims a perfect orientation), its own RPY filter | off by default (build option `RAINBOW_PUBLISH_IMU`; the chip is then never configured and sleeps). On: raw accel/gyro, `orientation_covariance[0] = -1` (no orientation, REP 145), +-4 g, +-500 deg/s | nothing uses it: saves ~8 % of the serial link and ~1 % of a Pi core in the agent |
 | Battery | per sample | averaged over 1 s, rounded | steadier |
 | IMU yaw PID | yes (heading hold with the board's IMU, gains in NVS) | no | the board IMU is mounted wrongly; heading belongs on the Pi with the BNO055 |
 | WiFi, BLE, WiFi agent | built in | not built | serial only; less power and heat |
