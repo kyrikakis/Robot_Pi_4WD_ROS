@@ -53,7 +53,7 @@ def angle_deg(u, v):
 class LiftDetector:
     """Lifted / put down from BNO055 samples (see the module docstring)."""
 
-    def __init__(self, rise_m=0.10, rise_moving_m=0.12, tilt_deg=20.0, still_s=1.0):
+    def __init__(self, rise_m=0.10, rise_moving_m=0.12, tilt_deg=20.0, still_s=0.5):
         self.rise_m, self.rise_moving_m = rise_m, rise_moving_m
         self.tilt_deg, self.still_s = tilt_deg, still_s
         self.lifted = False

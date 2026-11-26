@@ -266,7 +266,7 @@ class BrainNode(Node):
         self.lift = LiftDetector(rise_m=param('lift_rise_m', 0.10).value,
                                  rise_moving_m=param('lift_rise_moving_m', 0.12).value,
                                  tilt_deg=param('lift_tilt_deg', 20.0).value,
-                                 still_s=param('lift_still_s', 1.0).value)
+                                 still_s=param('lift_still_s', 0.5).value)
         self.lifted = False
         # Said when picked up / put down (a random one, not the last again); [] = quiet
         self.lift_phrases = list(param('lift_phrases', LIFT_PHRASES).value)
