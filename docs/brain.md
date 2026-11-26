@@ -154,7 +154,7 @@ battery) the stopped programs start again, the map first, and it says thank
 you (`battery_ok`).
 
 **Picked up** also comes on top of either mode (`rainbow_brain/lift.py`, from
-the BNO055): the robot rising > 5 cm (8 cm while it is commanded to move) or
+the BNO055): the robot rising > 10 cm (12 cm while it is commanded to move) or
 tilting > 20 deg from its rest counts as lifted; 2 s still counts as put down.
 Tuned on a recording (three lifts, a push over a carpet edge, which rose 2.7 cm
 by the same estimate and is not a lift). Lifted: every motion is cancelled and

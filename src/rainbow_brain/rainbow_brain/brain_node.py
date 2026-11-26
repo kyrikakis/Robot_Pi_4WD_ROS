@@ -261,8 +261,10 @@ class BrainNode(Node):
         self.battery_stopped = []       # those of them that were running
         self.battery_timer = None
         # Picked up (rainbow_brain.lift)
-        self.lift = LiftDetector(rise_m=param('lift_rise_m', 0.05).value,
-                                 rise_moving_m=param('lift_rise_moving_m', 0.08).value,
+        # 10 cm (was 5; the owner, 2026-11-26): hand lifts all read 5-6 cm right at
+        # the old threshold, too close to nudges and the estimate's wobble
+        self.lift = LiftDetector(rise_m=param('lift_rise_m', 0.10).value,
+                                 rise_moving_m=param('lift_rise_moving_m', 0.12).value,
                                  tilt_deg=param('lift_tilt_deg', 20.0).value,
                                  still_s=param('lift_still_s', 2.0).value)
         self.lifted = False

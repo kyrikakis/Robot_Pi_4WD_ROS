@@ -69,10 +69,14 @@ def test_tilting_far_counts_a_small_tilt_does_not():
 
 def test_driving_needs_a_bigger_rise():
     """Driving needs a bigger rise."""
-    # ~6.5 cm: lifted at rest (5 cm), not while commanded to move (8 cm)
+    # ~6.5 cm: lifted at rest (5 cm here), not while commanded to move (8 cm)
     samples = still(2) + lift(up_ms2=1.2, accel_s=0.2, coast_s=0.1)
-    assert [c for _, c in feed(LiftDetector(), samples)] == ['lifted']
-    assert feed(LiftDetector(), samples, moving=True) == []
+
+    def detector():
+        return LiftDetector(rise_m=0.05, rise_moving_m=0.08)
+
+    assert [c for _, c in feed(detector(), samples)] == ['lifted']
+    assert feed(detector(), samples, moving=True) == []
 
 
 def test_a_new_resting_surface_becomes_the_rest():
@@ -97,3 +101,9 @@ def test_pick_phrase_single_and_empty():
     from rainbow_brain.lift import pick_phrase
     assert pick_phrase(['Hey!'], 'Hey!') == 'Hey!'
     assert pick_phrase([], 'Hey!') is None
+
+
+def test_small_lifts_do_not_count_by_default():
+    """A ~6.5 cm rise is under the default 10 cm."""
+    samples = still(2) + lift(up_ms2=1.2, accel_s=0.2, coast_s=0.1)
+    assert feed(LiftDetector(), samples) == []
