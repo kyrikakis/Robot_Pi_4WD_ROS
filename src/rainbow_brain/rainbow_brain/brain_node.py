@@ -57,7 +57,8 @@ is wasted), and every battery_repeat_s the robot says it is out of battery with
 sad eyes; a battery_low event goes to the agent. Once charged the stopped
 programs start again (battery_ok event).
 Picked up (rainbow_brain.lift, from /bno055/imu: the robot rises > lift_rise_m or
-tilts > lift_tilt_deg; put down after lift_still_s still): every motion is
+tilts > lift_tilt_deg; put down when it lands, coming down and braking to a stop,
+then quiet for lift_land_quiet_s, or after lift_still_s still): every motion is
 cancelled and refused, /lifted (latched) is true, so the lidar goes to standby,
 the robot says one of lift_phrases ("Wheee!") and a lifted event goes to the
 agent. Put down: it says one of put_down_phrases, AMCL starts global
@@ -266,7 +267,8 @@ class BrainNode(Node):
         self.lift = LiftDetector(rise_m=param('lift_rise_m', 0.10).value,
                                  rise_moving_m=param('lift_rise_moving_m', 0.12).value,
                                  tilt_deg=param('lift_tilt_deg', 20.0).value,
-                                 still_s=param('lift_still_s', 0.5).value)
+                                 still_s=param('lift_still_s', 1.0).value,
+                                 land_quiet_s=param('lift_land_quiet_s', 0.25).value)
         self.lifted = False
         # Said when picked up / put down (a random one, not the last again); [] = quiet
         self.lift_phrases = list(param('lift_phrases', LIFT_PHRASES).value)
@@ -466,7 +468,7 @@ class BrainNode(Node):
         if change == 'lifted':
             self.on_lifted(self.lift.why)
         elif change == 'down':
-            self.on_put_down()
+            self.on_put_down(self.lift.why)
 
     def on_lifted(self, why):
         self.get_logger().info(f'picked up ({why}): stopping; the lidar goes to standby')
@@ -477,15 +479,15 @@ class BrainNode(Node):
         self.emit({'kind': 'lifted'})
         self.state_changed()
 
-    def on_put_down(self):
+    def on_put_down(self, why=''):
         self.lifted = False
         self.lifted_pub.publish(Bool(data=False))
         relocalizing = self.global_localization_client.service_is_ready()
         if relocalizing:
             # The location is lost: spread AMCL's particles over the whole map
             self.global_localization_client.call_async(EmptySrv.Request())
-        self.get_logger().info('put down' + (': AMCL starts global localization again'
-                                             if relocalizing else ''))
+        self.get_logger().info(f'put down ({why})' + (
+            ': AMCL starts global localization again' if relocalizing else ''))
         self.say_playful(self.put_down_phrases)
         self.emit({'kind': 'put_down', 'relocalizing': relocalizing})
         self.state_changed()

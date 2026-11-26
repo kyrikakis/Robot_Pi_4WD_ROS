@@ -107,3 +107,56 @@ def test_small_lifts_do_not_count_by_default():
     """A ~6.5 cm rise is under the default 10 cm."""
     samples = still(2) + lift(up_ms2=1.2, accel_s=0.2, coast_s=0.1)
     assert feed(LiftDetector(), samples) == []
+
+
+def lower(down_ms2=2.0, accel_s=0.25, coast_s=0.2):
+    """Return samples of lowering: accelerate down, coast, brake to a stop."""
+    n, c = int(accel_s * RATE), int(coast_s * RATE)
+    g = (0.0, 0.0, 0.2)
+    return ([(LEVEL, (0.0, 0.0, -down_ms2), g)] * n + [(LEVEL, (0.0, 0.0, 0.0), g)] * c
+            + [(LEVEL, (0.0, 0.0, down_ms2), g)] * n)
+
+
+def quiet(seconds):
+    """Return samples of a robot settling: quiet, but not strictly still."""
+    return [(LEVEL, (0.3, 0.0, 0.0), (0.0, 0.0, 0.07))] * int(seconds * RATE)
+
+
+def handled(seconds):
+    """Return samples of a hand moving the robot sideways (no vertical motion)."""
+    return [(LEVEL, (1.0, 0.0, 0.0), (0.0, 0.0, 0.5))] * int(seconds * RATE)
+
+
+def lifted_detector():
+    d = LiftDetector()
+    assert [c for _, c in feed(d, still(2) + lift())] == ['lifted']
+    return d
+
+
+def test_a_landing_is_put_down_quickly():
+    """Coming down and braking, then quiet for 0.25 s, is a put-down."""
+    d = lifted_detector()
+    landing = lower()
+    start = 10.0
+    out = feed(d, handled(0.5) + landing + quiet(1.0), start=start)
+    braked = start + (int(0.5 * RATE) + len(landing)) / RATE
+    assert [c for _, c in out] == ['down']
+    assert d.why == 'landed'
+    assert out[0][0] - braked <= 0.35
+
+
+def test_a_stop_in_mid_air_is_not_put_down():
+    """Lowered and stopped in the hand, which then moves on: still lifted."""
+    d = lifted_detector()
+    assert feed(d, handled(0.5) + lower() + quiet(0.15) + handled(2.0), start=10.0) == []
+    assert d.lifted
+
+
+def test_a_slow_put_down_falls_back_to_stillness():
+    """Lowered too slowly to show a descent: put down after still_s still."""
+    d = lifted_detector()
+    # A moment held perfectly still first (resets the speed the lift left behind)
+    slow = still(0.1) + lower(down_ms2=0.4, accel_s=0.25, coast_s=1.0)
+    out = feed(d, slow + quiet(0.5) + still(1.5), start=10.0)
+    assert [c for _, c in out] == ['down']
+    assert d.why == 'still 1 s'

@@ -11,9 +11,19 @@ So: lifted when the robot rises more than rise_m (rise_moving_m while it is
 commanded to move: bumps while driving are not measured yet), estimated by
 integrating the vertical acceleration (world frame, gravity already removed by
 the BNO055) with leaks against drift and a reset whenever it is still; or when
-it tilts more than tilt_deg from its resting attitude. Put down once it has been
-still for still_s. The resting attitude follows the robot while it rests, so a
-new surface becomes the new rest.
+it tilts more than tilt_deg from its resting attitude.
+
+Put down when it lands: it came down faster than LANDING_SPEED and braked to a
+stop (vertical speed back to ~0), then stayed quiet (QUIET_GYRO, QUIET_ACCEL,
+looser than "still") for land_quiet_s. A hand that lowers the robot and stops in
+mid-air is as still for a moment, but moves again within that time. Recorded
+2026-11-26 (four put-downs floor <-> desk, gentle and normal, one stop in
+mid-air): landings were reported 0.4-1 s sooner than 0.5 s of stillness, 1.5-2.5
+s sooner than 2 s, and the mid-air stop was not; 0.15 s also worked, 0.25 s
+keeps a margin; looser quiet limits (0.15 rad/s, 0.5 m/s^2) missed a landing.
+Fallback for a put-down too slow to show a descent: still for still_s. The
+resting attitude follows the robot while it rests, so a new surface becomes the
+new rest.
 
 Inputs per sample: the BNO055's orientation quaternion (body -> world, x y z w),
 linear acceleration (body frame, m/s^2, without gravity), angular velocity
@@ -27,6 +37,11 @@ STILL_GYRO = 0.05       # rad/s
 STILL_ACCEL = 0.2       # m/s^2
 VELOCITY_LEAK_S = 4.0   # time constant of the leak on the vertical speed
 REST_FOLLOW = 0.02      # per still sample: how fast the resting attitude follows
+LANDING_SPEED = 0.2     # m/s down before braking: a landing
+LANDING_BRAKED = 0.05   # m/s: braked to a stop when the speed is back above -this
+LANDING_WAIT_S = 1.0    # a landing that does not go quiet within this is dropped
+QUIET_GYRO = 0.1        # rad/s
+QUIET_ACCEL = 0.4       # m/s^2
 
 
 def gravity_in_body(q):
@@ -53,9 +68,14 @@ def angle_deg(u, v):
 class LiftDetector:
     """Lifted / put down from BNO055 samples (see the module docstring)."""
 
-    def __init__(self, rise_m=0.10, rise_moving_m=0.12, tilt_deg=20.0, still_s=0.5):
+    def __init__(self, rise_m=0.10, rise_moving_m=0.12, tilt_deg=20.0, still_s=1.0,
+                 land_quiet_s=0.25):
         self.rise_m, self.rise_moving_m = rise_m, rise_moving_m
         self.tilt_deg, self.still_s = tilt_deg, still_s
+        self.land_quiet_s = land_quiet_s
+        self.lowest = 0.0         # lowest vertical speed (m/s) while lifted, since a landing
+        self.landed_at = None     # time of a landing (came down, braked) being confirmed
+        self.quiet_since = None
         self.lifted = False
         self.rest = None          # resting "up" in the body frame
         self.last_t = None
@@ -69,8 +89,9 @@ class LiftDetector:
         dt = 0.0 if self.last_t is None else max(0.0, min(0.2, t - self.last_t))
         self.last_t = t
         up = gravity_in_body(q)
-        still = (math.sqrt(sum(c * c for c in gyro)) < STILL_GYRO
-                 and math.sqrt(sum(c * c for c in accel)) < STILL_ACCEL)
+        gyro_norm = math.sqrt(sum(c * c for c in gyro))
+        accel_norm = math.sqrt(sum(c * c for c in accel))
+        still = gyro_norm < STILL_GYRO and accel_norm < STILL_ACCEL
         if self.rest is None:
             self.rest = up
 
@@ -86,12 +107,16 @@ class LiftDetector:
             self.rise += self.speed * dt
 
         if self.lifted:
-            if self.still_since is not None and t - self.still_since >= self.still_s:
-                self.lifted = False
-                self.rest = up
-                self.why = ''
-                return 'down'
-            return None
+            if self.landed(t, gyro_norm < QUIET_GYRO and accel_norm < QUIET_ACCEL):
+                self.why = 'landed'
+            elif self.still_since is not None and t - self.still_since >= self.still_s:
+                self.why = f'still {self.still_s:g} s'
+            else:
+                return None
+            self.lifted = False
+            self.rest = up
+            self.lowest, self.landed_at = 0.0, None
+            return 'down'
 
         tilt = angle_deg(up, self.rest)
         limit = self.rise_moving_m if moving else self.rise_m
@@ -102,7 +127,24 @@ class LiftDetector:
         else:
             return None
         self.lifted = True
+        self.lowest, self.landed_at = 0.0, None
         return 'lifted'
+
+    def landed(self, t, quiet):
+        """Return True once a landing (came down, braked to a stop) has stayed quiet."""
+        self.lowest = min(self.lowest, self.speed)
+        if (self.landed_at is None and self.lowest < -LANDING_SPEED
+                and self.speed > -LANDING_BRAKED):
+            self.landed_at, self.quiet_since = t, None
+        if self.landed_at is None:
+            return False
+        if quiet:
+            self.quiet_since = t if self.quiet_since is None else self.quiet_since
+            return t - self.quiet_since >= self.land_quiet_s
+        if self.quiet_since is None and t - self.landed_at > LANDING_WAIT_S:
+            self.lowest, self.landed_at = 0.0, None     # not a landing: carried on
+        self.quiet_since = None
+        return False
 
 
 # What the robot says when picked up and put down (the brain's lift_phrases /

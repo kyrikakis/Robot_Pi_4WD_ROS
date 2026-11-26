@@ -155,9 +155,12 @@ you (`battery_ok`).
 
 **Picked up** also comes on top of either mode (`rainbow_brain/lift.py`, from
 the BNO055): the robot rising > 10 cm (12 cm while it is commanded to move) or
-tilting > 20 deg from its rest counts as lifted; 0.5 s still counts as put down
-(2 s until 2026-11-26: the owner found the reply slow; a hand holding it very
-steady for 0.5 s may now count too).
+tilting > 20 deg from its rest counts as lifted. Put down is the landing: it
+came down (> 0.2 m/s) and braked to a stop, then stays quiet for 0.25 s (a hand
+stopping in mid-air moves again within that); a put-down too slow to show a
+descent counts after 1 s still. On a recording (four put-downs, one stop in
+mid-air) that answers 0.4-1 s sooner than 0.5 s of stillness and 1.5-2.5 s
+sooner than the first rule (2 s still), which the owner found slow.
 Tuned on a recording (three lifts, a push over a carpet edge, which rose 2.7 cm
 by the same estimate and is not a lift). Lifted: every motion is cancelled and
 refused ("someone is holding me"), `/lifted` is true, so the lidar goes to
