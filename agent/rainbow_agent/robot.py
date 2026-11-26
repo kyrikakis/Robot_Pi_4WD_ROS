@@ -15,6 +15,15 @@ Events are dicts on robot.events: {'kind': 'arrived' | 'failed' | ..., ...}.
 import asyncio
 import math
 
+# In look's result: the head moving shows the model nothing (it made up what was there)
+LOOK_SEEN = 'nothing yet: call capture_photo to see what is there'
+# The same for track and stop_tracking (it made up where things were)
+TRACK_MESSAGE = 'I will turn my head after the {} whenever I can see it'
+TRACK_SEEN = ('not known: you do not know if it is in view now; you are told if it is '
+              'lost; call capture_photo to see')
+BATTERY_EMPTY = 'my battery is empty, so I am not driving; please charge me'
+STOP_TRACKING = 'stopped following; my head is back in the middle'
+
 
 def _norm(name):
     name = ' '.join(str(name).lower().split())
@@ -48,7 +57,12 @@ class SimRobot:
         self.speed = speed              # m/s, for how long a move takes
         self.time_scale = time_scale    # 0 = instant (tests)
         self.battery = battery
+        self.battery_low = False        # as the brain's low-battery mode
+        self.greet = True               # greeting people (the brain's greet_people)
         self.activity = 'idle'
+        self.tracking = ''
+        self.faces = {}                 # name -> True; the face in view is 'in_view'
+        self.face_in_view = ''          # name the face in front is saved under, '' = unknown
         self.events = asyncio.Queue()
         self.calls = []                 # (name, args) of every call, for tests and eval
         self._move = None
@@ -65,7 +79,9 @@ class SimRobot:
 
     def snapshot(self):
         """A short state summary for the model's context."""
-        return (f'Activity: {self.activity}. Battery {self.battery:.1f} V. '
+        low = (' Battery empty: everything is paused and you cannot drive until you are '
+               'charged.' if self.battery_low else '')
+        return (f'Activity: {self.activity}. Battery {self.battery:.1f} V.{low} '
                 f'Known places: {", ".join(sorted(self.places))}.')
 
     # Moves
@@ -88,6 +104,8 @@ class SimRobot:
         self._move = asyncio.ensure_future(run())
 
     async def _go_to_place(self, place):
+        if self.battery_low:
+            return {'ok': False, 'message': BATTERY_EMPTY}
         key = _norm(place)
         if key not in self.places:
             return {'ok': False, 'message': f"I don't know a place called {key}"}
@@ -175,11 +193,68 @@ class SimRobot:
         self.places[new_key] = p
         return {'ok': True, 'message': f'updated {new_key}'}
 
+    async def _look(self, pan_degrees=0.0, tilt_degrees=0.0):
+        pan = max(-40.0, min(38.0, float(pan_degrees)))
+        tilt = max(-19.0, min(36.0, float(tilt_degrees)))
+        return {'ok': True, 'message': f'looking {pan:.0f} deg left, {tilt:.0f} deg up',
+                'pan_degrees': round(pan), 'tilt_degrees': round(tilt), 'seen': LOOK_SEEN}
+
+    async def _track(self, what):
+        what = str(what).strip().lower()
+        if not what:
+            return {'ok': False, 'message': 'tell me what to follow'}
+        self.tracking = what
+        return {'ok': True, 'message': TRACK_MESSAGE.format(what), 'seen': TRACK_SEEN}
+
+    async def _stop_tracking(self):
+        self.tracking = ''
+        return {'ok': True, 'message': STOP_TRACKING}
+
     async def _capture_photo(self):
         return {'ok': False, 'message': 'my camera is off (simulated robot)'}
 
-    async def _remember_face(self, name):
-        return {'ok': False, 'message': 'face recognition is off (simulated robot)'}
+    async def _remember_face(self, name, same_person=False):
+        # As the brain answers (rainbow_brain.faces): face_in_view is the name the face in
+        # front matches, '' for a face it does not know
+        name = str(name).strip()
+        same = same_person in (True, 'true', 'True', 1)
+        if self.face_in_view and self.face_in_view != name:
+            return {'ok': False, 'message': f'I already know this face as {self.face_in_view}'}
+        if self.face_in_view == name:
+            if same:
+                self.faces[name] = self.faces.get(name, 1) + 1
+                return {'ok': True, 'message': f'I added this view of {name}'}
+            return {'ok': True, 'message': f'I already know you, {name}'}
+        if name in self.faces:
+            if same:
+                self.faces[name] = self.faces.get(name, 1) + 1
+                self.face_in_view = name
+                return {'ok': True, 'message': f'I added this view of {name}'}
+            return {'ok': False, 'message': f'I know a face called {name} that looks different',
+                    'next': (f'ask if they are the {name} you know (another angle or other '
+                             f'light); if yes, call remember_face again with same_person true; '
+                             f'if not, ask for another name, like with their last name')}
+        self.faces[name] = 1
+        self.face_in_view = name
+        return {'ok': True,
+                'message': (f'I will remember {name}. Tell them to turn their head slowly to '
+                            f'one side and the other, so I learn their face from more angles'),
+                'next': 'the extra views are added by themselves: call nothing'}
+
+    async def _greet_people(self, enabled):
+        self.greet = enabled in (True, 'true', 'True', 1)
+        return {'ok': True, 'message': 'I will greet people I see' if self.greet
+                else 'I will not turn to people or greet them until you say so'}
+
+    async def _forget_face(self, name):
+        name = str(name).strip()
+        match = next((n for n in self.faces if n.lower() == name.lower()), None)
+        if match is None and self.face_in_view.lower() != name.lower():
+            return {'ok': False, 'message': f'I do not know a face called {name}'}
+        self.faces.pop(match, None)
+        if self.face_in_view.lower() == name.lower():
+            self.face_in_view = ''
+        return {'ok': True, 'message': f'I forgot the face of {match or name}'}
 
     async def _delete_place(self, name):
         key = _norm(name)

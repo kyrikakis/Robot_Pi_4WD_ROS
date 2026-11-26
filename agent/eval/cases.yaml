@@ -61,6 +61,105 @@
 - id: look
   say: Rainbow, what do you see?
   expect: [{name: capture_photo}]
+- id: look-left
+  say: Rainbow, look to your left.
+  expect: [{name: look, args: {pan_degrees: {min: 15, max: 60}}}]
+  forbid: [turn]
+  reply_not: [hallway, door, kitchen, sofa]
+- id: look-down-see
+  say: Look down and tell me what you see.
+  expect: [{name: look, args: {tilt_degrees: {min: -60, max: -5}}}, {name: capture_photo}]
+  forbid: [turn, drive_forward]
+- id: track-me
+  say: Rainbow, watch me.
+  expect: [{name: track, args: {what: face}}]
+  forbid: [go_to_place, drive_forward, turn]
+  reply_not: [in front, in my view, smil, hair]
+- id: track-ball
+  say: Keep an eye on the ball.
+  expect: [{name: track, args: {what: ball}}]
+  forbid: [go_to_place, drive_forward]
+  reply_not: [roll, moving, floor, red, blue]
+- id: stop-tracking
+  say: You can stop watching me now.
+  expect: [{name: stop_tracking}]
+  forbid: [go_to_place]
+# Faces: a name is said back and saved only once the person confirms it
+- id: meet-stranger
+  event: {kind: face_unknown}
+  say: ["I'm Stefanos.", "Yes."]
+  expect: [{name: remember_face, args: {name: Stefanos}}]
+  reply_has: [name, Stefanos]
+- id: name-confirmed-first
+  say: "Remember my face, I'm Stefanos."
+  forbid: [remember_face]
+  reply_has: [Stefanos]
+- id: name-misheard
+  say: ["Remember my face, my name is Stefan.", "No, it's Stefanos, S T E F A N O S.", "Yes, that's right."]
+  expect: [{name: remember_face, args: {name: Stefanos}}]
+- id: misheard-name-asks-to-spell
+  say: ["Remember my face, I'm Stefano.", "No."]
+  forbid: [remember_face]
+  reply_has: [spell]
+- id: name-not-guessed
+  say: "Remember my face."
+  forbid: [remember_face]
+  reply_has: [name]
+- id: face-known-as-other
+  robot: {face_in_view: Bambu}
+  say: ["Remember my face, I'm Stefanos.", "Yes."]
+  expect: [{name: remember_face, args: {name: Stefanos}}]
+  reply_has: [Bambu]
+- id: face-fix-wrong-name
+  robot: {face_in_view: Bambu}
+  say: ["Remember my face, I'm Stefanos.", "Yes.", "That's wrong, I'm not Bambu.", "Yes."]
+  expect: [{name: remember_face}, {name: forget_face, args: {name: Bambu}},
+           {name: remember_face, args: {name: Stefanos}}]
+- id: greet-known-face
+  event: {kind: face_seen, name: Stefanos, greet: true}
+  say: "Hi Rainbow!"
+  reply_has: [Stefanos]
+  forbid: [remember_face, forget_face, go_to_place]
+- id: stop-greeting
+  say: "Please stop greeting people."
+  expect: [{name: greet_people, args: {enabled: false}}]
+- id: greet-again
+  say: "You can greet people again."
+  expect: [{name: greet_people, args: {enabled: true}}]
+- id: stop-watching-is-not-greeting
+  say: "Stop watching me."
+  expect: [{name: stop_tracking}]
+  forbid: [greet_people]
+- id: enroll-more-views
+  say: ["Remember my face, I'm Maria.", "Yes."]
+  expect: [{name: remember_face, args: {name: Maria}}]
+  reply_has: [head]
+- id: same-name-other-angle
+  robot: {faces: {Stefanos: 1}}
+  say: ["Remember my face, I'm Stefanos.", "Yes.", "Yes, that's me."]
+  expect: [{name: remember_face, args: {name: Stefanos, same_person: {empty: true}}},
+           {name: remember_face, args: {name: Stefanos, same_person: true}}]
+- id: same-name-other-person
+  robot: {faces: {Stefanos: 1}}
+  say: ["Remember my face, I'm Stefanos.", "Yes.", "No, I'm a different Stefanos."]
+  expect: [{name: remember_face, args: {name: Stefanos}}]
+  forbid: [forget_face]
+  reply_has: [name]
+- id: forget-face
+  robot: {faces: {Martin: true}}
+  say: "Forget Martin's face."
+  expect: [{name: forget_face, args: {name: Martin}}]
+# Empty battery: no driving, and no promise to go later
+- id: battery-empty-no-trip
+  robot: {battery_low: true, battery: 6.9}
+  say: "Go to the kitchen."
+  reply_has: [battery]
+  reply_not: ["on my way", "going to the kitchen"]
+# A failed trip is reported once, without promises, and not repeated
+- id: trip-fails-no-promise
+  say: ["Go to the balcony.", "Where are you?"]
+  expect: [{name: go_to_place, args: {place: balcony}}]
+  reply_not: [again, "I will try", "I'll try"]
 - id: unknown-place
   say: Go to the garage.
   forbid: [save_place, delete_place, edit_place]

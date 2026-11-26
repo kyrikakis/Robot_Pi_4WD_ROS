@@ -1,5 +1,5 @@
 # Show an expression on the eyes LED matrix.
-# One of: happy, open, closed, off
+# One of: happy, sad, open, closed, off
 string expression
 ---
 bool success

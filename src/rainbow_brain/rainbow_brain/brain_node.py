@@ -31,10 +31,29 @@ Topics:
                       health (ESP messages, Nav2, speech) and the agent's status
                       (from the link), every status_period s and on every change
   /agent/log          rcl_interfaces/Log   the agent's log lines (from the link)
+Head: look points the head (the head node's /head/move action, which returns once
+the head has settled); capture_photo skips frames while /head/moving is true.
+track / stop_tracking start and stop the tracker node (/tracker/start, /tracker/stop);
+stop and look stop tracking too. A target lost from view becomes a track_lost event.
 Camera and faces (the Hailo container, docs/brain.md): capture_photo takes one
 frame from photo_topic on demand; recognised faces on faces_topic become
-face_seen events; remember_face asks the Hailo node to save a face.
+face_seen events, and a face it does not know, steadily in view for unknown_after
+seconds, a face_unknown event (the agent then asks the name); remember_face and
+forget_face ask the Hailo node to save or delete a face.
 set_pose_estimate publishes /initialpose for AMCL (startup localization).
+Greeting people (rainbow_brain.greeting, on unless switched off with the
+greet_people skill; saved in <data_dir>/settings.json): someone in view (a person
+or a face) for a second while the robot is idle gets one look: the tracker
+follows "face" for greet_follow_s, then the head centres. A known face is a
+face_seen event the agent answers with a greeting (in local mode the brain says
+hi itself); an unknown one is face_unknown. Driving, a look or track asked for,
+or low battery take the head back.
+Low battery (rainbow_brain.battery: <= 7.0 V for 30 s, until >= 7.6 V for 1 min):
+every motion is cancelled and refused, the head centred, battery_stop_programs
+stopped with supervisorctl (no dock yet, so driving is pointless and Nav2's CPU
+is wasted), and every battery_repeat_s the robot says it is out of battery with
+sad eyes; a battery_low event goes to the agent. Once charged the stopped
+programs start again (battery_ok event).
 Reads: TF map -> base_footprint, /amcl_pose, /battery; /scan and /odom_raw only
 for their arrival times (not deserialized)
 Link: WebSocket on link_port (8766); token in <data_dir>/link_token.
@@ -47,22 +66,27 @@ import base64
 import json
 import math
 import os
+import subprocess
 import threading
 import time
 
 from action_msgs.msg import GoalStatus
 from action_msgs.srv import CancelGoal
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
-from hailo_msgs.srv import SaveGalleryItem
+from hailo_msgs.srv import DeleteGalleryItem, SaveGalleryItem
 from nav2_msgs.action import DriveOnHeading, NavigateToPose, Spin
 from nav_msgs.msg import Odometry
+from rainbow_brain.battery import BatteryMonitor
 from rainbow_brain.commands import parse, phrases
+from rainbow_brain.faces import save_outcome
+from rainbow_brain.greeting import Attention
 from rainbow_brain.link import LinkServer, load_token
 from rainbow_brain.places import PlaceStore
-from rainbow_interfaces.action import Drive, GoToPlace, Turn
-from rainbow_interfaces.msg import AgentStatus, BrainStatus, Place as PlaceMsg, Utterance
-from rainbow_interfaces.srv import (DeletePlace, EditPlace, GetState, ListPlaces,
-                                    SavePlace, Say, WhereAmI)
+from rainbow_interfaces.action import Drive, GoToPlace, MoveHead, Turn
+from rainbow_interfaces.msg import (AgentStatus, BrainStatus, Place as PlaceMsg, TrackerStatus,
+                                    Utterance)
+from rainbow_interfaces.srv import (DeletePlace, EditPlace, GetState, ListPlaces, SavePlace, Say,
+                                    SetExpression, Track, WhereAmI)
 from rcl_interfaces.msg import Log
 import rclpy
 from rclpy.action import ActionClient, ActionServer, CancelResponse
@@ -73,7 +97,7 @@ from rclpy.qos import DurabilityPolicy, qos_profile_sensor_data, QoSProfile, Rel
 from rclpy.task import Future
 from rclpy.time import Time
 from sensor_msgs.msg import CompressedImage, LaserScan
-from std_msgs.msg import Empty, String, UInt16
+from std_msgs.msg import Bool, Empty, String, UInt16
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformException, TransformListener
 from vision_msgs.msg import Detection2DArray
@@ -83,6 +107,7 @@ LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
                      reliability=ReliabilityPolicy.RELIABLE)
 
 # Nav2 actions cancelled by stop
+BATTERY_EMPTY = 'my battery is empty, so I am not driving; please charge me'
 NAV2_ACTIONS = ['navigate_to_pose', 'navigate_through_poses', 'follow_path', 'spin',
                 'drive_on_heading', 'backup', 'assisted_teleop', 'wait']
 
@@ -159,6 +184,20 @@ class BrainNode(Node):
         # Seconds before the same face is announced to the agent again
         self.face_repeat = self.declare_parameter('face_repeat', 600.0).value
         self.faces_seen = {}
+        # A face it does not know, in view this long (gaps under 1 s), becomes a
+        # face_unknown event, at most once per face_repeat
+        self.unknown_after = self.declare_parameter('unknown_after', 3.0).value
+        self.unknown_since = None
+        self.unknown_last = -1e9
+        self.unknown_asked = -1e9
+        self.attention = Attention(
+            notice_after=self.declare_parameter('greet_notice_s', 1.0).value,
+            follow_for=self.declare_parameter('greet_follow_s', 20.0).value,
+            gone_after=self.declare_parameter('greet_gone_s', 10.0).value)
+        # A look that turns into a conversation (greeting, asking a name) lasts this long
+        self.greet_talk_s = self.declare_parameter('greet_talk_s', 45.0).value
+        self.settings_path = os.path.join(self.data_dir, 'settings.json')
+        self.greet = self.load_settings().get('greet_people', True)
         # "Look around": localize_turns full turns in one go, then again if AMCL is not
         # sure yet, at most localize_rounds times
         self.localize_turns = self.declare_parameter('localize_turns', 4).value
@@ -183,6 +222,22 @@ class BrainNode(Node):
 
         self.amcl = None
         self.battery = None
+        param = self.declare_parameter
+        self.battery_monitor = BatteryMonitor(
+            low_volts=param('battery_low_volts', 7.0).value,
+            low_for=param('battery_low_seconds', 30.0).value,
+            ok_volts=param('battery_ok_volts', 7.6).value,
+            ok_for=param('battery_ok_seconds', 60.0).value)
+        self.battery_repeat = param('battery_repeat_s', 120.0).value
+        # Supervisor programs stopped in low-battery mode, in the order to start them
+        # again (the map before Nav2)
+        self.battery_programs = list(param(
+            'battery_stop_programs',
+            ['rainbow_localization', 'rainbow_tof', 'rainbow_slam',
+             'rainbow_navigation']).value)
+        self.low_battery = False
+        self.battery_stopped = []       # those of them that were running
+        self.battery_timer = None
         self.pick = None
         self.pick_time = None
         self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.on_amcl, LATCHED)
@@ -203,6 +258,7 @@ class BrainNode(Node):
         self.status_pub = self.create_publisher(BrainStatus, '/brain/status', LATCHED)
         self.agent_log_pub = self.create_publisher(Log, '/agent/log', 50)
         self.create_timer(status_period, self.publish_status)
+        self.create_timer(1.0, self.update_attention)
         self.create_subscription(PoseStamped, '/places/pick', self.on_pick, 10)
         self.markers_pub = self.create_publisher(MarkerArray, '/places/markers', LATCHED)
         self.grammar_pub = self.create_publisher(String, '/voice/grammar', LATCHED)
@@ -214,6 +270,13 @@ class BrainNode(Node):
                                  qos_profile_sensor_data, callback_group=self.group)
         self.initialpose_pub = self.create_publisher(
             PoseWithCovarianceStamped, '/initialpose', 10)
+        # The head node's state: no photos while it moves or settles
+        self.head_moving = False
+        self.create_subscription(Bool, '/head/moving', self.on_head_moving, LATCHED)
+        self.tracking_lost = False
+        self.tracking = ''          # what the head follows ('' = nothing)
+        self.create_subscription(TrackerStatus, '/tracker/status', self.on_tracker_status,
+                                 LATCHED, callback_group=self.group)
 
         # The running move: {'label', 'handle' (ours, or None from the link),
         # 'nav' (Nav2's), 'replaced'}
@@ -224,11 +287,18 @@ class BrainNode(Node):
         self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose', **g)
         self.spin_client = ActionClient(self, Spin, 'spin', **g)
         self.drive_client = ActionClient(self, DriveOnHeading, 'drive_on_heading', **g)
+        self.head_client = ActionClient(self, MoveHead, '/head/move', **g)
+        self.track_client = self.create_client(Track, '/tracker/start', **g)
+        self.untrack_client = self.create_client(Trigger, '/tracker/stop', **g)
         self.cancel_clients = [self.create_client(CancelGoal, f'{a}/_action/cancel_goal', **g)
                                for a in NAV2_ACTIONS]
         self.say_client = self.create_client(Say, '/speech/say', **g)
+        self.eyes_client = self.create_client(SetExpression, '/eyes/set_expression', **g)
+        self.center_client = self.create_client(Trigger, '/head/center', **g)
         self.save_face_client = self.create_client(
             SaveGalleryItem, '/hailo_face_recognition/save_face', **g)
+        self.delete_face_client = self.create_client(
+            DeleteGalleryItem, '/hailo_face_recognition/delete_face', **g)
 
         cancel = {'cancel_callback': self.on_cancel_request, **g}
         self.action_servers = [
@@ -328,6 +398,85 @@ class BrainNode(Node):
     def on_battery(self, msg):
         self.battery = msg.data / 10.0
         self.mark('battery')
+        change = self.battery_monitor.update(time.monotonic(), self.battery)
+        if change == 'low':
+            self.enter_low_battery()
+        elif change == 'ok':
+            self.leave_low_battery()
+
+    # Low battery
+
+    def enter_low_battery(self):
+        self.get_logger().warn(f'battery low ({self.battery:.1f} V): pausing everything')
+        self.low_battery = True
+        self.stop()
+        if self.center_client.service_is_ready():
+            self.center_client.call_async(Trigger.Request())
+        threading.Thread(target=self.stop_programs, daemon=True).start()
+        self.announce_low_battery()
+        if self.battery_timer is None:
+            self.battery_timer = self.create_timer(self.battery_repeat,
+                                                   self.announce_low_battery)
+        self.emit({'kind': 'battery_low', 'volts': round(self.battery, 1)})
+        self.state_changed()
+
+    def leave_low_battery(self):
+        self.get_logger().info(f'battery charged ({self.battery:.1f} V): resuming')
+        self.low_battery = False
+        if self.battery_timer is not None:
+            self.destroy_timer(self.battery_timer)
+            self.battery_timer = None
+        threading.Thread(target=self.start_programs, daemon=True).start()
+        self.set_eyes('happy')
+        self.say('Thank you! My battery is charged again.')
+        self.emit({'kind': 'battery_ok', 'volts': round(self.battery, 1)})
+        self.state_changed()
+
+    def announce_low_battery(self):
+        self.set_eyes('sad', fallback='closed')
+        self.say('My battery is empty. Please charge me.')
+
+    def set_eyes(self, expression, fallback=None):
+        if not self.eyes_client.service_is_ready():
+            return
+        future = self.eyes_client.call_async(SetExpression.Request(expression=expression))
+        if fallback:
+            # An eyes node without this expression (not restarted yet) says so
+            future.add_done_callback(
+                lambda f: f.result() is not None and not f.result().success
+                and self.eyes_client.call_async(SetExpression.Request(expression=fallback)))
+
+    def supervisorctl(self, *args):
+        try:
+            out = subprocess.run(['supervisorctl', *args], capture_output=True, text=True,
+                                 timeout=60)
+            return out.stdout
+        except (OSError, subprocess.SubprocessError) as e:
+            self.get_logger().error(f'supervisorctl {" ".join(args)}: {e}')
+            return ''
+
+    def stop_programs(self):
+        status = self.supervisorctl('status', *self.battery_programs)
+        running = [line.split()[0] for line in status.splitlines()
+                   if len(line.split()) > 1 and line.split()[1] in ('RUNNING', 'STARTING')]
+        # Remember what ran, unless already stopped by an earlier low (brain restarted)
+        if running or not self.battery_stopped:
+            self.battery_stopped = running
+        if running:
+            self.get_logger().info(f'low battery: stopping {" ".join(running)}')
+            self.supervisorctl('stop', *running)
+
+    def start_programs(self):
+        # Those that ran, in the configured order; after a brain restart in low-battery
+        # mode nothing is remembered: then all but SLAM (mapping is started by hand)
+        wanted = self.battery_stopped or [p for p in self.battery_programs
+                                          if p != 'rainbow_slam']
+        wanted = [p for p in self.battery_programs if p in wanted]
+        if wanted:
+            self.get_logger().info(f'battery charged: starting {" ".join(wanted)}')
+            for program in wanted:
+                self.supervisorctl('start', program)
+        self.battery_stopped = []
 
     def on_pick(self, msg):
         if msg.header.frame_id != self.map_frame:
@@ -398,7 +547,11 @@ class BrainNode(Node):
                'localized': pose is not None and word == 'sure', 'certainty': word,
                'position_std': round(pos_std, 2), 'yaw_std': round(yaw_std, 2),
                'battery_volts': round(float(self.battery or 0.0), 1),
+               'battery_low': self.low_battery,
+               'greeting_people': self.greet,
                'activity': current['label'] if current else 'idle', 'places': names}
+        if self.tracking:
+            out['head_following'] = self.tracking
         if pose is not None:
             out['x'], out['y'], out['yaw'] = (round(v, 2) for v in pose)
         return out
@@ -414,6 +567,12 @@ class BrainNode(Node):
 
     async def run_nav2(self, label, client, goal, goal_handle=None, feedback=None):
         """Run one Nav2 action; returns (success, message). goal_handle: our action's, or None."""
+        if self.low_battery:
+            return False, BATTERY_EMPTY
+        if self.attention.attending:
+            # The ToF in the head has to look ahead while driving
+            self.release_attention()
+            self.stop_tracking()
         if not client.wait_for_server(timeout_sec=1.0):
             return False, 'navigation is not running'
         entry = {'label': label, 'handle': goal_handle, 'nav': None, 'replaced': False}
@@ -506,6 +665,8 @@ class BrainNode(Node):
         return await self.run_nav2('driving', self.drive_client, goal, goal_handle, feedback)
 
     def stop(self):
+        self.release_attention()
+        self.stop_tracking()
         with self.lock:
             current = self.current
         if current is not None and current['nav']:
@@ -582,23 +743,150 @@ class BrainNode(Node):
     def on_faces(self, msg):
         """Tell the agent who is in view; the Hailo node puts names in class_id."""
         now = self.get_clock().now().nanoseconds * 1e-9
+        unknown = False
+        someone = False
         for detection in msg.detections:
             for result in detection.results:
-                label, _, name = result.hypothesis.class_id.partition(': ')
-                name = name.strip()
+                label, _, name = result.hypothesis.class_id.partition(':')
+                label, name = label.strip(), name.strip()
+                if label in ('face', 'person') and result.hypothesis.score >= 0.5:
+                    someone = True
+                if label != 'face':
+                    continue        # the object detector's boxes (person, chair, ...)
                 if not name or name.lower() == 'unknown':
+                    unknown = unknown or result.hypothesis.score >= 0.5
                     continue
                 if now - self.faces_seen.get(name, -1e9) >= self.face_repeat:
                     self.get_logger().info(f'face seen: {name}')
-                    self.emit({'kind': 'face_seen', 'name': name})
+                    self.emit({'kind': 'face_seen', 'name': name, 'greet': self.greet})
+                    self.attention.extend(time.monotonic(), self.greet_talk_s)
+                    if self.greet and self.mode == 'local':
+                        self.say(f'Hi {name}!')
                 self.faces_seen[name] = now
+        if someone:
+            self.attention.seen(time.monotonic())
+        if not unknown or not self.greet:
+            return
+        if now - self.unknown_last > 1.0:
+            self.unknown_since = now
+        self.unknown_last = now
+        if now - self.unknown_since >= self.unknown_after and \
+                now - self.unknown_asked >= self.face_repeat:
+            self.unknown_asked = now
+            self.get_logger().info('face seen: someone unknown')
+            self.emit({'kind': 'face_unknown'})
+            # Asking the name, then saving the face: keep them in view meanwhile
+            self.attention.extend(time.monotonic(), self.greet_talk_s)
+            if self.mode == 'local':
+                self.say("Hello! I don't know you yet.")
+
+    # Greeting people
+
+    def update_attention(self):
+        idle = self.current is None and not self.low_battery
+        busy_head = bool(self.tracking) and not self.attention.attending
+        change = self.attention.update(time.monotonic(), idle, self.greet, busy_head)
+        if change == 'start':
+            self.get_logger().info('someone is here: looking at them')
+            self.unknown_asked = -1e9   # a stranger in this look is asked their name
+            self.executor.create_task(self.track, 'face')
+        elif change == 'end':
+            self.get_logger().info('done looking at them')
+            self.stop_tracking()
+
+    def release_attention(self):
+        """The head is wanted for something else (a look, track or drive)."""
+        self.attention.release()
+
+    def load_settings(self):
+        try:
+            with open(self.settings_path) as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return {}
+
+    def set_greet(self, enabled):
+        self.greet = bool(enabled)
+        if self.greet:
+            self.attention.rearm()      # look at whoever is here now, not only newcomers
+        settings = self.load_settings()
+        settings['greet_people'] = self.greet
+        try:
+            os.makedirs(self.data_dir, exist_ok=True)
+            with open(self.settings_path, 'w') as f:
+                json.dump(settings, f)
+        except OSError as e:
+            self.get_logger().error(f'could not save {self.settings_path}: {e}')
+        if not self.greet and self.attention.attending:
+            self.attention.release()
+            self.stop_tracking()
+        self.get_logger().info(f'greeting people: {"on" if self.greet else "off"}')
+        self.state_changed()
+
+    def faces_again(self):
+        """Report the faces in view again (agent just connected, or a new look):
+        face events sent while nobody answered them are not lost."""
+        self.faces_seen = {}
+        self.unknown_asked = -1e9
+
+    def names_in_view(self, within=2.0):
+        now = self.get_clock().now().nanoseconds * 1e-9
+        return [n for n, t in self.faces_seen.items() if now - t < within]
+
+    def on_head_moving(self, msg):
+        self.head_moving = msg.data
+
+    def on_tracker_status(self, msg):
+        lost = msg.active and msg.lost
+        if msg.target != self.tracking:
+            self.tracking = msg.target
+            self.state_changed()
+        if lost and not self.tracking_lost:
+            self.get_logger().info(f'tracking: lost {msg.target}')
+            if self.attention.attending:
+                self.attention.release()   # a look of its own: the agent did not ask
+            else:
+                self.emit({'kind': 'track_lost', 'target': msg.target})
+        self.tracking_lost = lost
+
+    async def track(self, target):
+        """Follow target with the head (tracker node); returns (ok, message)."""
+        if not self.track_client.service_is_ready():
+            return False, 'my head tracking is not running'
+        response = await self.track_client.call_async(Track.Request(target=target))
+        return response.success, response.message
+
+    def stop_tracking(self):
+        if self.untrack_client.service_is_ready():
+            self.untrack_client.call_async(Trigger.Request())
+
+    async def look(self, pan_deg, tilt_deg):
+        """Point the head (degrees, 0, 0 = straight ahead); returns (ok, message, pan, tilt)."""
+        self.release_attention()
+        # The tracker would turn the head straight back (and replace this move)
+        if self.untrack_client.service_is_ready():
+            await self.untrack_client.call_async(Trigger.Request())
+        if not self.head_client.wait_for_server(timeout_sec=1.0):
+            return False, 'my head is not working right now', None, None
+        goal = MoveHead.Goal(pan=math.radians(pan_deg), tilt=math.radians(tilt_deg))
+        handle = await self.head_client.send_goal_async(goal)
+        if not handle.accepted:
+            return False, 'my head refused to move', None, None
+        response = await handle.get_result_async()
+        result = response.result
+        pan, tilt = math.degrees(result.pan), math.degrees(result.tilt)
+        return response.status == GoalStatus.STATUS_SUCCEEDED, result.message, pan, tilt
 
     async def capture_photo(self, timeout=3.0):
-        """Return one JPEG from the camera (shrunk to photo_width), or None."""
+        """Return one JPEG from the camera (shrunk to photo_width), or None.
+
+        Frames that arrive while the head moves or settles are skipped (blurred,
+        or not where the head points); the timeout counts from the call.
+        """
         future = Future()
 
         def on_image(msg):
-            if not future.done():
+            if not future.done() and not self.head_moving:
                 future.set_result(msg)
 
         sub = self.create_subscription(CompressedImage, self.photo_topic, on_image,
@@ -628,20 +916,93 @@ class BrainNode(Node):
         ok, out = cv2.imencode('.jpg', image, [cv2.IMWRITE_JPEG_QUALITY, 80])
         return out.tobytes() if ok else jpeg
 
-    async def remember_face(self, name):
-        """Ask the Hailo node to save the face in view as name; returns (ok, message)."""
+    async def remember_face(self, name, same_person=False):
+        """Ask the Hailo node to save the face in view as name; returns (ok, message, next).
+
+        same_person: they confirmed they are the one already saved under name (another
+        angle or light), or this is one more view while enrolling: a face that looks
+        different from the saved one is then added to that name. next: what the agent
+        should do after (more views of a new face), or ''.
+        """
         if not self.save_face_client.service_is_ready():
+            return False, 'face recognition is not running', ''
+        if name.islower():
+            name = name.title()     # one spelling per person: "stefanos" -> "Stefanos"
+        known = [n for n in self.names_in_view() if n != name]
+
+        async def save(append):
+            r = await self.save_face_client.call_async(
+                SaveGalleryItem.Request(id=name, append=append))
+            return save_outcome(r.result, r.message), r.message
+
+        outcome, raw = await save(False)
+        if outcome == 'distant' and same_person:
+            # Safe here: append only renames when the face is close to another name's
+            outcome, raw = await save(True)
+            if outcome == 'added':
+                self.get_logger().info(f'added a view of {name}')
+                return True, f'I added this view of {name}', ''
+        self.get_logger().info(f'remember face {name}: {outcome} ({raw})')
+        if outcome == 'added':
+            self.unknown_asked = self.get_clock().now().nanoseconds * 1e-9
+            if same_person:
+                return True, f'I added this view of {name}', ''
+            self.executor.create_task(self.collect_views, name)
+            return True, (f'I will remember {name}. Tell them to turn their head slowly to '
+                          f'one side and the other, so I learn their face from more angles'), (
+                'the extra views are added by themselves: call nothing')
+        if outcome == 'same':
+            return True, (f'I already know this view of {name}' if same_person
+                          else f'I already know you, {name}'), ''
+        if outcome == 'other_name':
+            return False, (f'I already know this face as {known[0]}' if len(known) == 1
+                           else 'I already know this face under another name'), ''
+        if outcome == 'distant':
+            return False, (f'I know a face called {name} that looks different'), (
+                f'ask if they are the {name} you know (another angle or other light); if '
+                f'yes, call remember_face again with same_person true; if not, ask for '
+                f'another name, like with their last name')
+        if outcome == 'many':
+            return False, 'I see more than one face; only one person please', ''
+        if outcome == 'none':
+            return False, "I can't see a face", ''
+        return False, raw or 'face recognition failed', ''
+
+    async def collect_views(self, name, seconds=12.0, views=2):
+        """After a new face: add up to views more views of it while they turn their head
+        (one photo from one angle recognises poorly). A view only goes in when it looks
+        different from the saved ones ('distant'), so append cannot rename anyone."""
+        added = 0
+        end = time.monotonic() + seconds
+        while added < views and time.monotonic() < end:
+            await self.sleep(1.0)
+            r = await self.save_face_client.call_async(
+                SaveGalleryItem.Request(id=name, append=False))
+            outcome = save_outcome(r.result, r.message)
+            if outcome in ('other_name', 'many'):
+                break               # someone else, or more than one face: stop
+            if outcome == 'distant':
+                r = await self.save_face_client.call_async(
+                    SaveGalleryItem.Request(id=name, append=True))
+                if save_outcome(r.result, r.message) == 'added':
+                    added += 1
+        self.get_logger().info(f'{name}: {added} more view(s) saved')
+
+    async def forget_face(self, name):
+        """Ask the Hailo node to delete a face; returns (ok, message)."""
+        if not self.delete_face_client.service_is_ready():
             return False, 'face recognition is not running'
-        response = await self.save_face_client.call_async(
-            SaveGalleryItem.Request(id=name, append=False))
-        # hailo_msgs/srv/SaveGalleryItem result codes
-        messages = {0: f'I will remember {name}',
-                    1: f'I already know you, {name}',
-                    2: 'I already know this face under another name',
-                    3: f'I know someone else called {name}',
-                    4: 'I see more than one face; only one person please',
-                    5: "I can't see a face"}
-        return response.result in (0, 1), messages.get(response.result, response.message)
+        # The gallery's ids are exact: try the usual spellings
+        for candidate in dict.fromkeys([name, name.title(), name.lower(), name.capitalize()]):
+            response = await self.delete_face_client.call_async(
+                DeleteGalleryItem.Request(id=candidate))
+            if response.result == 0:
+                self.faces_seen.pop(candidate, None)
+                self.get_logger().info(f'forgot the face of {candidate}')
+                return True, f'I forgot the face of {candidate}'
+            if response.result != 1:
+                return False, response.message or 'face recognition failed'
+        return False, f'I do not know a face called {name}'
 
     def set_pose_estimate(self, place):
         """Tell AMCL the robot is at a place (startup localization from a photo)."""
@@ -666,7 +1027,11 @@ class BrainNode(Node):
 
     def on_utterance(self, msg):
         command = None
-        if msg.command and msg.command_confidence >= self.command_confidence:
+        # An answer to the agent's question goes to the agent: Vosk squeezes anything
+        # into its few phrases ("Stefanos", the answer to "what is your name?", came out
+        # as "stop" at 1.00). "stop" still works then: the stop word is its own detector.
+        answer = msg.follow_up and self.mode == 'remote'
+        if msg.command and msg.command_confidence >= self.command_confidence and not answer:
             command = parse(msg.command, self.place_names())
         if command is not None:
             self.local_command(msg.command, command)
@@ -735,6 +1100,21 @@ class BrainNode(Node):
         elif command['action'] == 'localize':
             self.executor.create_task(self.spin_localize)
             done = 'started turning in place until I know where I am'
+        elif command['action'] == 'stop_watching':
+            self.release_attention()
+            self.stop_tracking()
+            self.set_greet(False)
+            done = 'stopped following with my head and switched greeting people off'
+            self.say("Okay, I'll stop watching.")
+        elif command['action'] == 'greet_on':
+            self.set_greet(True)
+            done = 'switched greeting people on'
+            self.say("Okay, I'll look out for people.")
+        elif command['action'] == 'watch_me':
+            self.release_attention()        # asked for: not ended by the greeting's timer
+            self.executor.create_task(self.track, 'face')
+            done = 'started following the face in front of me with my head'
+            self.say("Okay, I'm watching you.")
         else:
             try:
                 place = self.find_place(command['place'])
@@ -913,6 +1293,7 @@ class LinkHandler:
             node.on_agent_status({'phase': 'offline', 'skill': ''})
         else:
             node.publish_status()
+            node.faces_again()      # who is in view now gets greeted or asked
 
     def on_agent_status(self, status):
         self.node.on_agent_status(status)
@@ -970,6 +1351,8 @@ class LinkHandler:
 
     def skill_go_to_place(self, place):
         node = self.node
+        if node.low_battery:
+            return {'ok': False, 'message': BATTERY_EMPTY}
         target = node.find_place(place)
         node.executor.create_task(node.go_to, target)
         return {'ok': True, 'message': f'started going to {target.name}'}
@@ -1016,6 +1399,33 @@ class LinkHandler:
         place = self.node.delete_place(name)
         return {'ok': True, 'message': f'deleted {place.name}'}
 
+    async def skill_look(self, pan_degrees=0.0, tilt_degrees=0.0):
+        # The agent's tilt is positive up; the head's (URDF) positive down
+        ok, message, pan, tilt = await self.node.look(float(pan_degrees), -float(tilt_degrees))
+        out = {'ok': ok, 'message': message}
+        if pan is not None:
+            out['pan_degrees'], out['tilt_degrees'] = round(pan), round(-tilt)
+            if ok:
+                out['message'] = f'looking {round(pan)} deg left, {round(-tilt)} deg up'
+                # Without this the model made up what was there
+                out['seen'] = 'nothing yet: call capture_photo to see what is there'
+        return out
+
+    async def skill_track(self, what):
+        self.node.release_attention()      # asked for: not ended by the greeting's timer
+        ok, message = await self.node.track(str(what).strip())
+        out = {'ok': ok, 'message': message}
+        if ok:
+            # As for look: without this the model made up where the thing was
+            out['seen'] = ('not known: you do not know if it is in view now; you are '
+                           'told if it is lost; call capture_photo to see')
+        return out
+
+    def skill_stop_tracking(self):
+        self.node.release_attention()
+        self.node.stop_tracking()
+        return {'ok': True, 'message': 'stopped following; my head is back in the middle'}
+
     async def skill_capture_photo(self):
         jpeg = await self.node.capture_photo()
         if jpeg is None:
@@ -1023,8 +1433,21 @@ class LinkHandler:
         return {'ok': True, 'image': base64.b64encode(jpeg).decode('ascii'),
                 'where': self.node.where_am_i()['description']}
 
-    async def skill_remember_face(self, name):
-        ok, message = await self.node.remember_face(str(name).strip())
+    async def skill_remember_face(self, name, same_person=False):
+        ok, message, next_step = await self.node.remember_face(
+            str(name).strip(), same_person in (True, 'true', 'True', 1))
+        out = {'ok': ok, 'message': message}
+        if next_step:
+            out['next'] = next_step
+        return out
+
+    def skill_greet_people(self, enabled):
+        self.node.set_greet(enabled in (True, 'true', 'True', 1))
+        return {'ok': True, 'message': 'I will greet people I see' if self.node.greet
+                else 'I will not turn to people or greet them until you say so'}
+
+    async def skill_forget_face(self, name):
+        ok, message = await self.node.forget_face(str(name).strip())
         return {'ok': ok, 'message': message}
 
     def skill_set_pose_estimate(self, place):

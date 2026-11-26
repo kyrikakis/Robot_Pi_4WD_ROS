@@ -87,14 +87,15 @@ Supervisor starts these when the container starts (`supervisor/rainbow.conf`):
 | Program | Launch file | Contents |
 |---|---|---|
 | `rainbow_microros` | `microros.launch.py` | micro-ROS agent (ESP board) |
-| `rainbow_base` | `base.launch.py` | description, BNO055, EKF, head, eyes, velocity watchdog, IP publisher |
+| `rainbow_base` | `base.launch.py` | description, BNO055, EKF, eyes, velocity watchdog, IP publisher |
 | `rainbow_tof` | `tof.launch.py` | ToF camera |
+| `rainbow_head` | `head.launch.py` | Pan/tilt head (smooth moves) |
 | `rainbow_localization` | `localization.launch.py` | map_server + AMCL on the saved map in `maps/` |
 | `rainbow_slam` | `slam.launch.py` | slam_toolbox, for mapping (not started by default) |
 | `rainbow_navigation` | `navigation.launch.py` | Nav2 |
 | `rainbow_foxglove` | `foxglove.launch.py` | Foxglove bridge on port 8765 |
 | `rainbow_voice` | `voice.launch.py` | Text to speech, wake word and listening (ReSpeaker Lite) |
-| `rainbow_brain` | `brain.launch.py` | Local brain, places, link to the Mac agent (port 8766) |
+| `rainbow_brain` | `brain.launch.py` | Local brain, places, link to the Mac agent (port 8766), head tracker |
 
 ```
 supervisorctl status
@@ -108,13 +109,15 @@ map_saver_cli -f maps/<name>`, set `yaml_filename` in
 `config/localization.yaml`, then swap the two programs back.
 
 To run everything by hand instead: `scripts/rainbow_launch.sh rainbow.launch.py`
-(arguments `localization`, `navigation`, `foxglove`, `voice`, `tof`,
+(arguments `localization`, `navigation`, `foxglove`, `voice`, `tof`, `head`,
 `microros`, `brain`, default `true`; `slam` default `false`).
 
 ### Talking to the robot
 
 ```
-# Head (radians; pan positive = left, tilt positive = down)
+# Head (radians; pan positive = left, tilt positive = down). Moves are smooth;
+# /head/move returns once the head has settled, set_pose returns at once
+ros2 action send_goal /head/move rainbow_interfaces/action/MoveHead "{pan: 0.3, tilt: 0.0}"
 ros2 service call /head/set_pose rainbow_interfaces/srv/SetHeadPose "{pan: 0.3, tilt: 0.0}"
 ros2 service call /head/center std_srvs/srv/Trigger
 
@@ -132,6 +135,8 @@ ros2 service call /brain/where_am_i rainbow_interfaces/srv/WhereAmI
 # Skills (all through Nav2); /brain/stop cancels every Nav2 goal
 ros2 action send_goal /brain/go_to_place rainbow_interfaces/action/GoToPlace "{place: kitchen}" --feedback
 ros2 action send_goal /brain/turn rainbow_interfaces/action/Turn "{angle: 1.57}"
+# Head tracking: a face, a person's name, or a detected thing; /tracker/stop ends it
+ros2 service call /tracker/start rainbow_interfaces/srv/Track "{target: face}"
 ros2 service call /brain/stop std_srvs/srv/Trigger
 ```
 
@@ -150,10 +155,14 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=cmd_
 Connect the Foxglove app to `ws://<robot-ip>:8765` (Foxglove WebSocket; the IP is
 published on `/rpi5_ip`), then import the layout `foxglove/rainbow.json`. It has the
 3D view (click to send a Nav2 goal), a Places tab (its pose tool picks a pose
-for `/places/save` with `from_pick: true`), teleop, buttons to stop (cancel
-every goal), relocalize (AMCL searches the whole map again) and save a picked place, commanded vs actual speed, head and
-eyes controls, the face-recognition camera and the log, and a Status tab
-(`/brain/status`: the brain's state and health, the Mac agent's state and log). The ToF cloud is heavy
+for the Save place button, `/places/save` with `from_pick: true`; Delete place
+removes one by name), teleop, buttons to stop (cancel every goal) and relocalize
+(AMCL searches the whole map again), the battery, the Pi's CPU temperature
+(`/rpi5_temperature`), the face-recognition camera and the log, a Status tab
+(`/brain/status`: the brain's state and health, the Mac agent's state and log)
+and a Head tab (hold the Head teleop's arrows to turn or tilt it, `/head/jog`;
+point and centre the head, whether it is moving, its angles over time, and the
+eyes' expression). The ToF cloud is heavy
 over Wi-Fi; hide `/point_cloud` in the 3D view if it lags.
 
 ### Useful commands

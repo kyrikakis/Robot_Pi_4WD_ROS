@@ -140,8 +140,18 @@ One node, with these parts.
 | REMOTE | Mac connected (heartbeat within 3 s) | Runs the agent's skill calls; routes utterances to it |
 | LOCAL | Mac not connected | Local commands only; says "I'm offline, I can only do simple things" for anything else |
 
-A third mode that refuses motion (battery cutoff) comes with the battery work,
-which is not part of this design yet.
+**Low battery** comes on top of either mode (`rainbow_brain/battery.py`): at
+<= 7.0 V for 30 s (the pack dips while driving, so one reading means little)
+the brain cancels every motion, refuses new ones ("my battery is empty"),
+centres the head and stops `rainbow_localization`, `rainbow_tof`, `rainbow_slam`
+and `rainbow_navigation` with `supervisorctl` (there is no dock yet, so driving
+is pointless, and Nav2 alone costs ~40% of a core). The ESP link, base (eyes,
+EKF), voice, brain and Foxglove keep running: it can still be talked to and
+seen. Every 2 min (`battery_repeat_s`) it says "My battery is empty. Please
+charge me." with sad eyes. The agent gets a `battery_low` event (not spoken
+again) and sees it in the state. Once >= 7.6 V has held for 1 min (a charged
+battery) the stopped programs start again, the map first, and it says thank
+you (`battery_ok`).
 
 Losing the link in the middle of a goal does not cancel it; the brain just takes
 no new decisions from the agent. When the link comes back, the brain sends the
@@ -171,6 +181,11 @@ brain on `/voice/grammar` whenever the places change:
 - "go to the <place>", "go to <place>" (place names from the places file;
   words Vosk does not know cannot be recognised and go to the agent)
 - "come back", "go home", "come home" (the place named "home")
+- "look around", "find yourself", "localize"
+- The head, so it can be controlled without the Mac: "stop watching", "stop
+  following" (ends any tracking, centres the head and switches greeting people
+  off), "watch for people", "greet people" (switches it on), "watch me" (follows
+  the face in front of it)
 
 One unknown word after a phrase is accepted ("go to the sofa please"); more
 means a longer sentence, which goes to the agent. On test clips nothing that
@@ -183,7 +198,7 @@ Each call is checked (known place, mode) and may be refused with a reason the
 agent can say aloud. If Nav2 cannot reach a place, the brain does not retry: it
 reports the failure to the agent (in LOCAL mode it says so itself).
 
-Head skills (`look`) come later, with the head controller (see [Head](#head)).
+The head has `look` (see [Head](#head)).
 
 | Skill | Does |
 |---|---|
@@ -194,7 +209,11 @@ Head skills (`look`) come later, with the head controller (see [Head](#head)).
 | `list_places()` | Places with room, description and status |
 | `save_place(name, description, room, guess)` | Save the current pose (or the last Foxglove pick); `guess` saves it unconfirmed |
 | `edit_place(name, new_name, description, room, confirm)`, `delete_place` | Rename, re-describe or confirm a place; delete it |
-| `capture_photo()` | A still JPEG from the RGB camera, with the pose it was taken at |
+| `capture_photo()` | A still JPEG from the RGB camera, with the pose it was taken at; skips frames while the head moves |
+| `look(pan_degrees, tilt_degrees)` | Point the head (+ left, + up from straight ahead); returns once it has settled |
+| `track(what)`, `stop_tracking()` | Keep the head on a face, a person (by name) or a detected thing; `track_lost` event when it goes out of view; stopping centres the head |
+| `greet_people(enabled)` | Turn greeting people who come by on or off (saved; on by default) |
+| `remember_face(name)`, `forget_face(name)` | Save the face in view under a name (after the person confirmed it), or delete one |
 | `turn(angle)`, `drive(distance)` | Corner cases: Nav2 Spin / DriveOnHeading (forward only) |
 | `say(text)` | espeak |
 | `set_expression(name)` | Eyes |
@@ -445,10 +464,45 @@ load with it on).
 - **Faces**: the node publishes `/hailo_face_recognition/detections`
   (`vision_msgs/Detection2DArray`) with the name in the class id
   (`"<label>: <name>"`). The brain sends the agent a `face_seen` event, at most
-  once per person per 10 min (`face_repeat`). The agent notes it (speaking
-  first is for later).
+  once per person per 10 min (`face_repeat`). The agent notes it. A face it
+  does not know (only the face boxes count, not COCO's), in view for 3 s
+  (`unknown_after`), becomes a `face_unknown` event, at most once per 10 min;
+  the agent answers it at once: it greets them and asks their name.
 - **Remembering faces**: `remember_face(name)` calls
-  `/hailo_face_recognition/save_face` (`hailo_msgs/srv/SaveGalleryItem`).
+  `/hailo_face_recognition/save_face` (`hailo_msgs/srv/SaveGalleryItem`); an
+  all-lowercase name is saved capitalised. The agent says the name back and
+  saves only after a yes; a guard in `agent/rainbow_agent/guards.py` enforces it
+  (the model saved names at once, and invented "Alex" when none was said). A face
+  already saved under another name is refused with that name ("I already know
+  this face as Bambu"); `forget_face(name)` (`.../delete_face`) removes one, and
+  after it the agent saves the confirmed name. The Hailo node answers 1 for all
+  three "already known" cases and tells them apart only in its message
+  (`rainbow_brain/faces.py`). A name saved with a face unlike the one in view
+  ("I know a face called Stefanos that looks different") makes the agent ask if
+  it is the same person (another angle or light); only after a yes does
+  `remember_face(name, same_person=true)` add this view to that name (Hailo
+  `append`; the agent's guard drops a same_person the person did not confirm).
+  `append` with a face close to someone else's renames them, so it is used only
+  after that answer. After a new face is saved the brain collects up to two more
+  views itself for 12 s while the person turns their head (the agent asks them
+  to). Face events sent while the agent was offline are not lost: when it
+  connects, and when a look starts, the faces in view are reported again. Answers
+  to the agent's questions skip the local phrase list (Vosk heard "Stefanos" as
+  "stop"); the stop word still works then.
+- **Greeting people** (`rainbow_brain/greeting.py`): someone in view (COCO's
+  `person`, e.g. legs, or a face) for 1 s while the robot is idle gets one
+  look: the brain has the tracker follow "face" (falling back to the body's top),
+  for 20 s, then the head centres. The tracker moves the head at 200 deg/s, calmer
+  than the head's 400 deg/s default (full speed looked jumpy when following). Face recognition then names them: a
+  `face_seen` event with `greet` true, which the agent answers at once with a
+  greeting (in local mode the brain says "Hi <name>!"); an unknown face is
+  `face_unknown` (asks the name). One look per presence: they must be out of view
+  for 10 s to be noticed again; a person is greeted at most once per 10 min. Not
+  while driving (the ToF in the head must look ahead), in low battery, or while
+  the head follows something asked for; driving, `look` and `track` take the head
+  back. `greet_people(false)` ("stop greeting people") switches it off, also the
+  unknown-face question; saved in `<data_dir>/settings.json`. "stop watching"
+  only ends the current follow.
 
 Tested on the Pi on domain 77 with fake Hailo topics: photo in 0.1-0.5 s,
 no subscription left behind, one face event per person, the pose estimate.
@@ -475,16 +529,65 @@ a little. A photo only gives it a hint; it is never treated as a precise pose.
 
 Code: `agent/rainbow_agent/localize.py`. Checked with stand-in photos (three
 different images, each found correctly, ~2.5 s); not yet with real rooms.
-Once the head controller exists, this can use several head directions.
+With the head controller (see [Head](#head)) this can use several head directions (next).
 
 ## Head
 
-The servos have no position feedback, so after a move the head must wait until
-it has physically arrived before a photo is taken. A head movement controller
-(smooth moves, a settle time that depends on the size of the move) is planned
-but not designed yet; it needs testing with the owner watching. Until then,
-the brain does not move the head: photos are taken with it centred, and the
-`look` skill comes with the controller.
+The servos have no position feedback and jump at full speed to whatever angle
+the ESP is sent, so the head node (`rainbow_drivers/head_node.py`, its own
+supervisor program `rainbow_head`) controls the motion:
+
+- The commanded angle moves towards the target with limited speed and
+  acceleration, braking to stop on the target; both axes are scaled to arrive
+  together. The default is near the servos' own speed (400 deg/s, 4000
+  deg/s^2: a 30 deg move takes ~0.2 s): the ESP takes whole degrees and the
+  servos visibly step at each one, so slow glides (5 to 60 deg/s, tried with
+  the owner) all looked jerky. A goal can still ask for a slower speed. Code:
+  `rainbow_drivers/head_motion.py`, tested without ROS.
+- A new target blends in from the current motion, so a stream of targets is one
+  continuous movement: `/head/target` (`HeadTarget`, latest wins) is for
+  following faces later.
+- `/joint_states` follows the commanded angle at 50 Hz while moving (10 Hz at
+  rest), `servo_latency_s` late, so the ToF and camera frames are placed with the
+  pose the head really had. This matters for the planned ToF + camera fusion
+  (the distance of what the camera sees, placed in the map).
+- After a move, the head counts as settled only after `settle_base_s` +
+  `settle_per_deg_s` x the degrees moved; `/head/moving` is true until then.
+- `/head/move` (`MoveHead` action) returns once settled; a new target of any
+  kind replaces it, cancelling stops the head where it is. `/head/set_pose`,
+  `/head/center` and the old degree topics start a move without waiting.
+
+The brain's `look` uses `/head/move`; `capture_photo` skips frames while
+`/head/moving` is true.
+
+**Tracking** (`rainbow_brain/tracker_node.py`, started by the brain's `track`
+skill): the tracker follows a target in the detections (any
+`vision_msgs/Detection2DArray` topic in `detection_topics`) by sending
+`/head/target` with each detection. It aims from the head pose at the time of
+the frame (`/joint_states` history), not the current one, so the head's own
+motion and the detector's delay do not make it overshoot; `gain` 0.8 damps
+noisy boxes, offsets under 1.5 deg are ignored. Targets
+(`rainbow_brain/tracking.py`): "face" (anyone; "me", "someone" map to it), a
+person's name (face recognition's `face: <name>`), or an object detector's
+label ("ball" maps to COCO's "sports ball"). Several matches: the one nearest the
+last, or at the start the largest. "face" falls back to a person's body
+(COCO's `person`, aimed at the top of the box) when no face is visible. The
+head stays still while the target is in a quiet zone in the middle of the view
+(8 deg pan, 6 deg tilt off centre). Out of view, the head stays where it is
+for 3 s; then the status says lost, the head goes back to the centre and the
+agent gets a `track_lost` event. `stop_tracking` and `stop` end tracking and
+centre the head; `look` ends it and turns the head where asked. Only the head moves: the robot does not drive after
+anything.
+
+The Hailo container runs face recognition and an object detector (COCO's 80
+classes: person, sports ball, backpack, cup, ...) in one pipeline, so faces,
+known people and those things can be tracked; tracking.py maps everyday words
+("ball", "phone") to COCO's names. The camera's FOV (66 x 41 deg, the Camera
+Module 3's datasheet) and the frame delay (0.15 s: the Hailo stamps detections
+when it publishes them, after the frame was taken) are not measured yet. The
+Hailo's boxes are normalized (0-1); a detector sending pixels needs
+`normalized_boxes` false. Speed, settle time and latency are estimates until
+measured on the robot with the owner watching.
 
 ## Build order
 
@@ -521,5 +624,3 @@ Each step is discussed with the owner before it is built.
 
 ## Open questions
 
-- Battery: warning and cutoff are out of scope for now; when they are added, the
-  brain gets a mode that refuses motion and the agent a battery event.

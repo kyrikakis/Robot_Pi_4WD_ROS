@@ -7,6 +7,7 @@ from types import SimpleNamespace as NS
 from rainbow_agent.config import Config
 from rainbow_agent.conversation import Conversation, EVENT_PREFIX
 from rainbow_agent.evaluate import check, value_matches
+from rainbow_agent.guards import check_remember_face, said_no, wants_action, wants_photo
 from rainbow_agent.robot import SimRobot
 from rainbow_agent.skills import NAMES
 import yaml
@@ -319,3 +320,72 @@ def test_status_reports_a_turn():
     assert all('uptime' in r for r in robot.reports)
     conv.new_session()
     assert conv.status.fields['session_turns'] == 0
+
+
+def test_remember_face_needs_a_said_and_confirmed_name():
+    # Never a name nobody said
+    assert 'never guess' in check_remember_face('Alex', 'remember my face', '', 'remember my face')
+    # Said, but not yet said back and confirmed
+    said = "remember my face, I'm Stefanos"
+    assert 'did I get that right' in check_remember_face('Stefanos', said, '', said)
+    # Said back, then yes
+    assert check_remember_face('Stefanos', said + ' yes', 'Stefanos, did I get that right?',
+                               'Yes.') is None
+    # Said back, but the answer is no
+    assert check_remember_face('Stefanos', said + ' no', 'Stefanos, right?', 'No.') is not None
+    # A spelled-out name counts as said
+    spelled = "my name is Stefan. No, it's S T E F A N O S. Yes"
+    assert check_remember_face('Stefanos', spelled, 'Stefanos, is that right?',
+                               "Yes, that's right.") is None
+
+
+def test_yes_to_a_name_check_wants_action():
+    assert wants_action('Yes.', 'Stefanos, did I get that right?')
+    assert not wants_action('Yes.', 'Are you okay?')
+    assert not wants_action('Yes.', '')
+    assert wants_action("I'm Stefanos.", 'Hello, I am Rainbow. What is your name?')
+    assert not wants_action("I'm tired.", 'How are you?')
+
+
+def test_a_confirmed_name_stays_confirmed():
+    # After a yes earlier in the conversation, saving again needs no new yes
+    assert check_remember_face('Stefanos', "I'm not Bambu", 'Is that right?', "I'm not Bambu",
+                               confirmed={'Stefanos'}) is None
+    assert check_remember_face('Maria', "I'm not Bambu", '', "I'm not Bambu",
+                               confirmed={'Stefanos'}) is not None
+
+
+def test_wants_photo():
+    assert wants_photo('Look down and tell me what you see.')
+    assert wants_photo('What do you see?')
+    assert wants_photo("What's in front of you?")
+    assert not wants_photo('Look down.')
+    assert not wants_photo('Where are you?')
+
+
+def test_questions_about_itself_want_a_tool():
+    assert wants_action('Which places do you know?')
+    assert wants_action('Where are you right now?')
+    assert wants_action('How is your battery?')
+
+
+def test_a_short_answer_to_a_question_is_kept():
+    from rainbow_agent.stt import answer_text
+    assert answer_text('You.') == 'Yes.'
+    assert answer_text(' Thank you. ') == 'Thank you.'
+    assert answer_text('Okay.') == 'Okay.'
+    assert answer_text('') == '' and answer_text(' . ') == ''
+    assert wants_action('Okay.', 'Stefanos, did I get that right?')
+
+
+def test_names_for_whisper(tmp_path):
+    from rainbow_agent.stt import known_names
+    f = tmp_path / 'names.txt'
+    f.write_text('Stefanos\n# a comment\n\nMyrto  # the kids\n')
+    assert known_names(f, {'Maria'}) == ['Stefanos', 'Myrto', 'Maria']
+    assert known_names(tmp_path / 'missing.txt') == []
+
+
+def test_said_no():
+    assert said_no('No.') and said_no("No, it's Stefanos") and said_no("That's wrong")
+    assert not said_no('Yes.') and not said_no('Nobody knows')

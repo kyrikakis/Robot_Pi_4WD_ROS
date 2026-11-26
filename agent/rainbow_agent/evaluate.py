@@ -7,10 +7,14 @@ instant). A case passes when:
            {min, max} range), {abs: n} compares absolute values
   forbid   none of these skills is called ("any" = no skill at all)
   reply_not  none of these words is in a reply (invented details)
+  reply_has  each of these words is in some reply
+A case can start with a robot event (event: {kind: face_unknown}) and set
+SimRobot attributes first (robot: {face_in_view: Bambu}).
 An expected arg of {empty: true} must be absent or empty (not invented).
 Every reply is also checked for being speakable: short, no markdown or emoji.
 """
 
+import asyncio
 import re
 import statistics
 import time
@@ -70,6 +74,9 @@ def check(case, calls, replies):
     for name, _ in calls:
         if 'any' in forbid or name in forbid:
             problems.append(f'forbidden call {name}')
+    for word in case.get('reply_has') or []:
+        if not any(word.lower() in r.lower() for r in replies):
+            problems.append(f'no reply says "{word}"')
     for word in case.get('reply_not') or []:
         if any(word.lower() in r.lower() for r in replies):
             problems.append(f'reply says "{word}" (invented)')
@@ -90,14 +97,25 @@ async def run(cfg, llm, cases_path, only=None):
     results, times = [], []
     for case in cases:
         robot = SimRobot(time_scale=0.0)
+        for key, value in (case.get('robot') or {}).items():
+            setattr(robot, key, value)      # e.g. face_in_view: Bambu
         conversation = Conversation(llm, cfg.chat_alias, robot, cfg)
         says = case['say'] if isinstance(case['say'], list) else [case['say']]
         replies = []
         start = time.monotonic()
+        if case.get('event'):               # a robot event first, e.g. {kind: face_unknown}
+            replies.append(await conversation.robot_event(case['event']) or '')
         for text in says:
             t = time.monotonic()
             replies.append(await conversation.user_says(text))
             times.append(time.monotonic() - t)
+            # Then the robot's events, as the CLI delivers them (a failed trip gets a turn)
+            for _ in range(5):
+                await asyncio.sleep(0)
+            while not robot.events.empty():
+                reply = await conversation.robot_event(robot.events.get_nowait())
+                if reply:
+                    replies.append(reply)
         elapsed = time.monotonic() - start
         problems = check(case, robot.calls, replies)
         results.append(not problems)

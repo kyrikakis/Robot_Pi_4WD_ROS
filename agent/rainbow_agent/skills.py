@@ -58,12 +58,40 @@ TOOLS = [
            'confirm': {'type': 'boolean'}},
           ['name']),
     _tool('delete_place', 'Forget a named place.', {'name': _TEXT}, ['name']),
+    _tool('look',
+          'Point your head (and camera). Angles from straight ahead: pan positive left, '
+          'negative right; tilt positive up, negative down. 0, 0 looks straight ahead. '
+          'The head turns about 40 degrees each way and tilts about 36 up and 19 down; '
+          'bigger values stop at the limit. Moving the head shows you nothing: only '
+          'capture_photo does, so never say what is there without one. Returns once '
+          'the head is still, so a capture_photo right after sees where it points.',
+          {'pan_degrees': {'type': 'number', 'description': '-40 to 38'},
+           'tilt_degrees': {'type': 'number', 'description': '-19 to 36'}}),
+    _tool('track',
+          'Keep your head turned towards something while it moves (only the head; '
+          'you do not drive after it). what: "face" for whoever is in front of you, a '
+          "person's name (if you know their face), or a thing like \"ball\". Keeps "
+          'going until stop_tracking, stop or look; if it goes out of view you get a '
+          'robot event. Starting it shows you nothing: capture_photo does.',
+          {'what': {'type': 'string', 'description': 'face, a name, or a thing'}},
+          ['what']),
+    _tool('stop_tracking', 'Stop following something with your head.'),
     _tool('capture_photo',
           'Take a photo with your camera and look at it, when someone asks what you see '
           'or you need to look. You get the photo right after.'),
     _tool('remember_face',
-          'Remember the face of the person in front of the camera under their name. Only '
-          'when they ask you to, and only one person may be in view.',
+          'Remember the face of the person in front of the camera under their name. First '
+          'say the name back and get a yes; never guess a name. Only one person in view. '
+          'same_person: true when they said they are the one already saved under that '
+          'name, or to add another view of them (the result says when).',
+          {'name': _TEXT, 'same_person': {'type': 'boolean'}}, ['name']),
+    _tool('greet_people',
+          'Turn on or off turning your head to people you see and greeting them. '
+          '"stop greeting people", "leave me alone", "don\'t look at everyone": false; '
+          '"you can greet people again": true. ("stop watching" is stop_tracking.)',
+          {'enabled': {'type': 'boolean'}}, ['enabled']),
+    _tool('forget_face',
+          'Forget the face saved under a name.',
           {'name': _TEXT}, ['name']),
 ]
 

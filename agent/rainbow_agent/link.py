@@ -171,5 +171,10 @@ class LinkRobot:
         parts = [f"Activity: {s.get('activity', 'unknown')}."]
         if s.get('battery_volts'):
             parts.append(f"Battery {s['battery_volts']:.1f} V.")
+        if s.get('greeting_people') is False:
+            parts.append('Greeting people is off.')
+        if s.get('battery_low'):
+            parts.append('Battery empty: everything is paused and you cannot drive until '
+                         'you are charged.')
         parts.append(f"Known places: {', '.join(s.get('places') or []) or 'none yet'}.")
         return ' '.join(parts)

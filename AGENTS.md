@@ -19,7 +19,7 @@ compose setup lives in `~/hailo_tappas_ros2` on the host.
 |---|---|---|
 | ESP32 board (micro-ROS over `/dev/ttyUSB_ROS`) | Motor PID, head servos, lidar, battery, an IMU | No. Firmware is out of scope; treat its topics as a fixed contract |
 | `robot` container (this repo) | Everything in `src/`, run by supervisor | Yes |
-| Hailo container ([hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2)) | Face recognition on the Hailo, capturing the RGB camera itself | No. Only `hailo_msgs` is built here, to read its messages |
+| Hailo container ([hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2)) | Face recognition and object detection (COCO) on the Hailo, capturing the RGB camera itself | No. Only `hailo_msgs` is built here, to read its messages |
 
 Contracts with the ESP firmware (node `YB_Car_Node`, do not rename): it
 subscribes to `cmd_vel` (skid-steer: it ignores `linear.y`, tested with the wheels
@@ -34,10 +34,11 @@ unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
   so a power-on is a clean deployment. This is deliberate; do not bind-mount
   the repo. The image is built from the **Pi host's** checkout, not from inside
   the container.
-- Supervisor runs eight of its nine programs from `supervisor/rainbow.conf`, each a
+- Supervisor runs nine of its ten programs from `supervisor/rainbow.conf`, each a
   `rainbow_bringup` launch file via `scripts/rainbow_launch.sh`. The micro-ROS
-  agent (`rainbow_microros`) and the ToF (`rainbow_tof`) are separate programs:
-  restarting the base disconnects neither the ESP nor the ToF.
+  agent (`rainbow_microros`), the ToF (`rainbow_tof`) and the head
+  (`rainbow_head`) are separate programs: restarting the base disconnects
+  neither the ESP nor the ToF, and the head can be tuned without touching the EKF.
 - Localization is map_server + AMCL (`rainbow_localization`) on a saved map in
   `maps/`, read-only. slam_toolbox (`rainbow_slam`, autostart off) is only for
   mapping a new place; never run both (both publish map -> odom). Its
@@ -47,7 +48,7 @@ unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
 - **Restarting `rainbow_base` restarts the EKF, which resets the odometry: AMCL
   then needs a pose estimate, and a SLAM mapping session gets scrambled
   (restart `rainbow_slam` right after). Ask the owner before restarting the
-  base.** Restarting Nav2, the ToF or the brain is safe.
+  base.** Restarting Nav2, the ToF, the head or the brain is safe.
 - Nav2 runs composed in one process (`nav2_container`); as separate processes
   its 11 servers cost ~66% of a core idle, composed ~38%.
 - `ROS_DOMAIN_ID=20` for the robot.
@@ -82,6 +83,21 @@ The code you edit is the code the robot runs. Lessons learned:
 - After building a new message type, restart `rainbow_foxglove`: the bridge keeps
   the interface library it loaded at start and cannot subscribe to the new type
   ("typesupport library ... could not be found"), so Foxglove panels stay empty.
+- Nav2 can become undiscoverable to anything started after it (2026-11-25, after
+  `rainbow_base` and `rainbow_foxglove` were restarted): it keeps working on the
+  topics it already has, but `ros2 node list` shows none of its nodes, its topics
+  (`/local_costmap/voxel_grid`, costmaps) have "no publisher", and Foxglove panels
+  stay empty. A Fast DDS shared-memory error (`RTPS_TRANSPORT_SHM ...
+  open_and_lock_file failed`) points to a stale lock. Restarting `rainbow_navigation`
+  brings it back. A cause found the same day: restarts left the old process
+  running. Supervisor signals the program's group; `ros2 launch` exited at once
+  while the Nav2 container ignored SIGTERM, so supervisor saw the program stopped
+  and never sent SIGKILL. Two Nav2s with the same node names: every trip failed
+  with "navigation is not running". `scripts/rainbow_launch.sh` now stays in
+  front until its whole group is gone (SIGINT to launch, then SIGTERM/SIGKILL to
+  what is left, by process group). Programs started before that change still
+  leave their old process once on their next restart: check with
+  `ps -eo pid,pgid,etime,args | grep [c]omponent_container` and stop extras by PID.
 - `supervisorctl tail` can fail on non-UTF-8 log output; read
   `/var/log/supervisor/<program>-stdout*.log` directly.
 - **ROS params files** (`config/*.yaml`) must only have node names at the top
@@ -106,8 +122,9 @@ The code you edit is the code the robot runs. Lessons learned:
   restart rainbow_navigation once the ESP is back. Avoid restarting `rainbow_microros`: after the
   agent stops, the ESP itself needs a board reset (with the agent running).
 - The ToF is in both costmaps (STVL). The node does the floor filtering and
-  publishes `/tof/obstacles` (2-16 cm above the floor within 0.7 m, 2.5-16 cm
-  beyond; Nav2 marks only from this), after dropping flying pixels and the image
+  publishes `/tof/obstacles` (1.2-16 cm above the floor within 0.8 m, 2.5-16 cm
+  beyond; Nav2 marks only from this; 1.2 cm catches a desk foot on the hard floor
+  beside the carpet, which reads only ~2 cm above the carpet), after dropping flying pixels and the image
   edges. The floor test is levelled with the BNO055's roll/pitch (relative to a
   5 s average) and measured from a floor plane fitted in each frame (the robot
   resting tilted on a carpet edge made the floor read ~1.5 cm low, hiding a
@@ -258,22 +275,59 @@ when new work comes up, add it here.
   better than "hey Jarvis"), "stop" scores 0.5-0.9 (threshold 0.7), "hey
   Robot"/"Robot" is not heard (under 0.3; low priority). To improve them: retrain
   with the robot's own noise as background (lidar hum + fan; see
-  `training/wakeword/README.md`), then household recordings; re-enable face
-  recognition in the Hailo container (photos, faces and startup localization
-  depend on it). Memory and photos/faces (steps 5-6) are built.
-- Head controller (`docs/brain.md` step 7, branch `head-controller`): smooth,
-  calm moves, `/joint_states` following the moving head, a settle time before photos, a
-  `look` skill in degrees, and a latest-target-wins topic for following faces
-  later. Later still: ToF + camera, the distance of what the camera sees, placed
-  in the map.
-- Battery: warn around 7.0 V (log, eyes or speech) and cancel Nav2 goals /
-  stop at the cutoff (~6.6-6.9 V, judged at rest). The firmware's own low-voltage
-  behaviour is unknown. Not part of the brain work for now; later it becomes a
-  brain mode that refuses motion.
+  `training/wakeword/README.md`), then household recordings. Memory and
+  photos/faces (steps 5-6) are built; face recognition is on again (2026-11-25).
+- Head controller (`docs/brain.md` step 7, branch `head-controller`): built and
+  tested on the Mac (motion profile unit tests; the node in a `ros:jazzy`
+  container on domain 77; agent eval 37/37). Running on the robot since
+  2026-11-25 (`rainbow_head`, added to the running container by hand with the
+  conf from git; the rebuilt image has it). Speed set with the owner watching
+  (2026-11-25): glides at 5-60 deg/s all looked jerky (whole-degree servo
+  commands, the servos step at each), a quick move (400 deg/s, accel 4000
+  deg/s^2) looked best; finer motion would need firmware changes. Still to
+  measure: the settle time (estimated 0.2 s + 5 ms/deg;
+  measure with the ToF image going still, robot at rest) and `servo_latency_s`
+  (0.05 s, estimated). Then photos in several directions for startup
+  localization. Tracking (`track` skill, tracker node in `rainbow_brain`,
+  docs/brain.md "Tracking") tracked the owner on the robot (2026-11-25): face,
+  then the body box when no face is visible, still in the quiet zone, back to
+  the centre when lost. Standing in front of the robot the face is above the
+  head's tilt limit (36 deg up), so only the pan follows. Still to measure: the
+  camera FOV and `frame_latency_s` (0.15 s). Later: ToF + camera fusion, the
+  distance of what the camera sees, placed in the map.
+- Greeting people (brain + agent, `docs/brain.md` "Camera and faces"): built
+  2026-11-25 (agent eval 50/50), running on the robot since: right after the
+  brain started it noticed someone, followed "face" for 21 s and let go, and sent
+  face_unknown (the face gallery was emptied that day). Still to see with the
+  owner: the greeting by name through the agent, the head tilting up to a
+  standing person's face (the 36 deg limit), and that driving takes the head back.
+- Low-battery mode (brain, `docs/brain.md` "Modes"): built 2026-11-25, tested
+  on the Mac only (logic unit tests, agent eval). On the robot: check that it
+  stops and restarts the programs (supervisorctl from the brain) and speaks;
+  a test on domain 77 must set `battery_stop_programs` to [] (supervisorctl
+  is not per domain). The sad eyes are on the robot (base restarted
+  2026-11-25). The firmware's own low-voltage behaviour is unknown.
+- ESP firmware (later, a project of its own): smooth head motion needs finer
+  servo commands (the firmware takes whole degrees as an 8-bit angle, though its
+  PWM is set in microseconds) or, better, the ramp done on the ESP (target +
+  speed, at the servos' 50 Hz). Only Yahboom's factory binary and ESP-IDF samples
+  are in `~/rainbow-firmware` on the Mac, not the `YB_Car_Node` source: it
+  would be rebuilt from the samples (motor PID included) and re-tested. Digital
+  metal-gear servos would also glide better (hobby servos have a ~1 deg deadband).
+- Eyes went dark (2026-11-25, around when the robot started moving): the HT16K33
+  at 0x71 gave Remote I/O errors (the node crashed and respawned), then answered
+  again but with its display off. Cause unknown (the Pi's 5 V input and its
+  undervoltage flag showed nothing then; power, wiring or an I2C bus problem are
+  all guesses). The eyes node now survives the errors and turns the display on
+  again every 2 s; its "not answering on I2C" warnings show when it happens.
 - Calibrate the Camera Module 3 (the files in `calibration/` are for the IMX296).
 - Whisper on the Hailo (speech to text without the Mac): later, after the brain.
-- Hailo face recognition is disabled inside its container to save CPU; it is to
-  be re-enabled for the brain (stills and face names, see `docs/brain.md`).
+- Hailo face recognition (with object detection) was re-enabled on 2026-11-25
+  in its container's `/etc/supervisor/conf.d/hailo.conf` (it costs ~45% of a
+  core; just after boot the Pi then had ~25% idle). Its boxes are normalized
+  (0-1) and stamped on publishing. The Pi host's `~/hailo_tappas_ros2` git has
+  4 empty objects from April 2025 (an unpushed local commit, "Create a PR to bump
+  the version"; GitHub is ahead at v1.0.3): reset it to `origin/main` some time.
 - Host: Hailo, kernel (6.6, contains the Hailo driver) and camera packages are
   held with apt-mark. Update them together later, with the Hailo container
   and a rebuild of the ALFA Wi-Fi driver (rtl8812au) for the new kernel.

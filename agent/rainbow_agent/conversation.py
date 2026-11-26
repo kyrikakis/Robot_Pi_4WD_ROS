@@ -28,14 +28,20 @@ import json
 import re
 import time
 
-from rainbow_agent.guards import ground_args, MOVES, wants_action
+from rainbow_agent.guards import (check_remember_face, ground_args, MOVES, said_no, said_yes,
+                                  wants_action, wants_photo)
 from rainbow_agent.persona import system_prompt
 from rainbow_agent.skills import TOOLS
 from rainbow_agent.status import Status
 
 EVENT_PREFIX = '[Robot event] '
+# Events the agent answers at once (the others wait for the next thing said)
+SPOKEN_EVENTS = {'failed', 'face_unknown'}
 NUDGE = (EVENT_PREFIX + 'You answered without calling a tool, so nothing happened. '
          'Call the matching tool now; do not reply with text.')
+NAME_CHECK = re.compile(r'did\s+i\s+get\s+(that|your\s+name)\s+right', re.IGNORECASE)
+PHOTO_NUDGE = (EVENT_PREFIX + 'You have not taken a photo, so you cannot know what is there. '
+               'Call capture_photo now; do not reply with text.')
 MAX_SENTENCES = 3
 MAX_WORDS = 40
 
@@ -67,7 +73,19 @@ def describe_event(event):
     if kind == 'localized':
         return 'I looked around and now I know where I am'
     if kind == 'face_seen':
+        if event.get('greet'):
+            return (f"I can see {event.get('name')} (face recognition), who just came by: "
+                    'greet them by name in a few words')
         return f"I can see {event.get('name')} (face recognition)"
+    if kind == 'battery_low':
+        return (f"my battery is empty ({event.get('volts')} V): I stopped everything and "
+                'will not drive until I am charged; I already said so out loud')
+    if kind == 'battery_ok':
+        return 'my battery is charged again; I can drive again'
+    if kind == 'face_unknown':
+        return 'someone I do not know has been in front of my camera for a few seconds'
+    if kind == 'track_lost':
+        return f"I lost sight of the {event.get('target')} I was following with my head"
     if kind == 'stopped_by_voice':
         return 'someone said stop, so I stopped'
     if kind == 'cancelled':
@@ -97,6 +115,8 @@ class Conversation:
         self.lock = asyncio.Lock()
         self.messages = []
         self.pending_events = []
+        self.confirmed_names = set()   # names the person said yes to (remember_face)
+        self.looks_different = set()   # names saved with a face unlike the one in view
         self.last_turn = 0.0
         self.memory = memory
         self.log = log
@@ -116,6 +136,8 @@ class Conversation:
             task.add_done_callback(self._storing.discard)
         self.messages = []
         self.pending_events = []
+        self.confirmed_names = set()   # names the person said yes to (remember_face)
+        self.looks_different = set()   # names saved with a face unlike the one in view
         self.memories = []
         self.session_started = time.time()
         self.turns = 0
@@ -159,6 +181,12 @@ class Conversation:
                 self.messages.append({'role': 'user', 'content': EVENT_PREFIX + note})
             self.pending_events = []
             self.messages.append({'role': 'user', 'content': text})
+            if said_no(text) and NAME_CHECK.search(self._latest_reply()):
+                # Misheard a name (Whisper spells uncommon names its own way): asking
+                # again gets the same mistake; letters are heard right
+                self.messages.append({'role': 'user', 'content': EVENT_PREFIX +
+                                      'I misheard their name: ask them to spell it, letter '
+                                      'by letter.'})
             return await self._reported_turn(text)
 
     async def handled_locally(self, text, action):
@@ -173,7 +201,9 @@ class Conversation:
     async def robot_event(self, event):
         """An event from the robot. Returns a reply to speak, or None."""
         note = describe_event(event)
-        if event.get('kind') != 'failed':
+        spoken = event.get('kind') in SPOKEN_EVENTS or (
+            event.get('kind') == 'face_seen' and event.get('greet'))
+        if not spoken:
             self.pending_events.append(note)
             return None
         async with self.lock:
@@ -183,6 +213,33 @@ class Conversation:
     def _maybe_new_session(self):
         if self.messages and time.monotonic() - self.last_turn > self.cfg.session_idle:
             self.new_session()
+
+    def _latest_reply(self):
+        for m in reversed(self.messages[:-1]):
+            if m['role'] == 'assistant' and m.get('content'):
+                return m['content']
+        return ''
+
+    def asked_question(self):
+        """The robot's latest words were a question (its answer is coming)."""
+        for m in reversed(self.messages):
+            if m['role'] == 'assistant' and m.get('content'):
+                return m['content'].rstrip().endswith('?')
+            if m['role'] == 'user' and isinstance(m['content'], str) \
+                    and not m['content'].startswith(EVENT_PREFIX):
+                return False
+        return False
+
+    def _last_reply(self):
+        """The robot's last spoken reply before the person's latest words."""
+        seen_user = False
+        for m in reversed(self.messages):
+            if m['role'] == 'user' and isinstance(m['content'], str) \
+                    and not m['content'].startswith(EVENT_PREFIX):
+                seen_user = True
+            elif seen_user and m['role'] == 'assistant' and m.get('content'):
+                return m['content']
+        return ''
 
     def _recent_user_words(self, n=3):
         said = [m['content'] for m in self.messages
@@ -227,14 +284,25 @@ class Conversation:
         """said: the person's words that started this turn (None for robot events)."""
         calls = 0
         moved = False
+        called = set()          # skills called in this turn
+        photo_nudged = False
         while True:
             message = await self._complete(tools=calls < self.cfg.max_tool_calls)
             tool_calls = message.tool_calls or []
-            if not tool_calls and calls == 0 and said and wants_action(said):
+            if not tool_calls and calls == 0 and said and wants_action(said, self._last_reply()):
                 # Asked to act but only talked: retry once with a note (not kept)
                 retry = await self._complete(extra=[
                     {'role': 'assistant', 'content': message.content or ''},
                     {'role': 'user', 'content': NUDGE}])
+                if retry.tool_calls:
+                    message, tool_calls = retry, retry.tool_calls
+            if not tool_calls and said and wants_photo(said) and 'capture_photo' not in called \
+                    and not photo_nudged and calls < self.cfg.max_tool_calls:
+                # Asked what it sees but about to answer without a photo: it would invent
+                photo_nudged = True
+                retry = await self._complete(extra=[
+                    {'role': 'assistant', 'content': message.content or ''},
+                    {'role': 'user', 'content': PHOTO_NUDGE}])
                 if retry.tool_calls:
                     message, tool_calls = retry, retry.tool_calls
             entry = {'role': 'assistant', 'content': message.content or ''}
@@ -257,8 +325,20 @@ class Conversation:
                 except json.JSONDecodeError:
                     args = None
                 name = c.function.name
+                called.add(name)
+                if name == 'remember_face' and isinstance(args, dict) and \
+                        args.get('same_person') and not (
+                            str(args.get('name', '')).strip().lower() in self.looks_different
+                            and said_yes(self._recent_user_words(1))):
+                    # Only after "a face called X that looks different" and their yes
+                    args = dict(args, same_person=False)
                 if not isinstance(args, dict):
                     result = {'ok': False, 'message': 'arguments were not a JSON object'}
+                elif name == 'remember_face' and (problem := check_remember_face(
+                        str(args.get('name', '')), self._recent_user_words(),
+                        self._last_reply(), self._recent_user_words(1),
+                        self.confirmed_names)):
+                    result = {'ok': False, 'message': problem}
                 elif name in MOVES and moved:
                     result = {'ok': False, 'message': 'only one move per request; '
                               'tell the person what you did and let them ask again'}
@@ -271,6 +351,15 @@ class Conversation:
                     if dropped:
                         result['note'] = (f'{" and ".join(dropped)} left out: only save what '
                                           'the person said')
+                    if name == 'remember_face':
+                        # Said yes to it: it stays confirmed (e.g. for after a forget_face)
+                        self.confirmed_names.add(str(args.get('name', '')).strip())
+                        if 'looks different' in str(result.get('message', '')):
+                            self.looks_different.add(str(args.get('name', '')).strip().lower())
+                    waiting = [n for n in self.confirmed_names
+                               if n.lower() != str(args.get('name', '')).strip().lower()]
+                    if name == 'forget_face' and result.get('ok') and waiting:
+                        result['next'] = f'now call remember_face(name="{waiting[-1]}")'
                     moved = moved or name in MOVES
                 if self.on_tool:
                     self.on_tool(name, args, result)

@@ -19,12 +19,16 @@ def generate_launch_description():
             # FOV measured with scripts/calibrate_tof.py (camera height + lidar
             # corridor width); the spec sheet's 64.3 x 50.4 is too wide
             # Far obstacle height lowered from 3.5 cm to pick up shorter bumps.
-            # Near stays 2 cm: at 1.5 cm floor points (read ~1-2 cm high) were
-            # marked as ghosts in the lowest voxel layer
+            # Near 1.2 cm up to 0.8 m: a desk foot on the hard floor next to the
+            # carpet reads only ~1.4-2.4 cm above the carpet the robot stands on
+            # (measured 2026-11-25), and was missed at 2 cm / 0.7 m. 1.5 cm made
+            # floor ghosts on 2026-11-20, before the per-frame floor plane; with
+            # it the carpet reads within +-0.5 cm
             parameters=[{'frame_rate': 15,
                          'horizontal_fov_deg': 48.5,
                          'vertical_fov_deg': 39.3,
-                         'obstacle_min_height_near': 0.02,
+                         'near_distance': 0.8,
+                         'obstacle_min_height_near': 0.012,
                          'obstacle_min_height_far': 0.025}],
             respawn=True,
             respawn_delay=5.0,

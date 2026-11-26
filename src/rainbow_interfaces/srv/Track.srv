@@ -1,0 +1,7 @@
+# Keep the head pointed at something the detectors see: "face" (anyone),
+# a person's name (face recognition), or an object detector's label. A new
+# target replaces the old one. Stop with /tracker/stop.
+string target
+---
+bool success
+string message

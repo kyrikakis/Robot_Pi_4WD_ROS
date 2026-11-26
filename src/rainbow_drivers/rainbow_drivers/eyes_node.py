@@ -4,7 +4,13 @@ Interfaces:
   ~/set_expression  rainbow_interfaces/srv/SetExpression
   /eyes             std_msgs/String   expression name (kept from the old node)
 
-Expressions: happy (smile with a blink), open, closed, off.
+Expressions: happy (smile with a blink), sad (frown with a blink; low battery), open,
+closed, off.
+
+The HT16K33 can stop answering on I2C (2026-11-25: Remote I/O errors, then the chip
+back with its display off and the eyes dark until a reboot; cause unknown).
+So I2C errors do not stop the node, and every `refresh_period` seconds it turns the
+chip's oscillator and display on again and redraws the current frame.
 """
 
 from rainbow_interfaces.srv import SetExpression
@@ -21,6 +27,16 @@ SMILE = [
     [_, _, _, _, _, _, _, _],
     [_, _, X, _, _, X, _, _],
     [_, _, _, X, X, _, _, _],
+    [_, _, _, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _],
+]
+FROWN = [
+    [_, _, _, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _],
+    [_, _, _, X, X, _, _, _],
+    [_, _, X, _, _, X, _, _],
     [_, _, _, _, _, _, _, _],
     [_, _, _, _, _, _, _, _],
     [_, _, _, _, _, _, _, _],
@@ -51,6 +67,7 @@ BLANK = [[_] * 8 for _row in range(8)]
 # Each expression is a list of (frame, seconds) shown in a loop.
 EXPRESSIONS = {
     'happy': [(SMILE, 3.0), (SHUT, 1.0)],
+    'sad': [(FROWN, 3.0), (SHUT, 1.0)],
     'open': [(OPEN, None)],
     'closed': [(SHUT, None)],
     'off': [(BLANK, None)],
@@ -61,14 +78,18 @@ class EyesNode(Node):
 
     def __init__(self):
         super().__init__('eyes')
-        address = self.declare_parameter('i2c_address', 0x71).value
+        self.address = self.declare_parameter('i2c_address', 0x71).value
         expression = self.declare_parameter('expression', 'happy').value
+        refresh_period = self.declare_parameter('refresh_period', 2.0).value
 
         # Imported here so the module can be loaded (and tested) off the robot
         import board
         import busio
-        from adafruit_ht16k33 import matrix
-        self.matrix = matrix.Matrix16x8(busio.I2C(board.SCL, board.SDA), address=address)
+        self.i2c = busio.I2C(board.SCL, board.SDA)
+        self.matrix = None
+        self.failing = False   # last I2C access failed (warn once per outage)
+        self.frame = BLANK
+        self.open_matrix()
 
         self.create_subscription(
             String, '/eyes', self.on_topic,
@@ -78,6 +99,38 @@ class EyesNode(Node):
 
         self.timer = None
         self.set_expression(expression)
+        self.create_timer(refresh_period, self.refresh)
+
+    def open_matrix(self):
+        from adafruit_ht16k33 import matrix
+        try:
+            # auto_write off: one bus write per frame, not one per pixel (128)
+            self.matrix = matrix.Matrix16x8(self.i2c, address=self.address, auto_write=False)
+        except OSError as e:
+            self.i2c_failed(e)
+            return False
+        return True
+
+    def refresh(self):
+        """Turn the chip on again (it may have reset) and redraw the frame."""
+        if self.matrix is None:
+            if self.open_matrix():
+                self.draw(self.frame)
+            return
+        try:
+            # The same commands Matrix16x8 sends at start; harmless when repeated
+            self.matrix._write_cmd(0x21)   # oscillator on
+            self.matrix.blink_rate = 0     # display on, no blinking
+            self.matrix.brightness = self.matrix.brightness
+        except OSError as e:
+            self.i2c_failed(e)
+            return
+        self.draw(self.frame)
+
+    def i2c_failed(self, error):
+        if not self.failing:
+            self.get_logger().warning(f'eyes not answering on I2C ({error}); retrying')
+        self.failing = True
 
     def set_expression(self, name):
         if name not in EXPRESSIONS:
@@ -103,11 +156,21 @@ class EyesNode(Node):
         self.show_step()
 
     def draw(self, frame):
+        self.frame = frame
+        if self.matrix is None:
+            return   # the refresh timer draws it once the chip answers
         # The same 8x8 frame on both eyes; the matrix is addressed [column, row]
         for row in range(8):
             for col in range(16):
                 self.matrix[col, row] = frame[row][col % 8]
-        self.matrix.show()
+        try:
+            self.matrix.show()
+        except OSError as e:
+            self.i2c_failed(e)
+            return
+        if self.failing:
+            self.get_logger().info('eyes answering on I2C again')
+            self.failing = False
 
     def on_topic(self, msg):
         if not self.set_expression(msg.data):
