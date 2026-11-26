@@ -81,13 +81,14 @@ class HeadNode(Node):
         self.tilt_offset = param('tilt_servo_offset_deg', -56).value
         self.pan_joint = param('pan_joint', 'head_pan_joint').value
         self.tilt_joint = param('tilt_joint', 'head_tilt_joint').value
-        # 90 deg/s, chosen with the owner watching (2026-11-26, moves run on the
-        # ESP): 10-30 deg/s jerky (the servos' ~1 deg deadband makes them move in
-        # visible jumps), 45-60 better, 90 smoother, 150 not jerky but very fast.
-        # Settle times and latency are estimates until measured
+        # 60 deg/s for every move, tracking too (the owner, 2026-11-26, moves run on
+        # the ESP): 10-30 deg/s jerky (the servos' ~1 deg deadband makes them move
+        # in visible jumps), 45-60 better, 90 smoother but 60 preferred when
+        # following a face, 150 not jerky but very fast. Settle times and latency
+        # are estimates until measured
         self.motion = HeadMotion(
             pan_limits, tilt_limits,
-            speed=param('speed_deg_s', 90.0).value,
+            speed=param('speed_deg_s', 60.0).value,
             accel=param('accel_deg_s2', 4000.0).value,
             settle_base=param('settle_base_s', 0.2).value,
             settle_per_deg=param('settle_per_deg_s', 0.005).value)

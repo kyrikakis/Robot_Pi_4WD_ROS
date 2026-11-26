@@ -312,7 +312,7 @@ when new work comes up, add it here.
   (2026-11-25): glides at 5-60 deg/s all looked jerky (whole-degree servo
   commands, the servos step at each), a quick move (400 deg/s, accel 4000
   deg/s^2) looked best then. With our firmware running the moves (below) the
-  default is 90 deg/s (2026-11-26). Still to
+  default is 60 deg/s (2026-11-26). Still to
   measure: the settle time (estimated 0.2 s + 5 ms/deg;
   measure with the ToF image going still, robot at rest) and `servo_latency_s`
   (0.05 s, estimated). Then photos in several directions for startup
@@ -359,10 +359,13 @@ when new work comes up, add it here.
   deg pulse steps (`servo_motion.c`, checked against `head_motion.py` by
   `firmware/test/test_servo_motion.py`); `esp_motion: false` on the head node
   for the stock firmware. Pans tried with the owner watching: 10-30 deg/s still
-  jerky (the hobby servos' ~1 deg deadband), 45-60 better, 90 smoother (the
-  new default), 120-150 not jerky but very fast. Slow glides need servos with
-  a smaller deadband (digital, or serial bus servos with feedback). Tilt and
-  the tracker's 200 deg/s not reviewed yet.
+  jerky (the hobby servos' ~1 deg deadband), 45-60 better, 90 smoother,
+  120-150 not jerky but very fast. Slow glides need servos with
+  a smaller deadband (digital, or serial bus servos with feedback). Following
+  an emulated face (a 20 s walk and a step aside, the tracker's aiming code
+  against the real head) the owner preferred 60 deg/s to 90 and 200: 60 is the
+  head's default for everything, the tracker uses it (was 200). Tilt alone not
+  reviewed yet.
 - Eyes went dark (2026-11-25, around when the robot started moving): the HT16K33
   at 0x71 gave Remote I/O errors (the node crashed and respawned), then answered
   again but with its display off. Cause unknown (the Pi's 5 V input and its

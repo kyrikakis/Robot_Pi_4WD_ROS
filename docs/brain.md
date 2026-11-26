@@ -510,9 +510,10 @@ load with it on).
 - **Greeting people** (`rainbow_brain/greeting.py`): someone in view (COCO's
   `person`, e.g. legs, or a face) for 1 s while the robot is idle gets one
   look: the brain has the tracker follow "face" (falling back to the body's top),
-  for 20 s, then the head centres. The tracker moves the head at 200 deg/s, calmer
-  than the head's old 400 deg/s default (full speed looked jumpy when following;
-  set before the moves ran on the ESP and the default became 90 deg/s). Face recognition then names them: a
+  for 20 s, then the head centres. The tracker moves the head at the head's
+  default speed, 60 deg/s: the owner preferred it to 90 and 200 watching an
+  emulated face (2026-11-26; 200 was set when the head moved at 400 deg/s and
+  full speed looked jumpy). Face recognition then names them: a
   `face_seen` event with `greet` true, which the agent answers at once with a
   greeting (in local mode the brain says "Hi <name>!"); an unknown face is
   `face_unknown` (asks the name). One look per presence: they must be out of view
@@ -566,9 +567,10 @@ supervisor program `rainbow_head`) plans the motion and our ESP firmware runs it
   deg/s, tried with the owner) all looked jerky. With the moves on the ESP
   (2026-11-26, the owner watching 30 deg pans): 10-30 deg/s still jerky (the
   hobby servos' ~1 deg deadband: they move in jumps once the target is a degree
-  away), 45-60 better, 90 smoother, 120-150 not jerky but very fast. The
-  default is 90 deg/s (accel 4000 deg/s^2: a 30 deg move takes ~0.36 s); a goal
-  can ask for another speed. The node runs the
+  away), 45-60 better, 90 smoother, 120-150 not jerky but very fast; following
+  an emulated face, 60 looked best (90 and 200 tried). The default is 60 deg/s
+  for every move, tracking too (accel 4000 deg/s^2: a 30 deg move takes ~0.5
+  s); a goal can ask for another speed. The node runs the
   same model (`rainbow_drivers/head_motion.py`, tested without ROS) to know the
   pose; `firmware/test/test_servo_motion.py` checks that the C and Python
   agree. `esp_motion: false` streams whole degrees again (the stock firmware).
