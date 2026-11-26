@@ -2,9 +2,9 @@
 
 The ESP runs the motors, servos, lidar, IMU, odometry and battery reading.
 
-Run as its own supervisor program (rainbow_microros): the ESP firmware does not
-reconnect when the agent restarts, so the agent must not restart along with the
-base. If the agent does restart, reset the ESP (battery switch off and on).
+Run as its own supervisor program (rainbow_microros), so restarting the base
+does not drop the ESP. Our firmware (firmware/) reconnects by itself within
+~10 s when the agent restarts; the stock Yahboom firmware needed a board reset.
 
 Arguments:
   serial_port   /dev/ttyUSB_ROS

@@ -44,4 +44,4 @@ fi
 VERSION=$(git describe --always --dirty --tags 2>/dev/null || echo unknown)
 TTY=$([ -t 0 ] && echo -it || echo -i)
 docker run --rm $TTY -v "$PWD":/project -w /project \
-  -e RAINBOW_FW_VERSION="$VERSION" "$IMAGE" idf.py "${@:-build}"
+  "$IMAGE" idf.py -DRAINBOW_FW_VERSION="$VERSION" "${@:-build}"

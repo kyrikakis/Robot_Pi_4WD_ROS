@@ -74,6 +74,7 @@ Rainbow's ROS 2 packages live in `src/`:
 
 The ESP32 board runs the motors (with PID), the head servos, the lidar, battery
 monitoring and its own IMU. It talks to the Pi over micro-ROS (`/dev/ttyUSB_ROS`).
+Its firmware is ours, in [`firmware/`](firmware/README.md) (build, flash, back up, restore).
 The ESP's IMU is mounted the wrong way round and is not used; the EKF uses the
 BNO055 on the Pi.
 

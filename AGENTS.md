@@ -17,7 +17,7 @@ compose setup lives in `~/hailo_tappas_ros2` on the host.
 
 | Where | What | In this repo? |
 |---|---|---|
-| ESP32 board (micro-ROS over `/dev/ttyUSB_ROS`) | Motor PID, head servos, lidar, battery, an IMU | No. Firmware is out of scope; treat its topics as a fixed contract |
+| ESP32 board (micro-ROS over `/dev/ttyUSB_ROS`) | Motor PID, head servos, lidar, battery, an IMU | Yes: `firmware/` (our own since 2026-11-26; see its README and DELTAS.md). Keep its topics as a fixed contract |
 | `robot` container (this repo) | Everything in `src/`, run by supervisor | Yes |
 | Hailo container ([hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2)) | Face recognition and object detection (COCO) on the Hailo, capturing the RGB camera itself | No. Only `hailo_msgs` is built here, to read its messages |
 
@@ -27,6 +27,11 @@ lifted 2026-11-24), `servo_s1` (pan), `servo_s2` (tilt) and `/beep`, and
 publishes `/odom_raw`, `/scan` in `laser_frame`, `/imu` in `imu_frame`, and
 `/battery` (UInt16, volts x 10, 1 Hz; the owner's pack runs ~6.9-8.0 V). The ESP's IMU is mounted wrongly and
 unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
+Our firmware adds `/esp_firmware` (latched version string) and the
+`lidar/enable` service (SetBool; software only, the MS200 keeps spinning).
+Build with `firmware/build.sh` (Docker, Mac or Pi), flash, back up or restore on
+the Pi host with `firmware/esp.sh`. The stock firmware's whole-flash backup is in
+`~/esp-backup/` on the Pi host (not in git); restoring it was tested.
 
 ## How it runs
 
@@ -119,8 +124,10 @@ The code you edit is the code the robot runs. Lessons learned:
   re-enumerating, a restart of rainbow_microros plus an ESP board reset brought
   the ESP back. Nav2 started meanwhile without a `map` frame (no lidar) and
   aborted its bringup ("Action server is inactive. Rejecting the goal."):
-  restart rainbow_navigation once the ESP is back. Avoid restarting `rainbow_microros`: after the
-  agent stops, the ESP itself needs a board reset (with the agent running).
+  restart rainbow_navigation once the ESP is back. Restarting `rainbow_microros`
+  is fine with our firmware: it notices the agent is gone, stops the motors and
+  reconnects within ~10 s (tested 2026-11-26). The stock firmware needed a board
+  reset (with the agent running).
 - The ToF is in both costmaps (STVL). The node does the floor filtering and
   publishes `/tof/obstacles` (1.2-16 cm above the floor within 0.8 m, 2.5-16 cm
   beyond; Nav2 marks only from this; 1.2 cm catches a desk foot on the hard floor
@@ -187,8 +194,9 @@ The code you edit is the code the robot runs. Lessons learned:
   SLAM adds one only every ~29 deg of turning (`minimum_travel_heading` 0.5).
   Do not hold scans back from SLAM: its map->odom TF is stamped with the last
   scan and goes stale, and Nav2 then aborts every goal.
-- After an ESP reset its servos go to the firmware's default position; the head
-  node resends the pose every second so the head (and the calibrated ToF) return.
+- After an ESP reset our firmware sends the servos no pulse until the first
+  command (the stock one jumped to its default pose); the head node resends the
+  pose every second so the head (and the calibrated ToF) return.
   Do not move the head without the owner watching.
 - ToF calibration: `scripts/calibrate_tof.py` (robot facing clear floor, head
   centred) gives the FOV and the mount pitch/roll. Current values: FOV 48.5 x
@@ -307,13 +315,17 @@ when new work comes up, add it here.
   a test on domain 77 must set `battery_stop_programs` to [] (supervisorctl
   is not per domain). The sad eyes are on the robot (base restarted
   2026-11-25). The firmware's own low-voltage behaviour is unknown.
-- ESP firmware (later, a project of its own): smooth head motion needs finer
-  servo commands (the firmware takes whole degrees as an 8-bit angle, though its
-  PWM is set in microseconds) or, better, the ramp done on the ESP (target +
-  speed, at the servos' 50 Hz). Only Yahboom's factory binary and ESP-IDF samples
-  are in `~/rainbow-firmware` on the Mac, not the `YB_Car_Node` source: it
-  would be rebuilt from the samples (motor PID included) and re-tested. Digital
-  metal-gear servos would also glide better (hobby servos have a ~1 deg deadband).
+- ESP firmware (`firmware/`, branch `esp-firmware`): our own, running on the
+  board since 2026-11-26 with the robot stripped (no lidar, cameras, ToF):
+  connection, reconnect, `odom_raw`, `imu`, `battery`, `lidar/enable` checked.
+  Still to check with the owner watching: each motor's direction and the PID on
+  the floor (teleop against the gyro), the servos, `/scan` with the lidar back,
+  the buzzer heard. With the new 65 mm wheels set
+  `RAINBOW_WHEEL_CIRCUMFERENCE_UM` (204200) and re-measure `angular_gain`.
+  Next: a real lidar off (MS200 command set or a switched supply), smooth head
+  motion (finer servo commands than whole degrees, or the ramp on the ESP:
+  target + speed at the servos' 50 Hz). Digital metal-gear servos would also
+  glide better (hobby servos have a ~1 deg deadband).
 - Eyes went dark (2026-11-25, around when the robot started moving): the HT16K33
   at 0x71 gave Remote I/O errors (the node crashed and respawned), then answered
   again but with its display off. Cause unknown (the Pi's 5 V input and its
