@@ -111,6 +111,12 @@ The code you edit is the code the robot runs. Lessons learned:
   what is left, by process group). Programs started before that change still
   leave their old process once on their next restart: check with
   `ps -eo pid,pgid,etime,args | grep [c]omponent_container` and stop extras by PID.
+- rclpy's `MultiThreadedExecutor` rebuilds its wait set in Python over all of a
+  node's entities on every wake-up. The brain (~70 entities: action clients and
+  servers, services) took ~23% of a core just receiving `/tf`, the IMU, `/cmd_vel`
+  and `/odom_raw`. Frequent topics go on a second small node with its own
+  `SingleThreadedExecutor` thread (the brain's `brain_inputs`); its main thread
+  then idles at ~1%.
 - `supervisorctl tail` can fail on non-UTF-8 log output; read
   `/var/log/supervisor/<program>-stdout*.log` directly.
 - **ROS params files** (`config/*.yaml`) must only have node names at the top
@@ -325,8 +331,10 @@ when new work comes up, add it here.
   recording's carpet-edge push is not a lift). Still to see: AMCL's global
   relocalization after a put-down with localization running, and that bumps
   while driving (8 cm rise threshold, tilt 20 deg) do not count, once the motors
-  are back. Costs ~4% of a core; moving it onto the ESP (board IMU) would make
-  it free.
+  are back. The brain's input thread (the IMU at 50 Hz for this, plus `/tf`,
+  `/cmd_vel` and `/odom_raw`) costs ~9% of a core, the whole brain ~11% at rest
+  (2026-11-26, robot stripped); moving the detector onto the ESP (board IMU)
+  would save part of it.
 - Low-battery mode (brain, `docs/brain.md` "Modes"): built 2026-11-25, tested
   on the Mac only (logic unit tests, agent eval). On the robot: check that it
   stops and restarts the programs (supervisorctl from the brain) and speaks;
@@ -360,6 +368,12 @@ when new work comes up, add it here.
   (0-1) and stamped on publishing. The Pi host's `~/hailo_tappas_ros2` git has
   4 empty objects from April 2025 (an unpushed local commit, "Create a PR to bump
   the version"; GitHub is ahead at v1.0.3): reset it to `origin/main` some time.
+- Host runs hot: ~75 C with the Pi only ~16% busy (2026-11-26, robot
+  stripped), and it has hit the soft temperature limit, capped clocks and
+  under-voltage since boot (`vcgencmd get_throttled` 0xf0000). `config.txt`
+  overclocks to `arm_freq=3000` (stock 2.4 GHz) and the kernel shows no fan
+  (no `cooling_fan` hwmon). Check the fan with the owner and drop the
+  overclock (needs a reboot; ask first).
 - Host: Hailo, kernel (6.6, contains the Hailo driver) and camera packages are
   held with apt-mark. Update them together later, with the Hailo container
   and a rebuild of the ALFA Wi-Fi driver (rtl8812au) for the new kernel.

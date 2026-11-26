@@ -164,8 +164,12 @@ restarts global localization (the location is lost) and the agent gets
 `put_down`; the robot never moves by itself after that, the next move or "look
 around" relocalizes. The lidar is frugal (`lidar_power`, see AGENTS.md): every
 move asks for it on `/lidar/wanted` and waits for the first scan (<= 8 s) before
-Nav2 gets the goal. The detector costs ~4% of a core (rclpy at 50 Hz); it could
-move onto the ESP with the board IMU later.
+Nav2 gets the goal. The detector's IMU, with `/tf`, `/cmd_vel` and `/odom_raw`,
+is received on a second node (`brain_inputs`) with its own single-threaded
+executor: on the brain node itself, every message cost a wait-set rebuild over all
+its entities (~23% of a core). That thread costs ~9% of a core, the whole brain
+~11% at rest (2026-11-26). The detector could move onto the ESP with the board
+IMU later.
 
 Losing the link in the middle of a goal does not cancel it; the brain just takes
 no new decisions from the agent. When the link comes back, the brain sends the
