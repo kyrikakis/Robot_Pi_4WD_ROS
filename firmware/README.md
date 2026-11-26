@@ -60,10 +60,17 @@ Check what is running: `ros2 topic echo --once /esp_firmware` (domain 20).
 | `beep` (sub) | std_msgs/UInt16 | | 0 off, 1 on, >= 10 on for that many ms |
 | `odom_raw` | nav_msgs/Odometry | 20 Hz | `odom_frame` -> `base_footprint`, wheel odometry |
 | `imu` | sensor_msgs/Imu | 25 Hz | `imu_frame`, the board's ICM-42670-P (mounted wrongly, unused) |
-| `scan` | sensor_msgs/LaserScan | per revolution | `laser_frame`, 360 x 1 deg from -pi, 0.12-8 m; only while the lidar sends |
+| `scan` | sensor_msgs/LaserScan | per revolution | `laser_frame`, 360 x 1 deg from -pi, 0.12-8 m, `scan_time` = measured revolution; only while the lidar sends |
 | `battery` | std_msgs/UInt16 | 1 Hz | volts x 10 |
 | `esp_firmware` | std_msgs/String | latched | version, build date, IDF version |
-| `lidar/enable` (service) | std_srvs/SetBool | | stop/start reading the lidar (software only) |
+| `lidar/enable` (service) | std_srvs/SetBool | | MS200 standby (no ranging, no data) / run; answers once the data has stopped or started (<= 5 s) |
+| `lidar_speed_hz` (parameter) | int | | MS200 rotation, 5-15 Hz; 0 = not set by us. Applied in the background (standby, speed, run, check +-10 %); see `scan_time` |
+
+Lidar, e.g.: `ros2 service call /lidar/enable std_srvs/srv/SetBool "{data: false}"`,
+`ros2 param set /YB_Car_Node lidar_speed_hz 8`. The commands are Oradar's
+(MIT-licensed MS200 SDK; the same frames are in the MS200k manual); see the top
+of `main/lidar.c`. At boot the firmware sends "run" once, so a lidar left in
+standby by an earlier session starts again.
 
 ## Code
 

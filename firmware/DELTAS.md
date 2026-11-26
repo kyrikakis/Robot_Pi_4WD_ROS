@@ -34,24 +34,36 @@ were read from its NVS: domain 20, serial agent at 921600 baud, servo offsets
 | Odometry speed | instantaneous 10 ms encoder speed (1 count = 14.5 mm/s steps) | from count changes over the 50 ms period; pose integrated at the mid heading | less quantization noise |
 | `/scan` without lidar | 12.5 Hz of zeros | not published | no fake data |
 | `/scan` missing points | keep their old value forever | 0 (invalid) for that revolution | no ghost points |
-| `/scan` timing | timer, 12.5 Hz | once per lidar revolution | one scan per revolution, not repeats |
+| `/scan` timing | timer, 12.5 Hz, `scan_time` 0 | once per lidar revolution, `scan_time` = its measured duration | one scan per revolution, not repeats; the speed can change now |
 | `/imu` | orientation identity with covariance 0 (claims a perfect orientation), its own RPY filter | raw accel/gyro, `orientation_covariance[0] = -1` (no orientation, REP 145), +-4 g, +-500 deg/s | honest data; nothing uses it |
 | Battery | per sample | averaged over 1 s, rounded | steadier |
 | IMU yaw PID | yes (heading hold with the board's IMU, gains in NVS) | no | the board IMU is mounted wrongly; heading belongs on the Pi with the BNO055 |
 | WiFi, BLE, WiFi agent | built in | not built | serial only; less power and heat |
 | Serial config tool (`config_robot.py`: domain, baud, PID, offsets, namespace, WiFi into NVS) | yes | no: settings are build options | we rebuild and reflash instead; one source of truth in git |
 | New: `/esp_firmware` | | latched version string | see what is flashed |
-| New: `lidar/enable` | | SetBool service | lidar on/off (see below) |
+| New: `lidar/enable` | | SetBool service: MS200 standby / run | lidar on/off (see below) |
+| New: `lidar_speed_hz` | | node parameter, 5-15 Hz | lidar rotation speed |
+| Lidar at boot | never sends it anything | sends "run" once | a lidar left in standby comes back |
 | Logs on the serial port | ESP-IDF logs at boot | none after the ROM bootloader | the port carries only micro-ROS |
 | Toolchain | ESP-IDF 5.1.2, micro-ROS humble | ESP-IDF 5.2.5, micro-ROS jazzy (matches the agent) | |
 
-## Lidar on/off
+## Lidar on/off and speed
 
-`lidar/enable` (std_srvs/SetBool) stops reading and publishing the lidar. The
-MS200 itself keeps spinning: Yahboom's code never sends it a command and no
-power switch for its connector is known. A real off (motor stopped, no hum)
-needs either the MS200's command set or a switched supply (schematic, or a
-MOSFET on its 5 V); the service is where it would plug in.
+The stock firmware never sends the MS200 anything (its TX pin, GPIO17, is set up
+but unused). Ours uses the MS200's commands from Oradar's SDK (MIT; the same
+frames are in the MS200k manual), at 230400 baud:
+
+| Command | Bytes |
+|---|---|
+| standby (no ranging, no data) | `A5 F5 A2 C1 01 80 B2 31 F2` |
+| run | `A5 F5 A2 C1 01 81 B3 31 F2` |
+| speed, e.g. 10 Hz (5-15, sent in standby) | `A5 F5 A1 C1 02 0A 00 38 31 F2` |
+
+As in the SDK, a command is confirmed by the data stream (stopped, started, or
+the packets' speed within 10 %), commands are >= 400 ms apart, and a speed change
+goes standby -> speed -> run. While off, scans are dropped even if the sensor
+keeps sending. Whether standby also stops the motor (the hum) and whether the
+speed survives a lidar power cycle are not known yet.
 
 ## Yahboom V2.0.0
 
@@ -64,6 +76,9 @@ Nothing in it to adopt.
 
 Built and run on the board 2026-11-26 with the robot stripped (no lidar,
 cameras, ToF; not driven): connection, reconnect after an agent restart, `odom_raw`, `imu`,
-`battery`, `esp_firmware` and `lidar/enable` work, `beep` is accepted (not heard). Still to check with
+`battery`, `esp_firmware` and `lidar/enable` work, `beep` is accepted (not heard). The lidar commands
+answered correctly without a lidar (speed 30 rejected, 8 accepted; "did not
+start sending" after 5 s; the node kept publishing meanwhile). Still to check with
 the owner watching: each motor's direction and the PID on the floor (teleop
-against the gyro), the servos (head), and `/scan` with the lidar back on.
+against the gyro), the servos (head), and `/scan` with the lidar back on: standby, run and speed
+changes on the real sensor, and whether standby stops the motor.
