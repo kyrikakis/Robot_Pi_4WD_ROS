@@ -1,0 +1,45 @@
+dependencies:
+  espressif/bdc_motor:
+    component_hash: 9d8b9de48aa3a05b0660ae8f3412ffe02cd1ffca94e9c8c3085cfdd402be9168
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 0.2.0
+  idf:
+    source:
+      type: idf
+    version: 5.2.5
+  micro-ros/micro_ros_espidf_component:
+    dependencies:
+    - name: idf
+      version: '>=5.2'
+    - name: espressif/esp_wifi_remote
+      rules:
+      - if: target in [esp32p4]
+      version: '>=0.10,<2.0'
+    - name: espressif/esp_hosted
+      rules:
+      - if: target in [esp32p4]
+      version: ~2
+    source:
+      path: /project/components/micro_ros_espidf_component
+      type: local
+    targets:
+    - esp32
+    - esp32s2
+    - esp32s3
+    - esp32c3
+    - esp32c6
+    - esp32p4
+    version: 24.0.0
+direct_dependencies:
+- espressif/bdc_motor
+- idf
+- micro-ros/micro_ros_espidf_component
+manifest_hash: 49558b8561fe5f6198840d2d2aea88a418a7e7d431bdec0485da3b5bf5845084
+target: esp32s3
+version: 2.0.0

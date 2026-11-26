@@ -1,0 +1,57 @@
+menu "Rainbow firmware"
+
+    config RAINBOW_UART_BAUD
+        int "micro-ROS serial baud rate (UART0, GPIO43/44 to the CP2102)"
+        default 921600
+
+    config RAINBOW_ROS_DOMAIN_ID
+        int "ROS domain ID"
+        default 20
+
+    config RAINBOW_WHEEL_CIRCUMFERENCE_UM
+        int "Wheel circumference in micrometres"
+        default 150800
+        help
+            The stock firmware's value (a 48 mm wheel), kept so odometry and speeds
+            match what the ROS side was tuned with. The 45 mm wheels measure 141400;
+            65 mm wheels would be 204200.
+
+    config RAINBOW_ENCODER_COUNTS_PER_REV
+        int "Encoder counts per wheel revolution (x4 quadrature)"
+        default 1040
+
+    config RAINBOW_HALF_TRACK_MM
+        int "Effective half track for skid-steer kinematics, in mm"
+        default 115
+        help
+            The stock firmware's ROBOT_APB: wheel speed = v -/+ w * this.
+
+    config RAINBOW_MAX_WHEEL_SPEED_MM_S
+        int "Wheel speed limit, mm/s"
+        default 1000
+
+    config RAINBOW_PID_KP_X100
+        int "Motor PID Kp x100"
+        default 100
+    config RAINBOW_PID_KI_X100
+        int "Motor PID Ki x100"
+        default 20
+    config RAINBOW_PID_KD_X100
+        int "Motor PID Kd x100"
+        default 20
+
+    config RAINBOW_CMD_TIMEOUT_MS
+        int "Stop the motors when cmd_vel is silent this long, ms"
+        default 500
+        help
+            The Pi's velocity watchdog republishes cmd_vel at 10 Hz, so this only
+            fires when the Pi side stops talking.
+
+    config RAINBOW_SERVO_S1_OFFSET
+        int "Pan servo (S1) offset, degrees"
+        default 0
+    config RAINBOW_SERVO_S2_OFFSET
+        int "Tilt servo (S2) offset, degrees"
+        default 0
+
+endmenu
