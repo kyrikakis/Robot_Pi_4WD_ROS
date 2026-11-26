@@ -211,8 +211,8 @@ The code you edit is the code the robot runs. Lessons learned:
 ## Conventions
 
 - `main` is the finished robot. New work happens on a branch per feature
-  (currently `head-controller`, step 7 of `docs/brain.md`; steps 1-6 were
-  merged from `brain`); do not merge to `main` or suggest merging until the
+  (currently `esp-firmware`, our own ESP32 firmware; the brain, steps 1-7 of
+  `docs/brain.md`, is merged); do not merge to `main` or suggest merging until the
   owner says so.
 - Python nodes: ament_python, one node per module, `ament_flake8 --linelength 100`
   clean. New services go in `rainbow_interfaces`. Keep the old topics
@@ -277,7 +277,7 @@ when new work comes up, add it here.
   with the robot's own noise as background (lidar hum + fan; see
   `training/wakeword/README.md`), then household recordings. Memory and
   photos/faces (steps 5-6) are built; face recognition is on again (2026-11-25).
-- Head controller (`docs/brain.md` step 7, branch `head-controller`): built and
+- Head controller (`docs/brain.md` step 7, in `main`): built and
   tested on the Mac (motion profile unit tests; the node in a `ros:jazzy`
   container on domain 77; agent eval 37/37). Running on the robot since
   2026-11-25 (`rainbow_head`, added to the running container by hand with the
