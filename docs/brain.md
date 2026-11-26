@@ -153,6 +153,31 @@ again) and sees it in the state. Once >= 7.6 V has held for 1 min (a charged
 battery) the stopped programs start again, the map first, and it says thank
 you (`battery_ok`).
 
+**Picked up** also comes on top of either mode (`rainbow_brain/lift.py`, from
+the BNO055): the robot rising > 10 cm (12 cm while it is commanded to move) or
+tilting > 20 deg from its rest counts as lifted. Put down is the landing: it
+came down (> 0.2 m/s) and braked to a stop, then stays quiet for 0.25 s (a hand
+stopping in mid-air moves again within that); a put-down too slow to show a
+descent counts after 1 s still. On a recording (four put-downs, one stop in
+mid-air) that answers 0.4-1 s sooner than 0.5 s of stillness and 1.5-2.5 s
+sooner than the first rule (2 s still), which the owner found slow.
+Tuned on a recording (three lifts, a push over a carpet edge, which rose 2.7 cm
+by the same estimate and is not a lift). Lifted: every motion is cancelled and
+refused ("someone is holding me"), `/lifted` is true, so the lidar goes to
+standby, the brain says something playful ("Hey!", "Wheee!", "I can fly!"; a
+random one of `lift_phrases`, never the last one again) and the agent gets a
+`lifted` event (it does not speak on it). Put down: the brain says one of
+`put_down_phrases` ("Phew, solid ground!"), AMCL restarts global localization
+(the location is lost) and the agent gets `put_down`; the robot never moves by itself after that, the next move or "look
+around" relocalizes. The lidar is frugal (`lidar_power`, see AGENTS.md): every
+move asks for it on `/lidar/wanted` and waits for the first scan (<= 8 s) before
+Nav2 gets the goal. The detector's IMU, with `/tf`, `/cmd_vel` and `/odom_raw`,
+is received on a second node (`brain_inputs`) with its own single-threaded
+executor: on the brain node itself, every message cost a wait-set rebuild over all
+its entities (~23% of a core). That thread costs ~9% of a core, the whole brain
+~11% at rest (2026-11-26). The detector could move onto the ESP with the board
+IMU later.
+
 Losing the link in the middle of a goal does not cancel it; the brain just takes
 no new decisions from the agent. When the link comes back, the brain sends the
 agent a summary of what happened offline.
@@ -492,8 +517,10 @@ load with it on).
 - **Greeting people** (`rainbow_brain/greeting.py`): someone in view (COCO's
   `person`, e.g. legs, or a face) for 1 s while the robot is idle gets one
   look: the brain has the tracker follow "face" (falling back to the body's top),
-  for 20 s, then the head centres. The tracker moves the head at 200 deg/s, calmer
-  than the head's 400 deg/s default (full speed looked jumpy when following). Face recognition then names them: a
+  for 20 s, then the head centres. The tracker moves the head at the head's
+  default speed, 60 deg/s: the owner preferred it to 90 and 200 watching an
+  emulated face (2026-11-26; 200 was set when the head moved at 400 deg/s and
+  full speed looked jumpy). Face recognition then names them: a
   `face_seen` event with `greet` true, which the agent answers at once with a
   greeting (in local mode the brain says "Hi <name>!"); an unknown face is
   `face_unknown` (asks the name). One look per presence: they must be out of view
@@ -534,16 +561,26 @@ With the head controller (see [Head](#head)) this can use several head direction
 ## Head
 
 The servos have no position feedback and jump at full speed to whatever angle
-the ESP is sent, so the head node (`rainbow_drivers/head_node.py`, its own
-supervisor program `rainbow_head`) controls the motion:
+they are sent, so the head node (`rainbow_drivers/head_node.py`, its own
+supervisor program `rainbow_head`) plans the motion and our ESP firmware runs it:
 
-- The commanded angle moves towards the target with limited speed and
-  acceleration, braking to stop on the target; both axes are scaled to arrive
-  together. The default is near the servos' own speed (400 deg/s, 4000
-  deg/s^2: a 30 deg move takes ~0.2 s): the ESP takes whole degrees and the
-  servos visibly step at each one, so slow glides (5 to 60 deg/s, tried with
-  the owner) all looked jerky. A goal can still ask for a slower speed. Code:
-  `rainbow_drivers/head_motion.py`, tested without ROS.
+- The angle moves towards the target with limited speed and acceleration,
+  braking to stop on the target; both axes are scaled to arrive together. The
+  node sends the ESP one `servo_goal` per new target (each servo's angle, speed
+  and acceleration, resent every second); the firmware steps it once per 20 ms
+  servo frame, in fractions of a degree (`firmware/main/servo_motion.c`). Before
+  (2026-11-25), the node streamed whole degrees at 50 Hz: the servos stepped at
+  each degree and the stream beat against their frames, so slow glides (5 to 60
+  deg/s, tried with the owner) all looked jerky. With the moves on the ESP
+  (2026-11-26, the owner watching 30 deg pans): 10-30 deg/s still jerky (the
+  hobby servos' ~1 deg deadband: they move in jumps once the target is a degree
+  away), 45-60 better, 90 smoother, 120-150 not jerky but very fast; following
+  an emulated face, 60 looked best (90 and 200 tried). The default is 60 deg/s
+  for every move, tracking too (accel 4000 deg/s^2: a 30 deg move takes ~0.5
+  s); a goal can ask for another speed. The node runs the
+  same model (`rainbow_drivers/head_motion.py`, tested without ROS) to know the
+  pose; `firmware/test/test_servo_motion.py` checks that the C and Python
+  agree. `esp_motion: false` streams whole degrees again (the stock firmware).
 - A new target blends in from the current motion, so a stream of targets is one
   continuous movement: `/head/target` (`HeadTarget`, latest wins) is for
   following faces later.

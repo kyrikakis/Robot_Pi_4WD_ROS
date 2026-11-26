@@ -1,0 +1,25 @@
+# micro-ROS sources built into the firmware: path, repo, commit (jazzy, recorded 2026-11-26).
+# build.sh clones these before the micro-ROS component would clone its branch heads.
+Micro-XRCE-DDS-Client https://github.com/eProsima/Micro-XRCE-DDS-Client 83f129a80770a09aac9e823896ecbf6a0eddf0fc
+common_interfaces https://github.com/ros2/common_interfaces a941f14bb318d8d904505ed935ccbb97f24a70a4
+example_interfaces https://github.com/ros2/example_interfaces 4ed406d1277df78be01a31005306d69e7592a993
+micro-CDR https://github.com/eProsima/micro-CDR ed4fd513a24a53b93d548d342cb7aa0a18716f04
+micro_ros_msgs https://github.com/micro-ROS/micro_ros_msgs b1ef85201e5545d3e07b73f4628bb15836062573
+micro_ros_utilities https://github.com/micro-ROS/micro_ros_utilities 9f35a036f5c87595c03673598be1615ded620f6d
+rcl https://github.com/micro-ROS/rcl 01b5d1dedfff640b1e192a865edb57ae1cb00fc6
+rcl_interfaces https://github.com/ros2/rcl_interfaces 7aa3caf43377ea6ad615bc1040832e2c7566bfbe
+rcl_logging https://github.com/ros2/rcl_logging 727920c2592be6deb6983f0fe1b57cbc929cbb70
+rclc https://github.com/ros2/rclc 45ef3de567588652c7f05017a91ea29921dd6862
+rcutils https://github.com/micro-ROS/rcutils c002e3c66241525a24ae6c2a35c4830761c5d280
+rmw https://github.com/ros2/rmw 8cb94a87cf3f4049abe2d563af893517bf336930
+rmw_implementation https://github.com/ros2/rmw_implementation b3bbcab3f2bf114f3d83b9e8f34732f6fa38a8ef
+rmw_microxrcedds https://github.com/micro-ROS/rmw_microxrcedds f739ba3bf5e5fe15008ae4b67e0bf0e08f59b69b
+ros2_tracing https://github.com/ros2/ros2_tracing e19e186c3768bf8f8c86c752d4d57182dc4e68ea
+rosidl https://github.com/ros2/rosidl 9bcfabf3eddf8e63fb4332dca6da7ec6f3140d65
+rosidl_core https://github.com/ros2/rosidl_core c6eb22b0e77cf57b19e9c6ffd114a00749404215
+rosidl_defaults https://github.com/ros2/rosidl_defaults 9749b5919add7e5960cd931ec547d45f06bd0025
+rosidl_dynamic_typesupport https://github.com/ros2/rosidl_dynamic_typesupport cb8c54d12c678daa70410bb0626ed8626f561e45
+rosidl_typesupport https://github.com/micro-ROS/rosidl_typesupport 352f208e29f33d7a5e78f4aec38ac0056d9ff23e
+rosidl_typesupport_microxrcedds https://github.com/micro-ROS/rosidl_typesupport_microxrcedds 9672e11175e616bc3fb7449288d0868ab36419bf
+test_interface_files https://github.com/ros2/test_interface_files 1c92e082fe14f90b772d308d113e510ad2c79fb9
+unique_identifier_msgs https://github.com/ros2/unique_identifier_msgs 901599ee92c2ee949f42a5c5d821c92b3e515d69

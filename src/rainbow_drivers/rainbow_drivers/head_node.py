@@ -5,10 +5,15 @@ Drives the two head servos on the ESP board and publishes the head's
 (camera, ToF, eyes) with it.
 
 The servos have no position feedback and jump at full speed to the angle they
-are sent, so the node moves the commanded angle smoothly (rainbow_drivers.head_motion:
-limited speed and acceleration, both axes arriving together) and /joint_states
-follows that commanded angle while the head moves, a little late (servo_latency_s)
-to match the servos. After each move the head counts as settled only after a
+are sent, so every move is planned here (rainbow_drivers.head_motion: limited
+speed and acceleration, both axes arriving together). Our ESP firmware runs the
+move itself: the node sends it one servo_goal per new target (angles and each
+servo's speed and acceleration), and the firmware steps it once per 20 ms servo
+frame, in fractions of a degree. The node runs the same model to know where the
+head is, and /joint_states follows it while the head moves, a little late
+(servo_latency_s) to match the servos. With esp_motion false (the stock
+firmware) the node streams the model's position instead, in whole degrees on
+servo_s1 / servo_s2 at control_rate. After each move the head counts as settled only after a
 settle time that grows with the size of the move; photos should wait for it.
 
 Interfaces:
@@ -24,8 +29,11 @@ Interfaces:
   /head/z_rotation, /head/y_rotation  std_msgs/Int32   pan/tilt in degrees
                                                        (kept from the old node)
   ~/moving        std_msgs/Bool (out, latched)         true while moving or settling
-  servo_s1, servo_s2  std_msgs/Int32 (out)             servo angles for the ESP,
-                                                       on every change and every second
+  servo_goal  rainbow_esp_msgs/HeadServoGoal (out)     the move for the ESP, on every
+                                                       new target and every second
+  servo_s1, servo_s2  std_msgs/Int32 (out)             with esp_motion false: servo
+                                                       angles, on every change and
+                                                       every second
   /joint_states       sensor_msgs/JointState (out)
 
 Every new target (from any of these) replaces a running ~/move goal.
@@ -38,7 +46,9 @@ import math
 import threading
 import time
 
+from geometry_msgs.msg import Twist
 from rainbow_drivers.head_motion import HeadMotion
+from rainbow_esp_msgs.msg import HeadServoGoal
 from rainbow_interfaces.action import MoveHead
 from rainbow_interfaces.msg import HeadTarget
 from rainbow_interfaces.srv import SetHeadPose
@@ -48,7 +58,6 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallb
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
-from geometry_msgs.msg import Twist
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool, Int32
 from std_srvs.srv import Trigger
@@ -72,13 +81,14 @@ class HeadNode(Node):
         self.tilt_offset = param('tilt_servo_offset_deg', -56).value
         self.pan_joint = param('pan_joint', 'head_pan_joint').value
         self.tilt_joint = param('tilt_joint', 'head_tilt_joint').value
-        # Near the servos' own speed by default: the ESP takes whole degrees and
-        # the servos step at each one, so slow glides (5-60 deg/s, tried with the
-        # owner 2026-11-25) all looked jerky; a quick move looked best. Settle
-        # times and latency are estimates until measured
+        # 60 deg/s for every move, tracking too (the owner, 2026-11-26, moves run on
+        # the ESP): 10-30 deg/s jerky (the servos' ~1 deg deadband makes them move
+        # in visible jumps), 45-60 better, 90 smoother but 60 preferred when
+        # following a face, 150 not jerky but very fast. Settle times and latency
+        # are estimates until measured
         self.motion = HeadMotion(
             pan_limits, tilt_limits,
-            speed=param('speed_deg_s', 400.0).value,
+            speed=param('speed_deg_s', 60.0).value,
             accel=param('accel_deg_s2', 4000.0).value,
             settle_base=param('settle_base_s', 0.2).value,
             settle_per_deg=param('settle_per_deg_s', 0.005).value)
@@ -86,6 +96,9 @@ class HeadNode(Node):
         control_rate = param('control_rate', 50.0).value
         idle_rate = param('joint_state_rate', 10.0).value
         resend = param('servo_resend_period', 1.0).value
+        # True: our firmware runs the moves (servo_goal); false: stream whole
+        # degrees on servo_s1 / servo_s2 (the stock firmware)
+        self.esp_motion = param('esp_motion', True).value
         # A held jog button sends a message every 1/publish rate; the first one
         # (or one after a gap) moves the target this far ahead in time
         self.jog_step = param('jog_step_s', 0.2).value
@@ -102,8 +115,11 @@ class HeadNode(Node):
         # Commanded positions with their times, for the servo latency
         self.history = deque(maxlen=max(2, int(control_rate) * 2))
 
-        self.pan_pub = self.create_publisher(Int32, 'servo_s1', 10)
-        self.tilt_pub = self.create_publisher(Int32, 'servo_s2', 10)
+        if self.esp_motion:
+            self.goal_pub = self.create_publisher(HeadServoGoal, 'servo_goal', 10)
+        else:
+            self.pan_pub = self.create_publisher(Int32, 'servo_s1', 10)
+            self.tilt_pub = self.create_publisher(Int32, 'servo_s2', 10)
         self.joint_pub = self.create_publisher(JointState, 'joint_states', 10)
         self.moving_pub = self.create_publisher(Bool, '~/moving', LATCHED)
 
@@ -122,15 +138,16 @@ class HeadNode(Node):
             cancel_callback=lambda _: CancelResponse.ACCEPT, callback_group=group)
 
         self.history.append((time.monotonic(), 0.0, 0.0))
-        self.send_servos(force=True)
+        self.resend()
         self.moving_pub.publish(Bool(data=False))
         self.publish_joint_states()
         timers = MutuallyExclusiveCallbackGroup()
         self.create_timer(self.dt, self.tick, callback_group=timers)
-        # Keep resending the pose: when the ESP resets or reconnects its servos go
-        # to the firmware's default position, which would leave the head (and the
-        # calibrated ToF) somewhere other than where /joint_states says it is.
-        self.create_timer(resend, lambda: self.send_servos(force=True), callback_group=timers)
+        # Keep resending: after an ESP reset the servos get no pulse until the
+        # first command (the stock firmware jumped to its default pose instead),
+        # which would leave the head (and the calibrated ToF) somewhere other than
+        # where /joint_states says it is. A resent goal does not change a move.
+        self.create_timer(resend, self.resend, callback_group=timers)
 
     # Targets (degrees)
 
@@ -139,12 +156,16 @@ class HeadNode(Node):
         with self.lock:
             self.generation += 1
             pan, tilt = self.motion.set_target(pan_deg, tilt_deg, speed_deg_s)
-            return self.generation, pan, tilt
+            generation = self.generation
+        self.send_goal()
+        return generation, pan, tilt
 
     def stop_here(self):
         with self.lock:
             self.generation += 1
-            return self.motion.stop()
+            target = self.motion.stop()
+        self.send_goal()
+        return target
 
     # Control loop
 
@@ -159,7 +180,8 @@ class HeadNode(Node):
             busy = self.motion.step(now, self.dt)
             pan, tilt = self.motion.position
         self.history.append((now, pan, tilt))
-        self.send_servos()
+        if not self.esp_motion:
+            self.send_servos()
         if busy != self.moving:
             self.moving = busy
             self.moving_pub.publish(Bool(data=busy))
@@ -169,11 +191,35 @@ class HeadNode(Node):
         if busy or self.ticks % self.idle_every == 0:
             self.publish_joint_states(now)
 
+    def to_servo(self, pan, tilt):
+        """Convert head degrees to servo degrees (S1, S2)."""
+        return (self.pan_sign * pan + self.pan_offset, self.tilt_sign * tilt + self.tilt_offset)
+
+    def send_goal(self):
+        """Send the current move to the ESP (esp_motion)."""
+        if not self.esp_motion:
+            return
+        with self.lock:
+            target = self.motion.target
+            (pan_speed, pan_accel), (tilt_speed, tilt_accel) = self.motion.limits()
+        s1, s2 = self.to_servo(*target)
+        self.goal_pub.publish(HeadServoGoal(
+            s1_deg=float(s1), s2_deg=float(s2),
+            s1_speed=float(pan_speed), s2_speed=float(tilt_speed),
+            s1_accel=float(pan_accel), s2_accel=float(tilt_accel)))
+
+    def resend(self):
+        # Every second: after an ESP reset its servos get no pulse until a command
+        if self.esp_motion:
+            self.send_goal()
+        else:
+            self.send_servos(force=True)
+
     def servo_command(self):
         with self.lock:
             pan, tilt = self.motion.position
-        return (int(round(self.pan_sign * pan + self.pan_offset)),
-                int(round(self.tilt_sign * tilt + self.tilt_offset)))
+        s1, s2 = self.to_servo(pan, tilt)
+        return int(round(s1)), int(round(s2))
 
     def send_servos(self, force=False):
         command = self.servo_command()
@@ -184,7 +230,7 @@ class HeadNode(Node):
         self.tilt_pub.publish(Int32(data=command[1]))
 
     def lagged_position(self, now):
-        """The commanded position servo_latency_s ago: where the servos are now."""
+        """Return the commanded position servo_latency_s ago: where the servos are now."""
         when = now - self.latency
         pan, tilt = self.history[0][1:]
         for t, p, q in self.history:

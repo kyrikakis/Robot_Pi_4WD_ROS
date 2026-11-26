@@ -86,6 +86,13 @@ def describe_event(event):
         return 'someone I do not know has been in front of my camera for a few seconds'
     if kind == 'track_lost':
         return f"I lost sight of the {event.get('target')} I was following with my head"
+    if kind == 'lifted':
+        return 'someone picked me up: I stopped and will not drive until I am put down'
+    if kind == 'put_down':
+        if event.get('relocalizing'):
+            return ('I was put down somewhere: I no longer know where I am until I '
+                    'look around')
+        return 'I was put down'
     if kind == 'stopped_by_voice':
         return 'someone said stop, so I stopped'
     if kind == 'cancelled':

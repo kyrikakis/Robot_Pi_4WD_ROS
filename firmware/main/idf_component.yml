@@ -1,0 +1,7 @@
+dependencies:
+  idf: ">=5.2,<5.3"
+  espressif/bdc_motor: "0.2.0"
+  micro-ros/micro_ros_espidf_component:
+    # Cloned at a pinned commit by build.sh (see MICRO_ROS_COMMIT there).
+    version: "*"
+    override_path: "../components/micro_ros_espidf_component"

@@ -17,16 +17,31 @@ compose setup lives in `~/hailo_tappas_ros2` on the host.
 
 | Where | What | In this repo? |
 |---|---|---|
-| ESP32 board (micro-ROS over `/dev/ttyUSB_ROS`) | Motor PID, head servos, lidar, battery, an IMU | No. Firmware is out of scope; treat its topics as a fixed contract |
+| ESP32 board (micro-ROS over `/dev/ttyUSB_ROS`) | Motor PID, head servos, lidar, battery, an IMU | Yes: `firmware/` (our own since 2026-11-26; see its README and DELTAS.md). Keep its topics as a fixed contract |
 | `robot` container (this repo) | Everything in `src/`, run by supervisor | Yes |
 | Hailo container ([hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2)) | Face recognition and object detection (COCO) on the Hailo, capturing the RGB camera itself | No. Only `hailo_msgs` is built here, to read its messages |
 
 Contracts with the ESP firmware (node `YB_Car_Node`, do not rename): it
 subscribes to `cmd_vel` (skid-steer: it ignores `linear.y`, tested with the wheels
 lifted 2026-11-24), `servo_s1` (pan), `servo_s2` (tilt) and `/beep`, and
-publishes `/odom_raw`, `/scan` in `laser_frame`, `/imu` in `imu_frame`, and
+publishes `/odom_raw`, `/scan` in `laser_frame`, `/imu` in `imu_frame` (our
+firmware: off by default, build option `RAINBOW_PUBLISH_IMU`), and
 `/battery` (UInt16, volts x 10, 1 Hz; the owner's pack runs ~6.9-8.0 V). The ESP's IMU is mounted wrongly and
 unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
+Our firmware adds `/esp_firmware` (latched version string), `servo_goal`
+(`rainbow_esp_msgs/HeadServoGoal`: the head node's moves, run on the ESP; the
+package is compiled into micro-ROS by `firmware/build.sh`), the
+`lidar/enable` service (SetBool: MS200 standby / run; standby stops its motor)
+and the parameter `lidar_speed_hz` (5-15 Hz; keep the sensor's 10 Hz: at 15 Hz
+~20 % of the 1-degree bins stay empty), both tested on the robot. The lidar is
+frugal: the ESP boots it in standby and `lidar_power` (rainbow_drivers, in
+`microros.launch.py`) turns it on only while mapping (`rainbow_slam`), while
+moving (non-zero `/cmd_vel`) and 30 s after, or while `/lidar/wanted` is true;
+never while `/lifted`. Subscribers to `/scan` (Foxglove, the brain's status) do
+not count. No `/scan` at rest is normal.
+Build with `firmware/build.sh` (Docker, Mac or Pi), flash, back up or restore on
+the Pi host with `firmware/esp.sh`. The stock firmware's whole-flash backup is in
+`~/esp-backup/` on the Pi host (not in git); restoring it was tested.
 
 ## How it runs
 
@@ -98,6 +113,12 @@ The code you edit is the code the robot runs. Lessons learned:
   what is left, by process group). Programs started before that change still
   leave their old process once on their next restart: check with
   `ps -eo pid,pgid,etime,args | grep [c]omponent_container` and stop extras by PID.
+- rclpy's `MultiThreadedExecutor` rebuilds its wait set in Python over all of a
+  node's entities on every wake-up. The brain (~70 entities: action clients and
+  servers, services) took ~23% of a core just receiving `/tf`, the IMU, `/cmd_vel`
+  and `/odom_raw`. Frequent topics go on a second small node with its own
+  `SingleThreadedExecutor` thread (the brain's `brain_inputs`); its main thread
+  then idles at ~1%.
 - `supervisorctl tail` can fail on non-UTF-8 log output; read
   `/var/log/supervisor/<program>-stdout*.log` directly.
 - **ROS params files** (`config/*.yaml`) must only have node names at the top
@@ -119,8 +140,10 @@ The code you edit is the code the robot runs. Lessons learned:
   re-enumerating, a restart of rainbow_microros plus an ESP board reset brought
   the ESP back. Nav2 started meanwhile without a `map` frame (no lidar) and
   aborted its bringup ("Action server is inactive. Rejecting the goal."):
-  restart rainbow_navigation once the ESP is back. Avoid restarting `rainbow_microros`: after the
-  agent stops, the ESP itself needs a board reset (with the agent running).
+  restart rainbow_navigation once the ESP is back. Restarting `rainbow_microros`
+  is fine with our firmware: it notices the agent is gone, stops the motors and
+  reconnects within ~10 s (tested 2026-11-26). The stock firmware needed a board
+  reset (with the agent running).
 - The ToF is in both costmaps (STVL). The node does the floor filtering and
   publishes `/tof/obstacles` (1.2-16 cm above the floor within 0.8 m, 2.5-16 cm
   beyond; Nav2 marks only from this; 1.2 cm catches a desk foot on the hard floor
@@ -187,8 +210,9 @@ The code you edit is the code the robot runs. Lessons learned:
   SLAM adds one only every ~29 deg of turning (`minimum_travel_heading` 0.5).
   Do not hold scans back from SLAM: its map->odom TF is stamped with the last
   scan and goes stale, and Nav2 then aborts every goal.
-- After an ESP reset its servos go to the firmware's default position; the head
-  node resends the pose every second so the head (and the calibrated ToF) return.
+- After an ESP reset our firmware sends the servos no pulse until the first
+  command (the stock one jumped to its default pose); the head node resends the
+  pose every second so the head (and the calibrated ToF) return.
   Do not move the head without the owner watching.
 - ToF calibration: `scripts/calibrate_tof.py` (robot facing clear floor, head
   centred) gives the FOV and the mount pitch/roll. Current values: FOV 48.5 x
@@ -210,10 +234,9 @@ The code you edit is the code the robot runs. Lessons learned:
 
 ## Conventions
 
-- `main` is the finished robot. New work happens on a branch per feature
-  (currently `esp-firmware`, our own ESP32 firmware; the brain, steps 1-7 of
-  `docs/brain.md`, is merged); do not merge to `main` or suggest merging until the
-  owner says so.
+- `main` is the finished robot. New work happens on a branch per feature (none
+  open; the brain, steps 1-7 of `docs/brain.md`, and our own ESP32 firmware are
+  merged); do not merge to `main` or suggest merging until the owner says so.
 - Python nodes: ament_python, one node per module, `ament_flake8 --linelength 100`
   clean. New services go in `rainbow_interfaces`. Keep the old topics
   (`/head/*_rotation`, `/eyes`, `/speech/*`) working.
@@ -223,7 +246,12 @@ The code you edit is the code the robot runs. Lessons learned:
   eyes. Ubuntu/ROS apt packages are the exception, with `apt-get upgrade`
   kept on purpose.
 - The README is curated: change it only to keep it correct, never pad it.
-- The version before the refactor is tagged `v0-legacy`.
+- Tags: `v0-legacy` is the robot before the refactor; `v1.0.0-rc.1` (on `main`,
+  2026-11-26) the refactored robot with the brain, pre-production;
+  `v1.0.0-rc.2` (2026-11-26) adds our ESP firmware, head moves run on the ESP,
+  playful pick-up / put-down and the brain's CPU fix. Tag releases
+  `vX.Y.Z` (`-rc.N` before production); the firmware's version is `git describe
+  --tags` (`firmware/build.sh`), shown on `/esp_firmware`.
 
 ## Pushing from the container
 
@@ -284,7 +312,8 @@ when new work comes up, add it here.
   conf from git; the rebuilt image has it). Speed set with the owner watching
   (2026-11-25): glides at 5-60 deg/s all looked jerky (whole-degree servo
   commands, the servos step at each), a quick move (400 deg/s, accel 4000
-  deg/s^2) looked best; finer motion would need firmware changes. Still to
+  deg/s^2) looked best then. With our firmware running the moves (below) the
+  default is 60 deg/s (2026-11-26). Still to
   measure: the settle time (estimated 0.2 s + 5 ms/deg;
   measure with the ToF image going still, robot at rest) and `servo_latency_s`
   (0.05 s, estimated). Then photos in several directions for startup
@@ -301,19 +330,43 @@ when new work comes up, add it here.
   face_unknown (the face gallery was emptied that day). Still to see with the
   owner: the greeting by name through the agent, the head tilting up to a
   standing person's face (the 36 deg limit), and that driving takes the head back.
+- Pick-up detection (brain, `docs/brain.md` "Modes", `rainbow_brain/lift.py`):
+  built 2026-11-26, tested on the robot (two pick-ups and put-downs seen; the
+  recording's carpet-edge push is not a lift). Still to see: AMCL's global
+  relocalization after a put-down with localization running, and that bumps
+  while driving (12 cm rise threshold, tilt 20 deg) do not count, once the motors
+  are back. The brain's input thread (the IMU at 50 Hz for this, plus `/tf`,
+  `/cmd_vel` and `/odom_raw`) costs ~9% of a core, the whole brain ~11% at rest
+  (2026-11-26, robot stripped); moving the detector onto the ESP (board IMU)
+  would save part of it.
 - Low-battery mode (brain, `docs/brain.md` "Modes"): built 2026-11-25, tested
   on the Mac only (logic unit tests, agent eval). On the robot: check that it
   stops and restarts the programs (supervisorctl from the brain) and speaks;
   a test on domain 77 must set `battery_stop_programs` to [] (supervisorctl
   is not per domain). The sad eyes are on the robot (base restarted
   2026-11-25). The firmware's own low-voltage behaviour is unknown.
-- ESP firmware (later, a project of its own): smooth head motion needs finer
-  servo commands (the firmware takes whole degrees as an 8-bit angle, though its
-  PWM is set in microseconds) or, better, the ramp done on the ESP (target +
-  speed, at the servos' 50 Hz). Only Yahboom's factory binary and ESP-IDF samples
-  are in `~/rainbow-firmware` on the Mac, not the `YB_Car_Node` source: it
-  would be rebuilt from the samples (motor PID included) and re-tested. Digital
-  metal-gear servos would also glide better (hobby servos have a ~1 deg deadband).
+- ESP firmware (`firmware/`, in `main`): our own, running on the
+  board since 2026-11-26 with the robot stripped (no lidar, cameras, ToF):
+  connection, reconnect, `odom_raw`, `imu`, `battery`, `/scan` and the lidar
+  commands checked.
+  Still to check with the owner watching: each motor's direction and the PID on
+  the floor (teleop against the gyro), the servos, the scan's orientation once
+  the lidar is on the chassis,
+  the buzzer heard. With the new 65 mm wheels set
+  `RAINBOW_WHEEL_CIRCUMFERENCE_UM` (204200) and re-measure `angular_gain`.
+  Smooth head motion: on the robot since 2026-11-26 (v1.0.0-rc.1-15): the
+  head node sends one `servo_goal` per target (each servo's angle, speed,
+  acceleration), the ESP steps the move once per 20 ms servo frame in ~0.11
+  deg pulse steps (`servo_motion.c`, checked against `head_motion.py` by
+  `firmware/test/test_servo_motion.py`); `esp_motion: false` on the head node
+  for the stock firmware. Pans tried with the owner watching: 10-30 deg/s still
+  jerky (the hobby servos' ~1 deg deadband), 45-60 better, 90 smoother,
+  120-150 not jerky but very fast. Slow glides need servos with
+  a smaller deadband (digital, or serial bus servos with feedback). Following
+  an emulated face (a 20 s walk and a step aside, the tracker's aiming code
+  against the real head) the owner preferred 60 deg/s to 90 and 200: 60 is the
+  head's default for everything, the tracker uses it (was 200). Tilt alone not
+  reviewed yet.
 - Eyes went dark (2026-11-25, around when the robot started moving): the HT16K33
   at 0x71 gave Remote I/O errors (the node crashed and respawned), then answered
   again but with its display off. Cause unknown (the Pi's 5 V input and its
@@ -328,6 +381,12 @@ when new work comes up, add it here.
   (0-1) and stamped on publishing. The Pi host's `~/hailo_tappas_ros2` git has
   4 empty objects from April 2025 (an unpushed local commit, "Create a PR to bump
   the version"; GitHub is ahead at v1.0.3): reset it to `origin/main` some time.
+- Host runs hot: ~75 C with the Pi only ~16% busy (2026-11-26, robot
+  stripped), and it has hit the soft temperature limit, capped clocks and
+  under-voltage since boot (`vcgencmd get_throttled` 0xf0000). `config.txt`
+  overclocks to `arm_freq=3000` (stock 2.4 GHz) and the kernel shows no fan
+  (no `cooling_fan` hwmon). Check the fan with the owner and drop the
+  overclock (needs a reboot; ask first).
 - Host: Hailo, kernel (6.6, contains the Hailo driver) and camera packages are
   held with apt-mark. Update them together later, with the Hailo container
   and a rebuild of the ALFA Wi-Fi driver (rtl8812au) for the new kernel.

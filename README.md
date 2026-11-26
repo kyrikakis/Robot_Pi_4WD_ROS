@@ -71,9 +71,11 @@ Rainbow's ROS 2 packages live in `src/`:
 | `rainbow_voice` | Text to speech; the ears: wake word, utterances, local commands on the ReSpeaker Lite |
 | `rainbow_brain` | Local brain: skills (go to a place, turn, drive, stop) and named places on the map ([design](docs/brain.md)) |
 | `rainbow_interfaces` | Service, action and message definitions |
+| `rainbow_esp_msgs` | Messages of the ESP firmware's own topics (also built into micro-ROS) |
 
 The ESP32 board runs the motors (with PID), the head servos, the lidar, battery
 monitoring and its own IMU. It talks to the Pi over micro-ROS (`/dev/ttyUSB_ROS`).
+Its firmware is ours, in [`firmware/`](firmware/README.md) (build, flash, back up, restore).
 The ESP's IMU is mounted the wrong way round and is not used; the EKF uses the
 BNO055 on the Pi.
 
@@ -86,7 +88,7 @@ Supervisor starts these when the container starts (`supervisor/rainbow.conf`):
 
 | Program | Launch file | Contents |
 |---|---|---|
-| `rainbow_microros` | `microros.launch.py` | micro-ROS agent (ESP board) |
+| `rainbow_microros` | `microros.launch.py` | micro-ROS agent (ESP board), lidar power (on only while needed) |
 | `rainbow_base` | `base.launch.py` | description, BNO055, EKF, eyes, velocity watchdog, IP publisher |
 | `rainbow_tof` | `tof.launch.py` | ToF camera |
 | `rainbow_head` | `head.launch.py` | Pan/tilt head (smooth moves) |

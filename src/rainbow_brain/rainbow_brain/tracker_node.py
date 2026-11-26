@@ -69,9 +69,10 @@ class TrackerNode(Node):
         self.gain = param('gain', 0.8).value
         self.zone_pan = param('zone_pan_deg', 8.0).value
         self.zone_tilt = param('zone_tilt_deg', 6.0).value
-        # Calmer than the head's quick default (400 deg/s): following someone at full
-        # speed looked jumpy (owner, 2026-11-25); 0 = the head's default
-        self.speed = math.radians(param('speed_deg_s', 200.0).value)
+        # 0 = the head's default (60 deg/s): the owner preferred it to 90 and 200
+        # watching an emulated face (2026-11-26). 200 was set when the head moved
+        # at 400 deg/s and full speed looked jumpy
+        self.speed = math.radians(param('speed_deg_s', 0.0).value)
         # Frame taken this long before its detections' stamp (or their arrival
         # when the stamp is missing or off), in s
         self.frame_latency = param('frame_latency_s', 0.15).value
@@ -140,7 +141,7 @@ class TrackerNode(Node):
         self.joints.append((stamp, math.degrees(pan), math.degrees(tilt)))
 
     def head_at(self, stamp_ns):
-        """The head's pose (deg) at a time, from /joint_states; None before any arrived."""
+        """Return the head's pose (deg) at a time, from /joint_states; None before any."""
         if not self.joints:
             return None
         pan, tilt = self.joints[0][1:]

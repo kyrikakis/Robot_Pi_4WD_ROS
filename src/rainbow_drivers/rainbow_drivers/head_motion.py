@@ -8,6 +8,10 @@ targets (following a face) gives one continuous movement.
 
 Both axes are scaled to arrive together, so a diagonal move is a straight line.
 
+Axis.step is also in the ESP firmware (firmware/main/servo_motion.c), which runs
+the moves the head node sends it; firmware/test/test_servo_motion.py checks that
+the two agree. Change both together.
+
 All angles are in degrees, times in seconds.
 """
 
@@ -103,11 +107,15 @@ class HeadMotion:
             axis.target = self.clamp(axis.stopping_point(self.accel), axis.low, axis.high)
         return self.pan.target, self.tilt.target
 
+    def limits(self):
+        """((pan speed, pan accel), (tilt speed, tilt accel)) of the current move."""
+        return tuple((self.move_speed * scale, self.accel * scale) for scale in self.scale)
+
     def step(self, now, dt):
         """Advance by dt; returns True while the head is moving or settling."""
         before = (self.pan.pos, self.tilt.pos)
-        for axis, scale in ((self.pan, self.scale[0]), (self.tilt, self.scale[1])):
-            axis.step(dt, self.move_speed * scale, self.accel * scale)
+        for axis, (speed, accel) in zip((self.pan, self.tilt), self.limits()):
+            axis.step(dt, speed, accel)
         moved = abs(self.pan.pos - before[0]) + abs(self.tilt.pos - before[1])
         self.travelled += moved
         if moved > 0.0 or not (self.pan.still and self.tilt.still):

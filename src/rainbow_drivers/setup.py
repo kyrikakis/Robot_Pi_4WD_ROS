@@ -25,6 +25,7 @@ setup(
             'cmd_vel_watchdog = rainbow_drivers.cmd_vel_watchdog:main',
             'ip_publisher = rainbow_drivers.ip_publisher:main',
             'plan_viz = rainbow_drivers.plan_viz:main',
+            'lidar_power = rainbow_drivers.lidar_power:main',
         ],
     },
 )
