@@ -59,8 +59,10 @@ programs start again (battery_ok event).
 Picked up (rainbow_brain.lift, from /bno055/imu: the robot rises > lift_rise_m or
 tilts > lift_tilt_deg; put down after lift_still_s still): every motion is
 cancelled and refused, /lifted (latched) is true, so the lidar goes to standby,
-and a lifted event goes to the agent. Put down: AMCL starts global localization
-again (the location is lost) and a put_down event goes to the agent; the robot
+the robot says one of lift_phrases ("Wheee!") and a lifted event goes to the
+agent. Put down: it says one of put_down_phrases, AMCL starts global
+localization again (the location is lost) and a put_down event goes to the
+agent (the agent does not speak on either); the robot
 does not move by itself, the next move or "look around" relocalizes.
 Lidar (lidar_power in rainbow_drivers keeps it in standby unless needed): every
 move asks for it on /lidar/wanted (at least once a second) and waits up to
@@ -92,7 +94,7 @@ from rainbow_brain.battery import BatteryMonitor
 from rainbow_brain.commands import parse, phrases
 from rainbow_brain.faces import save_outcome
 from rainbow_brain.greeting import Attention
-from rainbow_brain.lift import LiftDetector
+from rainbow_brain.lift import LIFT_PHRASES, LiftDetector, pick_phrase, PUT_DOWN_PHRASES
 from rainbow_brain.link import LinkServer, load_token
 from rainbow_brain.places import PlaceStore
 from rainbow_interfaces.action import Drive, GoToPlace, MoveHead, Turn
@@ -264,6 +266,10 @@ class BrainNode(Node):
                                  tilt_deg=param('lift_tilt_deg', 20.0).value,
                                  still_s=param('lift_still_s', 2.0).value)
         self.lifted = False
+        # Said when picked up / put down (a random one, not the last again); [] = quiet
+        self.lift_phrases = list(param('lift_phrases', LIFT_PHRASES).value)
+        self.put_down_phrases = list(param('put_down_phrases', PUT_DOWN_PHRASES).value)
+        self.last_phrase = None
         self.last_motion = None         # when /cmd_vel last asked for motion (monotonic s)
         self.lifted_pub = self.create_publisher(Bool, '/lifted', LATCHED)
         self.lifted_pub.publish(Bool(data=False))
@@ -465,6 +471,7 @@ class BrainNode(Node):
         self.lifted = True
         self.lifted_pub.publish(Bool(data=True))
         self.stop()
+        self.say_playful(self.lift_phrases)
         self.emit({'kind': 'lifted'})
         self.state_changed()
 
@@ -477,8 +484,15 @@ class BrainNode(Node):
             self.global_localization_client.call_async(EmptySrv.Request())
         self.get_logger().info('put down' + (': AMCL starts global localization again'
                                              if relocalizing else ''))
+        self.say_playful(self.put_down_phrases)
         self.emit({'kind': 'put_down', 'relocalizing': relocalizing})
         self.state_changed()
+
+    def say_playful(self, phrases):
+        phrase = pick_phrase(phrases, self.last_phrase)
+        if phrase:
+            self.last_phrase = phrase
+            self.say(phrase)
 
     # The lidar for moves
 

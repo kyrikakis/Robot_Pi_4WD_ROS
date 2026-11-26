@@ -21,6 +21,7 @@ linear acceleration (body frame, m/s^2, without gravity), angular velocity
 """
 
 import math
+import random
 
 STILL_GYRO = 0.05       # rad/s
 STILL_ACCEL = 0.2       # m/s^2
@@ -102,3 +103,17 @@ class LiftDetector:
             return None
         self.lifted = True
         return 'lifted'
+
+
+# What the robot says when picked up and put down (the brain's lift_phrases /
+# put_down_phrases parameters; spoken locally, no agent needed)
+LIFT_PHRASES = ['Hey!', 'Wheee!', 'Whoa, where are we going?', 'Hey, put me down!',
+                'I can fly!', 'Careful, I am delicate!']
+PUT_DOWN_PHRASES = ['Phew, solid ground!', 'Thanks for the ride!', 'Home sweet floor.',
+                    'That was fun!', 'Again, again!']
+
+
+def pick_phrase(phrases, last=None, choice=random.choice):
+    """Return a random phrase, not the one said last time; None for an empty list."""
+    fresh = [p for p in phrases if p != last] or list(phrases)
+    return choice(fresh) if fresh else None

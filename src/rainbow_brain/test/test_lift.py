@@ -81,3 +81,19 @@ def test_a_new_resting_surface_becomes_the_rest():
     feed(d, still(2) + lift() + still(3))          # lifted, put down
     # Resting tilted at 15 deg on a new surface: nothing new happens
     assert feed(d, still(5, q=tilted(15)), start=10.0) == []
+
+
+def test_pick_phrase_never_repeats_the_last():
+    from rainbow_brain.lift import pick_phrase
+    phrases = ['Hey!', 'Wheee!', 'I can fly!']
+    last = None
+    for _ in range(50):
+        phrase = pick_phrase(phrases, last)
+        assert phrase in phrases and phrase != last
+        last = phrase
+
+
+def test_pick_phrase_single_and_empty():
+    from rainbow_brain.lift import pick_phrase
+    assert pick_phrase(['Hey!'], 'Hey!') == 'Hey!'
+    assert pick_phrase([], 'Hey!') is None

@@ -159,9 +159,11 @@ tilting > 20 deg from its rest counts as lifted; 2 s still counts as put down.
 Tuned on a recording (three lifts, a push over a carpet edge, which rose 2.7 cm
 by the same estimate and is not a lift). Lifted: every motion is cancelled and
 refused ("someone is holding me"), `/lifted` is true, so the lidar goes to
-standby, and the agent gets a `lifted` event (not spoken). Put down: AMCL
-restarts global localization (the location is lost) and the agent gets
-`put_down`; the robot never moves by itself after that, the next move or "look
+standby, the brain says something playful ("Hey!", "Wheee!", "I can fly!"; a
+random one of `lift_phrases`, never the last one again) and the agent gets a
+`lifted` event (it does not speak on it). Put down: the brain says one of
+`put_down_phrases` ("Phew, solid ground!"), AMCL restarts global localization
+(the location is lost) and the agent gets `put_down`; the robot never moves by itself after that, the next move or "look
 around" relocalizes. The lidar is frugal (`lidar_power`, see AGENTS.md): every
 move asks for it on `/lidar/wanted` and waits for the first scan (<= 8 s) before
 Nav2 gets the goal. The detector's IMU, with `/tf`, `/cmd_vel` and `/odom_raw`,
