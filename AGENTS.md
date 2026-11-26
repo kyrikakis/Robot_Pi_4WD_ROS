@@ -320,6 +320,13 @@ when new work comes up, add it here.
   face_unknown (the face gallery was emptied that day). Still to see with the
   owner: the greeting by name through the agent, the head tilting up to a
   standing person's face (the 36 deg limit), and that driving takes the head back.
+- Pick-up detection (brain, `docs/brain.md` "Modes", `rainbow_brain/lift.py`):
+  built 2026-11-26, tested on the robot (two pick-ups and put-downs seen; the
+  recording's carpet-edge push is not a lift). Still to see: AMCL's global
+  relocalization after a put-down with localization running, and that bumps
+  while driving (8 cm rise threshold, tilt 20 deg) do not count, once the motors
+  are back. Costs ~4% of a core; moving it onto the ESP (board IMU) would make
+  it free.
 - Low-battery mode (brain, `docs/brain.md` "Modes"): built 2026-11-25, tested
   on the Mac only (logic unit tests, agent eval). On the robot: check that it
   stops and restarts the programs (supervisorctl from the brain) and speaks;

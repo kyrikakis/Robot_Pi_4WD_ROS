@@ -153,6 +153,20 @@ again) and sees it in the state. Once >= 7.6 V has held for 1 min (a charged
 battery) the stopped programs start again, the map first, and it says thank
 you (`battery_ok`).
 
+**Picked up** also comes on top of either mode (`rainbow_brain/lift.py`, from
+the BNO055): the robot rising > 5 cm (8 cm while it is commanded to move) or
+tilting > 20 deg from its rest counts as lifted; 2 s still counts as put down.
+Tuned on a recording (three lifts, a push over a carpet edge, which rose 2.7 cm
+by the same estimate and is not a lift). Lifted: every motion is cancelled and
+refused ("someone is holding me"), `/lifted` is true, so the lidar goes to
+standby, and the agent gets a `lifted` event (not spoken). Put down: AMCL
+restarts global localization (the location is lost) and the agent gets
+`put_down`; the robot never moves by itself after that, the next move or "look
+around" relocalizes. The lidar is frugal (`lidar_power`, see AGENTS.md): every
+move asks for it on `/lidar/wanted` and waits for the first scan (<= 8 s) before
+Nav2 gets the goal. The detector costs ~4% of a core (rclpy at 50 Hz); it could
+move onto the ESP with the board IMU later.
+
 Losing the link in the middle of a goal does not cancel it; the brain just takes
 no new decisions from the agent. When the link comes back, the brain sends the
 agent a summary of what happened offline.
