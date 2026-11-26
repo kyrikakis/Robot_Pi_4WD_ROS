@@ -511,7 +511,8 @@ load with it on).
   `person`, e.g. legs, or a face) for 1 s while the robot is idle gets one
   look: the brain has the tracker follow "face" (falling back to the body's top),
   for 20 s, then the head centres. The tracker moves the head at 200 deg/s, calmer
-  than the head's 400 deg/s default (full speed looked jumpy when following). Face recognition then names them: a
+  than the head's old 400 deg/s default (full speed looked jumpy when following;
+  set before the moves ran on the ESP and the default became 90 deg/s). Face recognition then names them: a
   `face_seen` event with `greet` true, which the agent answers at once with a
   greeting (in local mode the brain says "Hi <name>!"); an unknown face is
   `face_unknown` (asks the name). One look per presence: they must be out of view
@@ -562,9 +563,12 @@ supervisor program `rainbow_head`) plans the motion and our ESP firmware runs it
   servo frame, in fractions of a degree (`firmware/main/servo_motion.c`). Before
   (2026-11-25), the node streamed whole degrees at 50 Hz: the servos stepped at
   each degree and the stream beat against their frames, so slow glides (5 to 60
-  deg/s, tried with the owner) all looked jerky. The default stays near the
-  servos' own speed (400 deg/s, 4000 deg/s^2: a 30 deg move takes ~0.2 s) until
-  glides are tried again; a goal can ask for a slower speed. The node runs the
+  deg/s, tried with the owner) all looked jerky. With the moves on the ESP
+  (2026-11-26, the owner watching 30 deg pans): 10-30 deg/s still jerky (the
+  hobby servos' ~1 deg deadband: they move in jumps once the target is a degree
+  away), 45-60 better, 90 smoother, 120-150 not jerky but very fast. The
+  default is 90 deg/s (accel 4000 deg/s^2: a 30 deg move takes ~0.36 s); a goal
+  can ask for another speed. The node runs the
   same model (`rainbow_drivers/head_motion.py`, tested without ROS) to know the
   pose; `firmware/test/test_servo_motion.py` checks that the C and Python
   agree. `esp_motion: false` streams whole degrees again (the stock firmware).
