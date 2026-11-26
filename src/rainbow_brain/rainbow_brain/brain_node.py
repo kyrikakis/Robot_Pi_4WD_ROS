@@ -104,7 +104,8 @@ from rcl_interfaces.msg import Log
 import rclpy
 from rclpy.action import ActionClient, ActionServer, CancelResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
-from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
+from rclpy.executors import (ExternalShutdownException, MultiThreadedExecutor,
+                             SingleThreadedExecutor)
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, qos_profile_sensor_data, QoSProfile, ReliabilityPolicy
 from rclpy.task import Future
@@ -231,8 +232,13 @@ class BrainNode(Node):
             f'{len(self.places.places)} places for map {self.map_name} in {self.places.path}')
 
         self.group = ReentrantCallbackGroup()
+        # Frequent inputs (/tf ~40 Hz, the IMU 50 Hz, /cmd_vel and /odom_raw 20 Hz) go to
+        # a second node with its own single-threaded executor (spin_inputs). On this node
+        # every message woke the multi-threaded executor, which rebuilds its wait set over
+        # all of the brain's ~70 entities in Python each time: ~23% of a core (2026-11-26).
+        self.inputs = rclpy.create_node('brain_inputs')
         self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self)
+        self.tf_listener = TransformListener(self.tf_buffer, self.inputs)
 
         self.amcl = None
         self.battery = None
@@ -261,9 +267,9 @@ class BrainNode(Node):
         self.last_motion = None         # when /cmd_vel last asked for motion (monotonic s)
         self.lifted_pub = self.create_publisher(Bool, '/lifted', LATCHED)
         self.lifted_pub.publish(Bool(data=False))
-        self.create_subscription(Imu, param('imu_topic', '/bno055/imu').value, self.on_imu,
-                                 qos_profile_sensor_data)
-        self.create_subscription(Twist, '/cmd_vel', self.on_cmd_vel, 10)
+        self.inputs.create_subscription(Imu, param('imu_topic', '/bno055/imu').value,
+                                        self.on_imu, qos_profile_sensor_data)
+        self.inputs.create_subscription(Twist, '/cmd_vel', self.on_cmd_vel, 10)
         self.global_localization_client = self.create_client(
             EmptySrv, '/reinitialize_global_localization')
         # The lidar for moves (lidar_power): wait this long for the first scan
@@ -278,10 +284,10 @@ class BrainNode(Node):
         # Health: when the ESP's messages last arrived (monotonic s); raw, never decoded
         self.started = time.monotonic()
         self.arrived = {'battery': None, 'scan': None, 'odom': None}
-        self.create_subscription(LaserScan, '/scan', lambda _: self.mark('scan'),
-                                 qos_profile_sensor_data, raw=True)
-        self.create_subscription(Odometry, '/odom_raw', lambda _: self.mark('odom'),
-                                 qos_profile_sensor_data, raw=True)
+        self.inputs.create_subscription(LaserScan, '/scan', lambda _: self.mark('scan'),
+                                        qos_profile_sensor_data, raw=True)
+        self.inputs.create_subscription(Odometry, '/odom_raw', lambda _: self.mark('odom'),
+                                        qos_profile_sensor_data, raw=True)
         self.last_event = ''
         self.last_command = ''
         # The agent's last status (from the link) and when it arrived
@@ -1559,9 +1565,20 @@ class LinkHandler:
         return {'ok': True, 'message': f'told the map I am at {target.name}'}
 
 
+def spin_inputs(node):
+    """Spin the brain's frequent inputs (BrainNode.inputs) on their own thread."""
+    executor = SingleThreadedExecutor()
+    executor.add_node(node)
+    try:
+        executor.spin()
+    except ExternalShutdownException:
+        pass
+
+
 def main(args=None):
     rclpy.init(args=args)
     node = BrainNode()
+    threading.Thread(target=spin_inputs, args=(node.inputs,), daemon=True).start()
     executor = MultiThreadedExecutor()
     executor.add_node(node)
     try:
@@ -1569,5 +1586,6 @@ def main(args=None):
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
+        node.inputs.destroy_node()
         node.destroy_node()
         rclpy.try_shutdown()
