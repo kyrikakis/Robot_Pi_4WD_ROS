@@ -7,8 +7,9 @@ the smallest) and up to ~0.8 m; carrying tilts it up to 44 deg. Pushed over a
 carpet edge it tilted 9 deg and jolted (6 m/s^2); the rise estimate below
 peaked at 2.7 cm. Replayed, 5 cm flags the three lifts within ~1 s and not the push.
 
-So: lifted when the robot rises more than rise_m (rise_moving_m while it is
-commanded to move: bumps while driving are not measured yet), estimated by
+So: lifted when the robot rises, or drops, more than rise_m (rise_moving_m while
+it is commanded to move: bumps while driving are not measured yet; a drop also
+catches desk -> floor, which barely rises first, and falling off a step), estimated by
 integrating the vertical acceleration (world frame, gravity already removed by
 the BNO055) with leaks against drift and a reset whenever it is still; or when
 it tilts more than tilt_deg from its resting attitude.
@@ -116,12 +117,17 @@ class LiftDetector:
             self.lifted = False
             self.rest = up
             self.lowest, self.landed_at = 0.0, None
+            # On the surface now: the height carried (a drop of ~70 cm from the desk)
+            # must not count as a new lift while it settles
+            self.speed = self.rise = 0.0
             return 'down'
 
         tilt = angle_deg(up, self.rest)
         limit = self.rise_moving_m if moving else self.rise_m
         if self.rise > limit:
             self.why = f'rose {self.rise * 100:.0f} cm'
+        elif self.rise < -limit:
+            self.why = f'dropped {-self.rise * 100:.0f} cm'
         elif tilt > self.tilt_deg:
             self.why = f'tilted {tilt:.0f} deg'
         else:

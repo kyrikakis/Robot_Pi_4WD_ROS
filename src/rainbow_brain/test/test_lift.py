@@ -160,3 +160,20 @@ def test_a_slow_put_down_falls_back_to_stillness():
     out = feed(d, slow + quiet(0.5) + still(1.5), start=10.0)
     assert [c for _, c in out] == ['down']
     assert d.why == 'still 1 s'
+
+
+def test_desk_to_floor_is_picked_up_and_put_down():
+    """Raised 3 cm off the desk, lowered ~45 cm to the floor: lifted, then landed."""
+    d = LiftDetector()
+    raise_a_little = lift(up_ms2=1.0, accel_s=0.15, coast_s=0.1)    # ~3.5 cm
+    out = feed(d, still(2) + raise_a_little + lower(down_ms2=3.0, accel_s=0.3, coast_s=1.0)
+               + quiet(1.0))
+    assert [c for _, c in out] == ['lifted', 'down']
+    assert d.why == 'landed'
+
+
+def test_a_small_raise_alone_is_not_a_lift():
+    """Raised ~3.5 cm and set back: nothing."""
+    out = feed(LiftDetector(), still(2) + lift(up_ms2=1.0, accel_s=0.15, coast_s=0.1)
+               + still(2))
+    assert out == []
