@@ -1,5 +1,6 @@
 // micro-ROS node YB_Car_Node: the ROS contract of the stock Yahboom firmware,
-// plus lidar/enable and esp_firmware. See firmware/README.md and firmware/DELTAS.md.
+// plus lidar/enable, the lidar_speed_hz parameter and esp_firmware. See
+// firmware/README.md and firmware/DELTAS.md.
 //
 // Connection state machine: wait for the agent (ping), create the entities, spin
 // and ping once a second; three missed pings in a row (or an agent restart) tear
@@ -20,6 +21,7 @@
 #include <rcl/rcl.h>
 #include <rclc/executor.h>
 #include <rclc/rclc.h>
+#include <rclc_parameter/rclc_parameter.h>
 #include <rmw_microros/rmw_microros.h>
 #include <sensor_msgs/msg/imu.h>
 #include <sensor_msgs/msg/laser_scan.h>
@@ -54,6 +56,11 @@ static rclc_executor_t s_exec;
 static rcl_publisher_t s_pub_odom, s_pub_imu, s_pub_scan, s_pub_battery, s_pub_version;
 static rcl_subscription_t s_sub_cmd, s_sub_s1, s_sub_s2, s_sub_beep;
 static rcl_service_t s_srv_lidar;
+static rclc_parameter_server_t s_params;
+static bool s_params_ready;
+static rmw_request_id_t s_lidar_req_id;
+static uint32_t s_lidar_ticket;  // a lidar/enable request waiting for the lidar
+static bool s_lidar_on_requested;
 static rcl_timer_t s_tm_odom, s_tm_imu, s_tm_scan, s_tm_battery;
 
 static nav_msgs__msg__Odometry s_odom;
@@ -131,13 +138,44 @@ static void on_servo_s1(const void *msg) { servos_set(SERVO_S1, ((const std_msgs
 static void on_servo_s2(const void *msg) { servos_set(SERVO_S2, ((const std_msgs__msg__Int32 *)msg)->data); }
 static void on_beep(const void *msg) { beep_command(((const std_msgs__msg__UInt16 *)msg)->data); }
 
-static void on_lidar_enable(const void *req, void *res)
+// lidar_speed_hz: accepted when in range and the lidar is free; applied in the
+// background (standby, speed, run, check). The scan_time of /scan shows the result.
+static bool on_parameter(const Parameter *old_param, const Parameter *new_param, void *context)
 {
-    const std_srvs__srv__SetBool_Request *rq = req;
-    std_srvs__srv__SetBool_Response *rs = res;
-    lidar_set_enabled(rq->data);
-    rs->success = true;
-    set_string(&rs->message, rq->data ? "lidar on" : "lidar off");
+    if (!s_params_ready || new_param == NULL) return true;  // our own initial value / deletion
+    if (strcmp(new_param->name.data, "lidar_speed_hz") != 0) return false;
+    if (new_param->value.type != RCLC_PARAMETER_INT) return false;
+    return lidar_command_speed((int)new_param->value.integer_value) != 0;
+}
+
+// lidar/enable is answered once the lidar has stopped or started (or not, after
+// 5 s), so it is taken and answered here instead of in the executor.
+static void serve_lidar_enable(void)
+{
+    if (s_lidar_ticket == 0) {
+        rmw_request_id_t id;
+        if (rcl_take_request(&s_srv_lidar, &id, &s_lidar_req) != RCL_RET_OK) return;
+        s_lidar_req_id = id;
+        s_lidar_on_requested = s_lidar_req.data;
+        s_lidar_ticket = lidar_command_enable(s_lidar_on_requested);
+        if (s_lidar_ticket == 0) {
+            s_lidar_res.success = false;
+            set_string(&s_lidar_res.message, "busy: another lidar command is running");
+            SOFT(rcl_send_response(&s_srv_lidar, &s_lidar_req_id, &s_lidar_res));
+        }
+        return;
+    }
+    lidar_result_t r = lidar_command_result(s_lidar_ticket);
+    if (r == LIDAR_BUSY) return;
+    s_lidar_res.success = (r == LIDAR_OK);
+    if (s_lidar_on_requested) {
+        set_string(&s_lidar_res.message, r == LIDAR_OK ? "lidar running" : "lidar did not start sending");
+    } else {
+        set_string(&s_lidar_res.message,
+                   r == LIDAR_OK ? "lidar in standby" : "lidar still sending; scans are dropped");
+    }
+    SOFT(rcl_send_response(&s_srv_lidar, &s_lidar_req_id, &s_lidar_res));
+    s_lidar_ticket = 0;
 }
 
 static void on_odom_timer(rcl_timer_t *timer, int64_t last_call)
@@ -191,7 +229,9 @@ static void on_scan_timer(rcl_timer_t *timer, int64_t last_call)
 {
     static uint16_t dist[LIDAR_POINTS];
     static uint8_t inten[LIDAR_POINTS];
-    if (!lidar_take_revolution(dist, inten)) return;
+    float period = 0;
+    if (!lidar_take_revolution(dist, inten, &period)) return;
+    s_scan.scan_time = period;
     // ROS index i (angle -180 + i deg, counter-clockwise) <- sensor degree (180 - i), clockwise.
     for (int i = 0; i < LIDAR_POINTS; i++) {
         int k = ((180 - i) % LIDAR_POINTS + LIDAR_POINTS) % LIDAR_POINTS;
@@ -252,12 +292,27 @@ static bool create_entities(void)
                                 true));
 
     s_exec = rclc_executor_get_zero_initialized_executor();
-    OK(rclc_executor_init(&s_exec, &s_support.context, 9, &s_alloc));
+    rclc_parameter_options_t popts = {
+        .notify_changed_over_dds = false,
+        .max_params = 1,
+        .allow_undeclared_parameters = false,
+        .low_mem_mode = false,
+    };
+    OK(rclc_parameter_server_init_with_option(&s_params, &s_node, &popts));
+
+    OK(rclc_executor_init(&s_exec, &s_support.context, 8 + RCLC_EXECUTOR_PARAMETER_SERVER_HANDLES, &s_alloc));
     OK(rclc_executor_add_subscription(&s_exec, &s_sub_cmd, &s_cmd, on_cmd_vel, ON_NEW_DATA));
     OK(rclc_executor_add_subscription(&s_exec, &s_sub_s1, &s_s1, on_servo_s1, ON_NEW_DATA));
     OK(rclc_executor_add_subscription(&s_exec, &s_sub_s2, &s_s2, on_servo_s2, ON_NEW_DATA));
     OK(rclc_executor_add_subscription(&s_exec, &s_sub_beep, &s_beep, on_beep, ON_NEW_DATA));
-    OK(rclc_executor_add_service(&s_exec, &s_srv_lidar, &s_lidar_req, &s_lidar_res, on_lidar_enable));
+    OK(rclc_executor_add_parameter_server(&s_exec, &s_params, on_parameter));
+    // 0: not set by us (the sensor keeps its own speed).
+    s_params_ready = false;
+    OK(rclc_add_parameter(&s_params, "lidar_speed_hz", RCLC_PARAMETER_INT));
+    OK(rclc_parameter_set_int(&s_params, "lidar_speed_hz", 0));
+    OK(rclc_add_parameter_constraint_integer(&s_params, "lidar_speed_hz", LIDAR_MIN_HZ, LIDAR_MAX_HZ, 1));
+    s_params_ready = true;
+    s_lidar_ticket = 0;
     OK(rclc_executor_add_timer(&s_exec, &s_tm_odom));
     OK(rclc_executor_add_timer(&s_exec, &s_tm_imu));
     OK(rclc_executor_add_timer(&s_exec, &s_tm_scan));
@@ -280,6 +335,7 @@ static void destroy_entities(void)
     SOFT(rcl_timer_fini(&s_tm_imu));
     SOFT(rcl_timer_fini(&s_tm_scan));
     SOFT(rcl_timer_fini(&s_tm_battery));
+    SOFT(rclc_parameter_server_fini(&s_params, &s_node));
     SOFT(rcl_service_fini(&s_srv_lidar, &s_node));
     SOFT(rcl_subscription_fini(&s_sub_cmd, &s_node));
     SOFT(rcl_subscription_fini(&s_sub_s1, &s_node));
@@ -320,6 +376,7 @@ void uros_task(void *arg)
         }
 
         rclc_executor_spin_some(&s_exec, RCL_MS_TO_NS(5));
+        serve_lidar_enable();
         if (now_ms - last_ping >= PING_PERIOD_MS) {
             last_ping = now_ms;
             misses = (rmw_uros_ping_agent(100, 1) == RMW_RET_OK) ? 0 : misses + 1;

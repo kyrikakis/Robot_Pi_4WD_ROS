@@ -41,6 +41,13 @@ if [ ! -d "$SRC" ]; then
   mv "$SRC.tmp" "$SRC"
 fi
 
+# libmicroros is built once per app-colcon.meta (entity limits): rebuild it when that changes.
+META_SUM=$(shasum -a 256 app-colcon.meta | cut -d' ' -f1)
+if [ "$(cat "$COMP/.app-colcon.meta.sha256" 2>/dev/null)" != "$META_SUM" ]; then
+  rm -rf "$COMP/micro_ros_src/build" "$COMP/micro_ros_src/install" "$COMP/libmicroros.a" "$COMP/include" build
+  echo "$META_SUM" > "$COMP/.app-colcon.meta.sha256"
+fi
+
 VERSION=$(git describe --always --dirty --tags 2>/dev/null || echo unknown)
 TTY=$([ -t 0 ] && echo -it || echo -i)
 docker run --rm $TTY -v "$PWD":/project -w /project \

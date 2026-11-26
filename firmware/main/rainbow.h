@@ -31,12 +31,22 @@ float motors_half_track(void);
 
 // Lidar (MS200): 360 one-degree bins, refreshed once per revolution.
 #define LIDAR_POINTS 360
+#define LIDAR_MIN_HZ 5
+#define LIDAR_MAX_HZ 15
+typedef enum { LIDAR_BUSY = 0, LIDAR_OK, LIDAR_FAILED } lidar_result_t;
 void lidar_init(void);
-// Copies the last full revolution if a new one is ready since the last call.
-bool lidar_take_revolution(uint16_t distance_mm[LIDAR_POINTS], uint8_t intensity[LIDAR_POINTS]);
-// Off: data is dropped and /scan stops. Software only for now: the sensor keeps
-// spinning (no power switch or stop command for the MS200 is known yet).
-void lidar_set_enabled(bool on);
+// Copies the last full revolution if a new one is ready since the last call;
+// period_s is that revolution's duration (0 if unknown).
+bool lidar_take_revolution(uint16_t distance_mm[LIDAR_POINTS], uint8_t intensity[LIDAR_POINTS],
+                           float *period_s);
+// Commands run in the background; each returns a ticket (0: another command is
+// still running, or out of range) to poll with lidar_command_result().
+// Enable: run / standby (no ranging, no data). Speed: 5..15 Hz.
+uint32_t lidar_command_enable(bool on);
+uint32_t lidar_command_speed(int hz);
+lidar_result_t lidar_command_result(uint32_t ticket);
+// Rotation reported by the sensor, Hz (0 while it sends nothing).
+float lidar_rotation_hz(void);
 
 // IMU (ICM-42670-P): raw axes of the chip, SI units.
 bool imu_init(void);
