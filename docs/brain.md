@@ -552,16 +552,22 @@ With the head controller (see [Head](#head)) this can use several head direction
 ## Head
 
 The servos have no position feedback and jump at full speed to whatever angle
-the ESP is sent, so the head node (`rainbow_drivers/head_node.py`, its own
-supervisor program `rainbow_head`) controls the motion:
+they are sent, so the head node (`rainbow_drivers/head_node.py`, its own
+supervisor program `rainbow_head`) plans the motion and our ESP firmware runs it:
 
-- The commanded angle moves towards the target with limited speed and
-  acceleration, braking to stop on the target; both axes are scaled to arrive
-  together. The default is near the servos' own speed (400 deg/s, 4000
-  deg/s^2: a 30 deg move takes ~0.2 s): the ESP takes whole degrees and the
-  servos visibly step at each one, so slow glides (5 to 60 deg/s, tried with
-  the owner) all looked jerky. A goal can still ask for a slower speed. Code:
-  `rainbow_drivers/head_motion.py`, tested without ROS.
+- The angle moves towards the target with limited speed and acceleration,
+  braking to stop on the target; both axes are scaled to arrive together. The
+  node sends the ESP one `servo_goal` per new target (each servo's angle, speed
+  and acceleration, resent every second); the firmware steps it once per 20 ms
+  servo frame, in fractions of a degree (`firmware/main/servo_motion.c`). Before
+  (2026-11-25), the node streamed whole degrees at 50 Hz: the servos stepped at
+  each degree and the stream beat against their frames, so slow glides (5 to 60
+  deg/s, tried with the owner) all looked jerky. The default stays near the
+  servos' own speed (400 deg/s, 4000 deg/s^2: a 30 deg move takes ~0.2 s) until
+  glides are tried again; a goal can ask for a slower speed. The node runs the
+  same model (`rainbow_drivers/head_motion.py`, tested without ROS) to know the
+  pose; `firmware/test/test_servo_motion.py` checks that the C and Python
+  agree. `esp_motion: false` streams whole degrees again (the stock firmware).
 - A new target blends in from the current motion, so a stream of targets is one
   continuous movement: `/head/target` (`HeadTarget`, latest wins) is for
   following faces later.

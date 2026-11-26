@@ -41,8 +41,14 @@ if [ ! -d "$SRC" ]; then
   mv "$SRC.tmp" "$SRC"
 fi
 
-# libmicroros is built once per app-colcon.meta (entity limits): rebuild it when that changes.
-META_SUM=$(shasum -a 256 app-colcon.meta | cut -d' ' -f1)
+# Our own messages (src/rainbow_esp_msgs, also built on the Pi) go into micro-ROS too.
+rm -rf "$SRC/rainbow_esp_msgs"
+cp -r ../src/rainbow_esp_msgs "$SRC/rainbow_esp_msgs"
+
+# libmicroros is built once per app-colcon.meta (entity limits) and set of our
+# messages: rebuild it when either changes.
+META_SUM=$( (cat app-colcon.meta; find ../src/rainbow_esp_msgs -type f | LC_ALL=C sort | xargs cat) \
+  | shasum -a 256 | cut -d' ' -f1)
 if [ "$(cat "$COMP/.app-colcon.meta.sha256" 2>/dev/null)" != "$META_SUM" ]; then
   rm -rf "$COMP/micro_ros_src/build" "$COMP/micro_ros_src/install" "$COMP/libmicroros.a" "$COMP/include" build
   echo "$META_SUM" > "$COMP/.app-colcon.meta.sha256"

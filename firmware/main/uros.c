@@ -1,5 +1,5 @@
 // micro-ROS node YB_Car_Node: the ROS contract of the stock Yahboom firmware,
-// plus lidar/enable, the lidar_speed_hz parameter and esp_firmware. See
+// plus lidar/enable, the lidar_speed_hz parameter, esp_firmware and servo_goal. See
 // firmware/README.md and firmware/DELTAS.md.
 //
 // Connection state machine: wait for the agent (ping), create the entities, spin
@@ -29,6 +29,7 @@
 #include <std_msgs/msg/string.h>
 #include <std_msgs/msg/u_int16.h>
 #include <std_srvs/srv/set_bool.h>
+#include <rainbow_esp_msgs/msg/head_servo_goal.h>
 
 #include "rainbow.h"
 
@@ -54,7 +55,7 @@ static rclc_support_t s_support;
 static rcl_node_t s_node;
 static rclc_executor_t s_exec;
 static rcl_publisher_t s_pub_odom, s_pub_scan, s_pub_battery, s_pub_version;
-static rcl_subscription_t s_sub_cmd, s_sub_s1, s_sub_s2, s_sub_beep;
+static rcl_subscription_t s_sub_cmd, s_sub_s1, s_sub_s2, s_sub_goal, s_sub_beep;
 static rcl_service_t s_srv_lidar;
 static rclc_parameter_server_t s_params;
 static bool s_params_ready;
@@ -74,6 +75,7 @@ static std_msgs__msg__UInt16 s_battery;
 static std_msgs__msg__String s_version;
 static geometry_msgs__msg__Twist s_cmd;
 static std_msgs__msg__Int32 s_s1, s_s2;
+static rainbow_esp_msgs__msg__HeadServoGoal s_goal;
 static std_msgs__msg__UInt16 s_beep;
 static std_srvs__srv__SetBool_Request s_lidar_req;
 static std_srvs__srv__SetBool_Response s_lidar_res;
@@ -140,6 +142,14 @@ static void on_cmd_vel(const void *msg)
 
 static void on_servo_s1(const void *msg) { servos_set(SERVO_S1, ((const std_msgs__msg__Int32 *)msg)->data); }
 static void on_servo_s2(const void *msg) { servos_set(SERVO_S2, ((const std_msgs__msg__Int32 *)msg)->data); }
+static void on_servo_goal(const void *msg)
+{
+    const rainbow_esp_msgs__msg__HeadServoGoal *g = msg;
+    const float angle[2] = {g->s1_deg, g->s2_deg};
+    const float speed[2] = {g->s1_speed, g->s2_speed};
+    const float accel[2] = {g->s1_accel, g->s2_accel};
+    servos_goal(angle, speed, accel);
+}
 static void on_beep(const void *msg) { beep_command(((const std_msgs__msg__UInt16 *)msg)->data); }
 
 // lidar_speed_hz: accepted when in range and the lidar is free; applied in the
@@ -288,6 +298,9 @@ static bool create_entities(void)
                                       "servo_s1"));
     OK(rclc_subscription_init_default(&s_sub_s2, &s_node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
                                       "servo_s2"));
+    OK(rclc_subscription_init_default(&s_sub_goal, &s_node,
+                                      ROSIDL_GET_MSG_TYPE_SUPPORT(rainbow_esp_msgs, msg, HeadServoGoal),
+                                      "servo_goal"));
     OK(rclc_subscription_init_default(&s_sub_beep, &s_node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, UInt16),
                                       "beep"));
     OK(rclc_service_init_default(&s_srv_lidar, &s_node, ROSIDL_GET_SRV_TYPE_SUPPORT(std_srvs, srv, SetBool),
@@ -310,10 +323,11 @@ static bool create_entities(void)
     };
     OK(rclc_parameter_server_init_with_option(&s_params, &s_node, &popts));
 
-    OK(rclc_executor_init(&s_exec, &s_support.context, 8 + RCLC_EXECUTOR_PARAMETER_SERVER_HANDLES, &s_alloc));
+    OK(rclc_executor_init(&s_exec, &s_support.context, 9 + RCLC_EXECUTOR_PARAMETER_SERVER_HANDLES, &s_alloc));
     OK(rclc_executor_add_subscription(&s_exec, &s_sub_cmd, &s_cmd, on_cmd_vel, ON_NEW_DATA));
     OK(rclc_executor_add_subscription(&s_exec, &s_sub_s1, &s_s1, on_servo_s1, ON_NEW_DATA));
     OK(rclc_executor_add_subscription(&s_exec, &s_sub_s2, &s_s2, on_servo_s2, ON_NEW_DATA));
+    OK(rclc_executor_add_subscription(&s_exec, &s_sub_goal, &s_goal, on_servo_goal, ON_NEW_DATA));
     OK(rclc_executor_add_subscription(&s_exec, &s_sub_beep, &s_beep, on_beep, ON_NEW_DATA));
     OK(rclc_executor_add_parameter_server(&s_exec, &s_params, on_parameter));
     // 0: not set by us (the sensor keeps its own speed).
@@ -354,6 +368,7 @@ static void destroy_entities(void)
     SOFT(rcl_subscription_fini(&s_sub_cmd, &s_node));
     SOFT(rcl_subscription_fini(&s_sub_s1, &s_node));
     SOFT(rcl_subscription_fini(&s_sub_s2, &s_node));
+    SOFT(rcl_subscription_fini(&s_sub_goal, &s_node));
     SOFT(rcl_subscription_fini(&s_sub_beep, &s_node));
     SOFT(rcl_publisher_fini(&s_pub_odom, &s_node));
 #if CONFIG_RAINBOW_PUBLISH_IMU

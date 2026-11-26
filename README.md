@@ -71,6 +71,7 @@ Rainbow's ROS 2 packages live in `src/`:
 | `rainbow_voice` | Text to speech; the ears: wake word, utterances, local commands on the ReSpeaker Lite |
 | `rainbow_brain` | Local brain: skills (go to a place, turn, drive, stop) and named places on the map ([design](docs/brain.md)) |
 | `rainbow_interfaces` | Service, action and message definitions |
+| `rainbow_esp_msgs` | Messages of the ESP firmware's own topics (also built into micro-ROS) |
 
 The ESP32 board runs the motors (with PID), the head servos, the lidar, battery
 monitoring and its own IMU. It talks to the Pi over micro-ROS (`/dev/ttyUSB_ROS`).

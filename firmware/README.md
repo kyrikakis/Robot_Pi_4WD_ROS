@@ -16,7 +16,8 @@ firmware/build.sh menuconfig   # any idf.py command; settings: "Rainbow firmware
 ```
 
 The first build clones and compiles micro-ROS (~10 min); later builds take
-seconds. Pins: the ESP-IDF image by digest and the pip packages in
+seconds. Our message package `src/rainbow_esp_msgs` is compiled into micro-ROS
+too; changing it (or `app-colcon.meta`) rebuilds micro-ROS. Pins: the ESP-IDF image by digest and the pip packages in
 `docker/Dockerfile`, the micro-ROS component commit in `build.sh`, the micro-ROS
 sources in `micro_ros.lock`, `bdc_motor` in `dependencies.lock`.
 
@@ -56,7 +57,8 @@ Check what is running: `ros2 topic echo --once /esp_firmware` (domain 20).
 | Topic | Type | Rate | Notes |
 |---|---|---|---|
 | `cmd_vel` (sub) | geometry_msgs/Twist | | skid-steer: `linear.x`, `angular.z`; `linear.y` ignored. Silent for 0.5 s -> stop |
-| `servo_s1`, `servo_s2` (sub) | std_msgs/Int32 | | degrees; S1 pan [-90, 90], S2 tilt [-90, 20] |
+| `servo_s1`, `servo_s2` (sub) | std_msgs/Int32 | | degrees; S1 pan [-90, 90], S2 tilt [-90, 20]; jumps there, cancelling a move |
+| `servo_goal` (sub) | rainbow_esp_msgs/HeadServoGoal | | a head move: each servo's angle (fractions of a degree), speed and acceleration; stepped every 20 ms servo frame, blending from the current motion (`servo_motion.c`) |
 | `beep` (sub) | std_msgs/UInt16 | | 0 off, 1 on, >= 10 on for that many ms |
 | `odom_raw` | nav_msgs/Odometry | 20 Hz | `odom_frame` -> `base_footprint`, wheel odometry |
 | `imu` | sensor_msgs/Imu | 25 Hz | off by default (`RAINBOW_PUBLISH_IMU`): `imu_frame`, the board's ICM-42670-P (mounted wrongly, unused) |
@@ -77,7 +79,9 @@ asks (`/lidar/wanted`), never while lifted (`/lifted`).
 ## Code
 
 `main/`: `uros.c` (node, topics, agent connection), `motors.c` (PWM, encoders,
-PID), `lidar.c` (MS200), `imu.c`, `servos.c`, `beep.c`, `battery.c`,
+PID), `lidar.c` (MS200), `imu.c`, `servos.c` (with `servo_motion.c`, the head
+moves; `test/test_servo_motion.py` compares it with the head node's model:
+`python3 -m pytest firmware/test`, needs a C compiler), `beep.c`, `battery.c`,
 `transport.c` (UART0). The board's pin map is at the top of `rainbow.h`. All
 written against ESP-IDF's drivers; the pin map and constants were taken from
 Yahboom's sample code, none of their code is used.

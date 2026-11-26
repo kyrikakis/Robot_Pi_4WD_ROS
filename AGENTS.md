@@ -28,7 +28,9 @@ publishes `/odom_raw`, `/scan` in `laser_frame`, `/imu` in `imu_frame` (our
 firmware: off by default, build option `RAINBOW_PUBLISH_IMU`), and
 `/battery` (UInt16, volts x 10, 1 Hz; the owner's pack runs ~6.9-8.0 V). The ESP's IMU is mounted wrongly and
 unused; the EKF fuses `/odom_raw` with the BNO055 (`/bno055/imu`, `imu2_frame`).
-Our firmware adds `/esp_firmware` (latched version string), the
+Our firmware adds `/esp_firmware` (latched version string), `servo_goal`
+(`rainbow_esp_msgs/HeadServoGoal`: the head node's moves, run on the ESP; the
+package is compiled into micro-ROS by `firmware/build.sh`), the
 `lidar/enable` service (SetBool: MS200 standby / run; standby stops its motor)
 and the parameter `lidar_speed_hz` (5-15 Hz; keep the sensor's 10 Hz: at 15 Hz
 ~20 % of the 1-degree bins stay empty), both tested on the robot. The lidar is
@@ -309,7 +311,8 @@ when new work comes up, add it here.
   conf from git; the rebuilt image has it). Speed set with the owner watching
   (2026-11-25): glides at 5-60 deg/s all looked jerky (whole-degree servo
   commands, the servos step at each), a quick move (400 deg/s, accel 4000
-  deg/s^2) looked best; finer motion would need firmware changes. Still to
+  deg/s^2) looked best. Our firmware now runs the moves itself (below): try
+  slower glides again with the owner watching. Still to
   measure: the settle time (estimated 0.2 s + 5 ms/deg;
   measure with the ToF image going still, robot at rest) and `servo_latency_s`
   (0.05 s, estimated). Then photos in several directions for startup
@@ -350,10 +353,16 @@ when new work comes up, add it here.
   the lidar is on the chassis,
   the buzzer heard. With the new 65 mm wheels set
   `RAINBOW_WHEEL_CIRCUMFERENCE_UM` (204200) and re-measure `angular_gain`.
-  Next: smooth head
-  motion (finer servo commands than whole degrees, or the ramp on the ESP:
-  target + speed at the servos' 50 Hz). Digital metal-gear servos would also
-  glide better (hobby servos have a ~1 deg deadband).
+  Smooth head motion built 2026-11-26, not yet flashed: the head node sends
+  one `servo_goal` per target (each servo's angle, speed, acceleration), the
+  ESP steps the move once per 20 ms servo frame in ~0.11 deg pulse steps
+  (`servo_motion.c`, checked against `head_motion.py` by
+  `firmware/test/test_servo_motion.py`; the node tested on domain 77). Deploy
+  together: flash, build `rainbow_esp_msgs` and `rainbow_drivers` in the
+  container, restart `rainbow_head` and `rainbow_foxglove` (new message type);
+  `esp_motion: false` on the head node for the stock firmware. Then, with the
+  owner watching, glides at 10-60 deg/s. Digital metal-gear servos would
+  glide better still (hobby servos have a ~1 deg deadband).
 - Eyes went dark (2026-11-25, around when the robot started moving): the HT16K33
   at 0x71 gave Remote I/O errors (the node crashed and respawned), then answered
   again but with its display off. Cause unknown (the Pi's 5 V input and its

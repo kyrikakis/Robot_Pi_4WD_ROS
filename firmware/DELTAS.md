@@ -19,7 +19,8 @@ were read from its NVS: domain 20, serial agent at 921600 baud, servo offsets
   build options now.
 - Motor control: 25 kHz PWM, 400-tick period, 200-tick dead zone, incremental
   PID on encoder counts per 10 ms with the stock gains 1.0/0.2/0.2.
-- Servo mapping (-90..90 deg -> 500..2500 us, whole degrees) and limits.
+- Servo mapping (-90..90 deg -> 500..2500 us) and limits; `servo_s1`/`servo_s2`
+  take whole degrees and jump there.
 - Buzzer semantics. Partition layout (so stock and ours swap cleanly).
 
 ## Changed
@@ -30,6 +31,7 @@ were read from its NVS: domain 20, serial agent at 921600 baud, servo offsets
 | `cmd_vel` silent | wheels keep the last command | stop after 0.5 s | safety if the Pi side stops; the velocity watchdog republishes at 10 Hz |
 | Zero wheel target | PID keeps running, hunts around zero through the dead zone | that wheel brakes, its PID resets | no jitter at standstill |
 | Servos at boot | jump to the firmware's default pose | no pulse until the first command | the head does not swing on every reset; the head node resends its pose every second |
+| New: `servo_goal` | | a head move (angles in fractions of a degree, speed, acceleration per servo) run on the ESP, stepped once per 20 ms servo frame | smooth head motion: streamed whole degrees stepped visibly and beat against the servo frames |
 | `odom_raw` rate | 11 Hz | 20 Hz | more samples for the EKF |
 | Odometry speed | instantaneous 10 ms encoder speed (1 count = 14.5 mm/s steps) | from count changes over the 50 ms period; pose integrated at the mid heading | less quantization noise |
 | `/scan` without lidar | 12.5 Hz of zeros | not published | no fake data |

@@ -55,7 +55,11 @@ bool imu_read(float accel_ms2[3], float gyro_rads[3]);
 // Servos: angles in degrees, S1 [-90, 90], S2 [-90, 20]. No pulse until the first command.
 typedef enum { SERVO_S1 = 0, SERVO_S2 = 1 } servo_id_t;
 void servos_init(void);
+// Jump to the angle (servo_s1 / servo_s2), cancelling any move.
 void servos_set(servo_id_t servo, int angle_deg);
+// Move both servos (index SERVO_S1, SERVO_S2) with limited speed (deg/s) and
+// acceleration (deg/s^2), blending from the current motion; <= 0 jumps.
+void servos_goal(const float angle_deg[2], const float speed[2], const float accel[2]);
 
 // Buzzer: 0 off, 1 on until told otherwise, >= 10 on for that many ms.
 void beep_init(void);
