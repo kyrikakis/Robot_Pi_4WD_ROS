@@ -16,6 +16,7 @@
 // confirmed by the data stream: it stops (standby), starts (run), or turns at
 // the new speed (+-10 %). Commands are at least 400 ms apart (SDK: faster ones
 // are ignored). All of it runs in the lidar task, which keeps reading meanwhile.
+// At boot the lidar is put in standby; lidar/enable turns it on.
 
 #include <string.h>
 
@@ -51,7 +52,7 @@ static float s_ready_period;
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 
 // Lidar task state.
-static bool s_publish = true;       // requested state: scans handed over or dropped
+static bool s_publish = false;      // requested state: scans handed over or dropped
 static int64_t s_last_packet_us;
 static int64_t s_last_command_us;
 static int64_t s_last_revolution_us;
@@ -211,9 +212,9 @@ static bool do_speed(int hz)
 
 static void lidar_task(void *arg)
 {
-    // A lidar left in standby by an earlier session would never send again: start it.
+    // Boot with the lidar in standby: the Pi (lidar_power) turns it on when needed.
     pump_for(500);
-    send_run(true);
+    send_run(false);
 
     while (1) {
         pump(20);

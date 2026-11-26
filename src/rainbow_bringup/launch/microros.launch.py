@@ -1,6 +1,7 @@
 """micro-ROS agent: the bridge to the ESP board.
 
 The ESP runs the motors, servos, lidar, IMU, odometry and battery reading.
+lidar_power (rainbow_drivers) turns the lidar on while something needs /scan.
 
 Run as its own supervisor program (rainbow_microros), so restarting the base
 does not drop the ESP. Our firmware (firmware/) reconnects by itself within
@@ -27,6 +28,14 @@ def generate_launch_description():
             name='micro_ros_agent',
             arguments=['serial', '--dev', LaunchConfiguration('serial_port'),
                        '-b', '921600', '-v4'],
+            respawn=True,
+            respawn_delay=5.0,
+        ),
+        # Lidar on only while something needs /scan (the ESP boots it in standby).
+        Node(
+            package='rainbow_drivers',
+            executable='lidar_power',
+            name='lidar_power',
             respawn=True,
             respawn_delay=5.0,
         ),
