@@ -17,7 +17,8 @@ were read from its NVS: domain 20, serial agent at 921600 baud, servo offsets
   circumference is 204.2 mm since the 65 mm wheels (2026-11-27; stock: 150.8 mm,
   a 48 mm wheel, with the old 45 mm wheels).
 - Motor control: 25 kHz PWM, 400-tick period, 200-tick dead zone, incremental
-  PID on encoder counts per 10 ms with the stock gains 1.0/0.2/0.2.
+  PID on encoder counts per 10 ms (stock gains 1.0/0.2/0.2; ours since the
+  65 mm wheels: 3.0/0.6/0.2, live-tunable as parameters).
 - Servo mapping (-90..90 deg -> 500..2500 us) and limits; `servo_s1`/`servo_s2`
   take whole degrees and jump there.
 - Buzzer semantics. Partition layout (so stock and ours swap cleanly).

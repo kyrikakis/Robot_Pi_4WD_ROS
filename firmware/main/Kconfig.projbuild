@@ -31,10 +31,14 @@ menu "Rainbow firmware"
 
     config RAINBOW_PID_KP_X100
         int "Motor PID Kp x100"
-        default 100
+        default 300
+        help
+            Kp 3.0, Ki 0.6 tuned driving with the 65 mm wheels (2026-11-27): spins
+            in place start within 0.2-0.5 s and hold ~90% of the command (stock
+            1.0/0.2: 1-2 s and stick-slip).
     config RAINBOW_PID_KI_X100
         int "Motor PID Ki x100"
-        default 20
+        default 60
     config RAINBOW_PID_KD_X100
         int "Motor PID Kd x100"
         default 20
