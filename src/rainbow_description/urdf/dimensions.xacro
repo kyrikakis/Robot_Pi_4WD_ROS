@@ -5,6 +5,9 @@
   Measured with a ruler (marked "measured"):
     wheel diameter 4.5 cm, wheelbase 13 cm, outer width across the tyres 14 cm,
     lidar base 14 cm, BNO055 7 cm, cameras 13 cm high and 8 cm apart.
+  Since 2026-11-27 the wheels are 6.5 cm: the heights above were measured on the
+  4.5 cm wheels and are raised by ride_lift (1 cm, half the diameter change);
+  not re-measured yet. The outer width was not re-measured either.
   Everything else is scaled from the photos in images/ using the wheel
   diameter (about +/-1 cm). Values marked TODO are placeholders.
 
@@ -15,7 +18,11 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
   <!-- Wheels and chassis -->
-  <xacro:property name="wheel_diameter" value="0.045"/>   <!-- measured -->
+  <xacro:property name="wheel_diameter" value="0.065"/>   <!-- the new wheels' size -->
+  <!-- The heights below were measured on 4.5 cm wheels: the chassis rides higher
+       by half the diameter change. -->
+  <xacro:property name="measured_wheel_diameter" value="0.045"/>
+  <xacro:property name="ride_lift" value="${(wheel_diameter - measured_wheel_diameter) / 2}"/>
   <xacro:property name="wheel_radius"   value="${wheel_diameter / 2}"/>
   <xacro:property name="wheel_width"    value="0.020"/>
   <xacro:property name="wheelbase"      value="0.130"/>   <!-- measured: front axle to rear axle -->
@@ -25,7 +32,7 @@
   <xacro:property name="chassis_length"   value="0.158"/>
   <xacro:property name="chassis_width"    value="0.100"/>
   <xacro:property name="chassis_x_offset" value="0.007"/> <!-- plate centre is slightly ahead of the axle midpoint -->
-  <xacro:property name="chassis_top_z"    value="0.049"/> <!-- plate top -->
+  <xacro:property name="chassis_top_z"    value="${0.049 + ride_lift}"/> <!-- plate top -->
   <xacro:property name="chassis_plate_t"  value="0.003"/>
 
   <!-- Electronics stack (Pi 5, Hailo, ESP board), from the plate up to the
@@ -39,7 +46,7 @@
        1.7 cm above the base (from the photos). -->
   <xacro:property name="lidar_x" value="-0.005"/>
   <xacro:property name="lidar_y" value="0.0"/>
-  <xacro:property name="lidar_base_z" value="0.140"/>     <!-- measured -->
+  <xacro:property name="lidar_base_z" value="${0.140 + ride_lift}"/>     <!-- measured -->
   <xacro:property name="lidar_z" value="${lidar_base_z + 0.017}"/>
 
   <!-- IMUs. BNO055: measured, middle of the board stack; this is the IMU the
@@ -48,10 +55,10 @@
        its /imu messages can be shown. -->
   <xacro:property name="esp_imu_x" value="0.0"/>
   <xacro:property name="esp_imu_y" value="0.0"/>
-  <xacro:property name="esp_imu_z" value="0.050"/>        <!-- measured -->
+  <xacro:property name="esp_imu_z" value="${0.050 + ride_lift}"/>        <!-- measured -->
   <xacro:property name="bno055_x"  value="${stack_x}"/>
   <xacro:property name="bno055_y"  value="0.0"/>
-  <xacro:property name="bno055_z"  value="0.070"/>        <!-- measured -->
+  <xacro:property name="bno055_z"  value="${0.070 + ride_lift}"/>        <!-- measured -->
 
   <!-- Head: pan joint on the chassis plate, tilt joint above it -->
   <xacro:property name="head_pan_x"   value="0.049"/>    <!-- ahead of base_link -->
@@ -66,7 +73,7 @@
 
   <!-- Ears, relative to the tilt joint. Right ear: RGB camera. Left ear: ToF.
        Measured: 13 cm above the floor (head level) and 8 cm apart. -->
-  <xacro:property name="camera_z"   value="0.130"/>      <!-- measured -->
+  <xacro:property name="camera_z"   value="${0.130 + ride_lift}"/>      <!-- measured -->
   <xacro:property name="camera_gap" value="0.080"/>      <!-- measured -->
   <xacro:property name="ear_dx" value="0.046"/>
   <xacro:property name="ear_dy" value="${camera_gap / 2}"/>

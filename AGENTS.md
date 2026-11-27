@@ -170,8 +170,8 @@ The code you edit is the code the robot runs. Lessons learned:
   path poses have no frame_id, which Foxglove rejects: view `/plan_viz`
   (republished by `plan_viz`), not `/plan`.
 - Turning: commands reach the gyro ~0.3 s late (recorded) and the robot turns
-  at ~80-87% of the commanded rate. The velocity watchdog multiplies turn rate
-  by `angular_gain` 1.2. The controller is Nav2's graceful controller: it turns
+  at ~90% of the commanded rate (65 mm wheels, motor PID 3.0/0.6). The velocity
+  watchdog multiplies turn rate by `angular_gain` 1.1. The controller is Nav2's graceful controller: it turns
   in place with speed proportional to the angle left
   (`rotation_scaling_factor` 0.6), so it slows into the heading. `beta` 0.1
   (default 0.4 crawled in every curve) and in-place turns only above ~46 deg
@@ -274,23 +274,6 @@ when new work comes up, add it here.
 
 - Drive test with the ESP on (teleop, head directions, lidar/odometry, Nav2
   in a small room). The image rebuild of the refactor is done.
-- Spins in place broke (2026-11-23), in teleop and Nav2: a left spin creeps
-  forward, a right spin backward, battery full. Recorded: `/cmd_vel` is a pure
-  turn (+-0.96 rad/s, 0 forward) and the wheel odometry reports a clean spin
-  (~1 rad/s, <1 cm moved), but the BNO055 shows the body turning at only 0.30-0.35
-  rad/s (it used to be ~80-87%): the robot pivots about its left side. Measured
-  again 2026-11-24 with lidar ICP as ground truth (gyro and lidar agree): spins
-  reach 25-33% of the wheel odometry's angle, left spins creep ~10 cm forward,
-  right spins ~8-12 cm backward (the right side always wins, the left stays
-  put); a fast left spin's wheels only reach 0.66 of 0.96 rad/s (right: 0.94).
-  Straight drives are fine both ways (lidar within ~1 cm, <2.5 deg yaw). Ruled
-  out: the commands (pure turns reach the ESP), the head (centred), tilt (level).
-  Cause (owner, 2026-11-24): the left wheels' plastic inserts wore round on the
-  D-shaped motor shafts and spin freely on them; the motors and encoders turn,
-  the wheels do not (straight drives need little torque, so it showed only in
-  spins). Fix: new wheels (metal hubs with a set screw last longer), then check
-  a teleop spin against the gyro and re-measure `angular_gain` (1.2 was set with
-  worn or wearing wheels).
 - ToF blind zone: ~20-25 cm in front of the nose and outside +-24 deg to the
   sides (head level); obstacles there are only known from memory (30 s). A
   head tilt down would shrink it; try step by step with the owner watching.
@@ -354,9 +337,11 @@ when new work comes up, add it here.
   the lidar is on the chassis,
   the buzzer heard. The 65 mm wheels are on (2026-11-27): the firmware has
   their circumference (204200) and the right encoders' sign fixed (they count
-  backward; the right PID ran away and spun the robot); still to do: re-measure
-  `angular_gain`, and the URDF (`wheel_diameter` 0.045, axle height) and every
-  height measured from it.
+  backward; the right PID ran away and spun the robot), the motor PID retuned by
+  driving (Kp 3.0, Ki 0.6; `pid_kp`/`pid_ki`/`pid_kd`/`pid_kf` are live
+  parameters on `YB_Car_Node`) and `angular_gain` re-measured (1.1). The URDF's
+  heights were measured on the old wheels and are raised by `ride_lift` (1 cm):
+  re-measure them, and the outer width (Nav2's footprint) with the new tyres.
   Smooth head motion: on the robot since 2026-11-26 (v1.0.0-rc.1-15): the
   head node sends one `servo_goal` per target (each servo's angle, speed,
   acceleration), the ESP steps the move once per 20 ms servo frame in ~0.11

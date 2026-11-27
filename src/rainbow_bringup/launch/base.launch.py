@@ -53,11 +53,12 @@ def generate_launch_description():
         ),
 
         # 20 Hz so commands reach the ESP as often as Nav2's controller sends them.
-        # angular_gain 1.2: measured, the robot turns at ~80-87% of the commanded rate
+        # angular_gain 1.1: measured (65 mm wheels, motor PID 3.0/0.6, 2026-11-27),
+        # spins in place turn at ~90% of the commanded rate
         Node(package='rainbow_drivers', executable='cmd_vel_watchdog',
              # min_inner_ratio 0.15 (default 0.3): turn in place only when the inner
              # wheels nearly stop; at 0.3 slow curves stopped the robot too often
-             parameters=[{'rate': 20.0, 'angular_gain': 1.2, 'min_inner_ratio': 0.15}]),
+             parameters=[{'rate': 20.0, 'angular_gain': 1.1, 'min_inner_ratio': 0.15}]),
         Node(package='rainbow_drivers', executable='eyes', respawn=True, respawn_delay=2.0),
         Node(package='rainbow_drivers', executable='ip_publisher'),
     ])
