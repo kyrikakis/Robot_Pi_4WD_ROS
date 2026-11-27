@@ -257,7 +257,9 @@ The code you edit is the code the robot runs. Lessons learned:
   `v1.0.0-rc.2` (2026-11-26) adds our ESP firmware, head moves run on the ESP,
   playful pick-up / put-down and the brain's CPU fix; `v1.0.0-rc.3`
   (2026-11-27) the 65 mm wheels: right encoders fixed, motor PID retuned (live
-  gains), `angular_gain` 1.1, URDF ride height. Tag releases
+  gains), `angular_gain` 1.1, URDF ride height; its image does not build
+  (colcon picked up `firmware/`), `v1.0.0-rc.4` (2026-11-27) is rc.3 with
+  `firmware/COLCON_IGNORE`. Tag releases
   `vX.Y.Z` (`-rc.N` before production); the firmware's version is `git describe
   --tags` (`firmware/build.sh`), shown on `/esp_firmware`.
 
