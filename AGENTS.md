@@ -179,6 +179,12 @@ The code you edit is the code the robot runs. Lessons learned:
   dropped: with the rotation shim it ping-ponged around every heading, alone it
   drove in circles. Regulated Pure Pursuit was tried and dropped: steady, but its
   in-place turn never slows near the heading and overshot a lot.
+- Spins in place shake the whole robot at ~12 Hz (65 mm wheels, 2026-11-27;
+  BNO055 at 50 Hz: mostly sideways, ~1.3 m/s^2). It is mechanical, the tyres
+  catching and letting go as they scrub sideways: the frequency stays the same
+  at 1.0 and 1.5 rad/s (so not the tread), and the stock PID gains give the same
+  12 Hz, stronger. The turn rate itself is steady (+-6-9 %, on target). Do not
+  chase it with the motor PID; softer or smoother tyres would help.
 - Tight arcs (inner wheels below `min_inner_ratio` 0.15 of the outer) become
   turns in place in the velocity watchdog: pivoting on one side scrubs both
   sides and the wheel odometry reports motion that did not happen. At 0.3 slow
@@ -332,10 +338,9 @@ when new work comes up, add it here.
   board since 2026-11-26 with the robot stripped (no lidar, cameras, ToF):
   connection, reconnect, `odom_raw`, `imu`, `battery`, `/scan` and the lidar
   commands checked.
-  Still to check with the owner watching: each motor's direction and the PID on
-  the floor (teleop against the gyro), the servos, the scan's orientation once
-  the lidar is on the chassis,
-  the buzzer heard. The 65 mm wheels are on (2026-11-27): the firmware has
+  Motor directions and the PID were checked on the floor with teleop against
+  the gyro (2026-11-27). Still to check with the owner watching: the servos,
+  the scan's orientation once the lidar is on the chassis, the buzzer heard. The 65 mm wheels are on (2026-11-27): the firmware has
   their circumference (204200) and the right encoders' sign fixed (they count
   backward; the right PID ran away and spun the robot), the motor PID retuned by
   driving (Kp 3.0, Ki 0.6; `pid_kp`/`pid_ki`/`pid_kd`/`pid_kf` are live
