@@ -241,8 +241,8 @@ The code you edit is the code the robot runs. Lessons learned:
 ## Conventions
 
 - `main` is the finished robot. New work happens on a branch per feature (none
-  open; the brain, steps 1-7 of `docs/brain.md`, and our own ESP32 firmware are
-  merged); do not merge to `main` or suggest merging until the owner says so.
+  open; the brain, steps 1-7 of `docs/brain.md`, our own ESP32 firmware and the
+  65 mm wheels' fixes are merged); do not merge to `main` or suggest merging until the owner says so.
 - Python nodes: ament_python, one node per module, `ament_flake8 --linelength 100`
   clean. New services go in `rainbow_interfaces`. Keep the old topics
   (`/head/*_rotation`, `/eyes`, `/speech/*`) working.
@@ -255,7 +255,9 @@ The code you edit is the code the robot runs. Lessons learned:
 - Tags: `v0-legacy` is the robot before the refactor; `v1.0.0-rc.1` (on `main`,
   2026-11-26) the refactored robot with the brain, pre-production;
   `v1.0.0-rc.2` (2026-11-26) adds our ESP firmware, head moves run on the ESP,
-  playful pick-up / put-down and the brain's CPU fix. Tag releases
+  playful pick-up / put-down and the brain's CPU fix; `v1.0.0-rc.3`
+  (2026-11-27) the 65 mm wheels: right encoders fixed, motor PID retuned (live
+  gains), `angular_gain` 1.1, URDF ride height. Tag releases
   `vX.Y.Z` (`-rc.N` before production); the firmware's version is `git describe
   --tags` (`firmware/build.sh`), shown on `/esp_firmware`.
 

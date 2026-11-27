@@ -13,7 +13,7 @@
 | Part | What | Connected to |
 |---|---|---|
 | Computer | Raspberry Pi 5 | |
-| AI accelerator | Hailo-8 (face recognition, in its own container) | PCIe |
+| AI accelerator | Hailo-8 (face recognition and object detection, in its own container) | PCIe |
 | Motor controller | Yahboom MicroROS control board (ESP32) | USB serial (CP2102), micro-ROS |
 | Motors | 4x Yahboom MD310Z20: 7.4 V, 1:20, encoder, 3 mm D-shaft, 450 rpm | ESP32 board |
 | Wheels | 65 mm, skid-steer (wheelbase 13 cm, 14 cm across) | Motors |
@@ -31,8 +31,8 @@
 1. Download and install a new pi bookworm image in a micro sd. Proposed a Sundisk Extreme A2 256GB using the pi imager 
 2. Edit the imager settings and add your ~/.ssh/id_rsa.pub
 3. Connect to your raspberry pi5 into the a monitor through hdmi0 a keyboard and mouse
-4. Connect to your pi5 through ssh from you desktop if you skipped adding your ssh pub keys in step 1. write your `~/.ssh/id_rsa.pub` in a usb stick and copy the contents in the pi ~/.ssh/authorized-keys
-5. `sudo update && sudo full-upgrade && sudo install -y vim less`
+4. Connect to your pi5 through ssh from you desktop. If you skipped adding your ssh pub key in step 2, write your `~/.ssh/id_rsa.pub` to a usb stick and copy its contents into the pi's `~/.ssh/authorized_keys`
+5. `sudo apt update && sudo apt full-upgrade -y && sudo apt install -y vim less`
 6. Install docker: https://docs.docker.com/engine/install/debian/#install-using-the-repository and https://docs.docker.com/engine/install/linux-postinstall/
 7. Add these in `/boot/firmware/config.txt`:
 ```
@@ -49,14 +49,15 @@ dtoverlay=imx708,cam1
     `echo 'ACTION=="add",ENV{ID_SERIAL}=="Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001",ENV{ID_SERIAL_SHORT}=="0001",SYMLINK+="ttyUSB_ROS\"' >> /etc/udev/rules.d/99-usbserial.rules`
 10. Download the source code: `git clone https://github.com/kyrikakis/Robot_Pi_4WD_ROS.git`
 11. Run the image: `cd Robot_Pi_4WD_ROS && docker compose up`.
-    The code is built into the image, so to update later: `git pull && docker compose build && docker compose up -d`
+    The code is built into the image, so to update later: `git pull && docker compose build && docker compose up -d`.
+    Switching to the new image restarts the micro-ROS agent, and the ESP's USB serial chip may lock up a few minutes later: see "ESP connection" in [AGENTS.md](AGENTS.md).
 12. Optional: Install realtek drivers
     ```
-    apt-get install raspberrypi-kernel-headers
+    sudo apt-get install raspberrypi-kernel-headers
     git clone -b v5.6.4.2 https://github.com/aircrack-ng/rtl8812au.git
-    sudo git checkout 63cf0b4
+    cd rtl8812au && git checkout 63cf0b4
     make
-    make install
+    sudo make install
     ```
 
 ## Software
@@ -67,9 +68,9 @@ Rainbow's ROS 2 packages live in `src/`:
 |---|---|
 | `rainbow_description` | URDF of the robot: chassis, sensors and the pan/tilt head |
 | `rainbow_bringup` | Launch files and all configuration (EKF, BNO055, SLAM, Nav2) |
-| `rainbow_drivers` | Head, eyes, ToF depth camera, velocity watchdog, IP publisher |
+| `rainbow_drivers` | Head, eyes, ToF depth camera, velocity watchdog, lidar power, IP publisher, Nav2 plan for Foxglove (`/plan_viz`) |
 | `rainbow_voice` | Text to speech; the ears: wake word, utterances, local commands on the ReSpeaker Lite |
-| `rainbow_brain` | Local brain: skills (go to a place, turn, drive, stop) and named places on the map ([design](docs/brain.md)) |
+| `rainbow_brain` | Local brain ([design](docs/brain.md)): skills (go to a place, turn, drive, stop), named places on the map, memory, photos and faces, greeting people, head tracking, pick-up and low-battery modes, the link to the Mac agent |
 | `rainbow_interfaces` | Service, action and message definitions |
 | `rainbow_esp_msgs` | Messages of the ESP firmware's own topics (also built into micro-ROS) |
 
@@ -79,8 +80,13 @@ Its firmware is ours, in [`firmware/`](firmware/README.md) (build, flash, back u
 The ESP's IMU is mounted the wrong way round and is not used; the EKF uses the
 BNO055 on the Pi.
 
-Face recognition runs on the Hailo in its own container, from
+Face recognition and object detection run on the Hailo in its own container, from
 [hailo_tappas_ros2](https://github.com/kyrikakis/hailo_tappas_ros2).
+
+The robot's agent runs on a Mac, in [`agent/`](agent/README.md): speech to text,
+a language model with the robot's skills as tools, and memory. It talks to the
+brain over a WebSocket on port 8766; `rainbow-agent pair` fetches the link token
+from the robot once.
 
 ### Services
 
