@@ -10,11 +10,10 @@ menu "Rainbow firmware"
 
     config RAINBOW_WHEEL_CIRCUMFERENCE_UM
         int "Wheel circumference in micrometres"
-        default 150800
+        default 204200
         help
-            The stock firmware's value (a 48 mm wheel), kept so odometry and speeds
-            match what the ROS side was tuned with. The 45 mm wheels measure 141400;
-            65 mm wheels would be 204200.
+            The 65 mm wheels fitted 2026-11-27 (pi x 65 mm). The stock firmware
+            used 150800 (a 48 mm wheel) with the old 45 mm wheels.
 
     config RAINBOW_ENCODER_COUNTS_PER_REV
         int "Encoder counts per wheel revolution (x4 quadrature)"

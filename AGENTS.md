@@ -352,8 +352,11 @@ when new work comes up, add it here.
   Still to check with the owner watching: each motor's direction and the PID on
   the floor (teleop against the gyro), the servos, the scan's orientation once
   the lidar is on the chassis,
-  the buzzer heard. With the new 65 mm wheels set
-  `RAINBOW_WHEEL_CIRCUMFERENCE_UM` (204200) and re-measure `angular_gain`.
+  the buzzer heard. The 65 mm wheels are on (2026-11-27): the firmware has
+  their circumference (204200) and the right encoders' sign fixed (they count
+  backward; the right PID ran away and spun the robot); still to do: re-measure
+  `angular_gain`, and the URDF (`wheel_diameter` 0.045, axle height) and every
+  height measured from it.
   Smooth head motion: on the robot since 2026-11-26 (v1.0.0-rc.1-15): the
   head node sends one `servo_goal` per target (each servo's angle, speed,
   acceleration), the ESP steps the move once per 20 ms servo frame in ~0.11
