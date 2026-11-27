@@ -28,6 +28,12 @@ void motors_get_counts(int64_t counts[RAINBOW_NUM_WHEELS]);
 float motors_metres_per_count(void);
 // Half track (m) of the kinematics, shared with the odometry.
 float motors_half_track(void);
+// PID gains (on encoder counts per 10 ms -> PWM ticks) and feedforward (ticks
+// per count/10 ms of target), live-tunable through parameters; boot values are
+// the build options.
+typedef enum { MOTOR_GAIN_KP, MOTOR_GAIN_KI, MOTOR_GAIN_KD, MOTOR_GAIN_KF, MOTOR_NUM_GAINS } motor_gain_t;
+float motors_get_gain(motor_gain_t g);
+void motors_set_gain(motor_gain_t g, float value);
 
 // Lidar (MS200): 360 one-degree bins, refreshed once per revolution.
 #define LIDAR_POINTS 360

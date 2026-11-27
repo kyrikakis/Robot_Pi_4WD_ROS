@@ -66,6 +66,7 @@ Check what is running: `ros2 topic echo --once /esp_firmware` (domain 20).
 | `battery` | std_msgs/UInt16 | 1 Hz | volts x 10 |
 | `esp_firmware` | std_msgs/String | latched | version, build date, IDF version |
 | `lidar/enable` (service) | std_srvs/SetBool | | MS200 standby (no ranging, no data) / run; answers once the data has stopped or started (<= 5 s) |
+| `pid_kp`, `pid_ki`, `pid_kd`, `pid_kf` (parameters) | double | | motor PID gains and feedforward, 0-50, applied at once, lost on reset (boot values: build options) |
 | `lidar_speed_hz` (parameter) | int | | MS200 rotation, 5-15 Hz; 0 = not set by us. Applied in the background (standby, speed, run, check +-10 %); see `scan_time` |
 
 Lidar, e.g.: `ros2 service call /lidar/enable std_srvs/srv/SetBool "{data: false}"`,

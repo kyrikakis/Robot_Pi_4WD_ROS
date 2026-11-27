@@ -10,11 +10,10 @@ menu "Rainbow firmware"
 
     config RAINBOW_WHEEL_CIRCUMFERENCE_UM
         int "Wheel circumference in micrometres"
-        default 150800
+        default 204200
         help
-            The stock firmware's value (a 48 mm wheel), kept so odometry and speeds
-            match what the ROS side was tuned with. The 45 mm wheels measure 141400;
-            65 mm wheels would be 204200.
+            The 65 mm wheels fitted 2026-11-27 (pi x 65 mm). The stock firmware
+            used 150800 (a 48 mm wheel) with the old 45 mm wheels.
 
     config RAINBOW_ENCODER_COUNTS_PER_REV
         int "Encoder counts per wheel revolution (x4 quadrature)"
@@ -32,13 +31,24 @@ menu "Rainbow firmware"
 
     config RAINBOW_PID_KP_X100
         int "Motor PID Kp x100"
-        default 100
+        default 300
+        help
+            Kp 3.0, Ki 0.6 tuned driving with the 65 mm wheels (2026-11-27): spins
+            in place start within 0.2-0.5 s and hold ~90% of the command (stock
+            1.0/0.2: 1-2 s and stick-slip).
     config RAINBOW_PID_KI_X100
         int "Motor PID Ki x100"
-        default 20
+        default 60
     config RAINBOW_PID_KD_X100
         int "Motor PID Kd x100"
         default 20
+    config RAINBOW_PID_KF_X100
+        int "Motor feedforward x100 (PWM ticks per encoder count per 10 ms of target)"
+        default 0
+        help
+            0: none (the stock firmware had none). The gains are also the
+            parameters pid_kp, pid_ki, pid_kd, pid_kf of YB_Car_Node, live until
+            the next reset.
 
     config RAINBOW_CMD_TIMEOUT_MS
         int "Stop the motors when cmd_vel is silent this long, ms"

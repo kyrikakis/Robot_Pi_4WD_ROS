@@ -13,12 +13,12 @@ were read from its NVS: domain 20, serial agent at 921600 baud, servo offsets
   `laser_frame`), odometry covariances, scan layout (360 x 1 deg from -pi,
   0.12-8 m) and its angle mapping, battery as volts x 10.
 - Kinematics: wheel speed = v -/+ w x 0.115 m (stock `ROBOT_APB`), 1 m/s wheel
-  limit, wheel circumference 150.8 mm (a 48 mm wheel; ours are 45 mm),
-  1040 encoder counts per revolution. The ROS side (velocity watchdog
-  `angular_gain`, EKF) was tuned against these, so they are kept; all are
-  build options now.
+  limit, 1040 encoder counts per revolution; build options now. The wheel
+  circumference is 204.2 mm since the 65 mm wheels (2026-11-27; stock: 150.8 mm,
+  a 48 mm wheel, with the old 45 mm wheels).
 - Motor control: 25 kHz PWM, 400-tick period, 200-tick dead zone, incremental
-  PID on encoder counts per 10 ms with the stock gains 1.0/0.2/0.2.
+  PID on encoder counts per 10 ms (stock gains 1.0/0.2/0.2; ours since the
+  65 mm wheels: 3.0/0.6/0.2, live-tunable as parameters).
 - Servo mapping (-90..90 deg -> 500..2500 us) and limits; `servo_s1`/`servo_s2`
   take whole degrees and jump there.
 - Buzzer semantics. Partition layout (so stock and ours swap cleanly).
@@ -29,6 +29,8 @@ were read from its NVS: domain 20, serial agent at 921600 baud, servo offsets
 |---|---|---|---|
 | Agent restart | connects once; after an agent restart the board needs a reset | pings the agent every second; after 3 misses tears down, stops the motors and reconnects (~10 s, tested) | restarting `rainbow_microros` no longer needs a board reset |
 | `cmd_vel` silent | wheels keep the last command | stop after 0.5 s | safety if the Pi side stops; the velocity watchdog republishes at 10 Hz |
+| Encoder sign | | right encoders (M3, M4) inverted: turned forward by hand they count down; uninverted the right PID ran away to full power and spun the robot | measured 2026-11-27 |
+| Runaway | | a wheel at full PID output reading the opposite way to its target for 0.3 s stops all wheels and beeps 0.5 s, until a zero command | a wrong encoder sign cannot spin the robot away |
 | Zero wheel target | PID keeps running, hunts around zero through the dead zone | that wheel brakes, its PID resets | no jitter at standstill |
 | Servos at boot | jump to the firmware's default pose | no pulse until the first command | the head does not swing on every reset; the head node resends its pose every second |
 | New: `servo_goal` | | a head move (angles in fractions of a degree, speed, acceleration per servo) run on the ESP, stepped once per 20 ms servo frame | smooth head motion: streamed whole degrees stepped visibly and beat against the servo frames |

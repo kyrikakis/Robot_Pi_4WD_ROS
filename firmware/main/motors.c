@@ -6,8 +6,10 @@
 // and wheel speed = v -/+ w * half_track.
 //
 // Differences: a wheel whose target is zero brakes and its PID resets (the stock
-// PID hunted around zero through the dead zone), and the motors stop when
-// cmd_vel is silent for CONFIG_RAINBOW_CMD_TIMEOUT_MS.
+// PID hunted around zero through the dead zone), the motors stop when cmd_vel is
+// silent for CONFIG_RAINBOW_CMD_TIMEOUT_MS, and a runaway guard stops them all
+// when a wheel at full power reads the opposite way to its target (a reversed
+// encoder makes the PID push harder the faster the wheel turns).
 
 #include <math.h>
 #include <string.h>
@@ -28,6 +30,8 @@
 #define PID_OUTPUT_MAX (PWM_PERIOD_TICKS - PWM_DEAD_ZONE)  // 200
 #define PID_PERIOD_MS 10
 #define PCNT_LIMIT 1000
+#define RUNAWAY_PERIODS 30  // 0.3 s at full power the wrong way
+#define RUNAWAY_BEEP_MS 500
 
 typedef struct {
     int pwm_a;     // GPIO driven for forward
@@ -35,14 +39,17 @@ typedef struct {
     int group;     // MCPWM group (3 timers each: M1-M3 in 0, M4 in 1)
     int enc_a;
     int enc_b;
+    int enc_sign;  // +1, or -1 where the encoder counts backward for a forward wheel
 } wheel_pins_t;
 
 // M1 and M2 (left side) are wired mirrored: their B pin drives forward.
+// M3 and M4 (right side) have their encoders mirrored instead: turned forward by
+// hand they count down (2026-11-27; the right PID ran away to full power).
 static const wheel_pins_t PINS[RAINBOW_NUM_WHEELS] = {
-    {.pwm_a = 5, .pwm_b = 4, .group = 0, .enc_a = 6, .enc_b = 7},
-    {.pwm_a = 16, .pwm_b = 15, .group = 0, .enc_a = 47, .enc_b = 48},
-    {.pwm_a = 9, .pwm_b = 10, .group = 0, .enc_a = 11, .enc_b = 12},
-    {.pwm_a = 13, .pwm_b = 14, .group = 1, .enc_a = 1, .enc_b = 2},
+    {.pwm_a = 5, .pwm_b = 4, .group = 0, .enc_a = 6, .enc_b = 7, .enc_sign = 1},
+    {.pwm_a = 16, .pwm_b = 15, .group = 0, .enc_a = 47, .enc_b = 48, .enc_sign = 1},
+    {.pwm_a = 9, .pwm_b = 10, .group = 0, .enc_a = 11, .enc_b = 12, .enc_sign = -1},
+    {.pwm_a = 13, .pwm_b = 14, .group = 1, .enc_a = 1, .enc_b = 2, .enc_sign = -1},
 };
 
 typedef struct {
@@ -54,14 +61,17 @@ static pcnt_unit_handle_t s_pcnt[RAINBOW_NUM_WHEELS];
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static float s_target_counts[RAINBOW_NUM_WHEELS];  // counts per PID period
 static int64_t s_last_command_us;
+static bool s_fault;  // runaway: all wheels stopped until a zero command
 
-static float s_kp, s_ki, s_kd;
+static volatile float s_gain[MOTOR_NUM_GAINS];  // kp, ki, kd, kf
 static float s_m_per_count;
 static float s_half_track;
 static float s_max_speed;
 
 float motors_metres_per_count(void) { return s_m_per_count; }
 float motors_half_track(void) { return s_half_track; }
+float motors_get_gain(motor_gain_t g) { return s_gain[g]; }
+void motors_set_gain(motor_gain_t g, float value) { s_gain[g] = value; }  // one aligned float: atomic
 
 static void pcnt_init_one(int i)
 {
@@ -129,26 +139,33 @@ static void motor_drive(int i, int output)
 }
 
 // Incremental PID, as Espressif's pid_ctrl (PID_CAL_TYPE_INCREMENTAL) used by the stock firmware.
-static float pid_step(pid_state_t *p, float error)
+// Plus feedforward kf * target; the PID's part is clamped so the sum stays within
+// the output range (no windup past it).
+static float pid_step(pid_state_t *p, float target, float error)
 {
-    p->out += s_kp * (error - p->e1) + s_ki * error + s_kd * (error - 2.0f * p->e1 + p->e2);
-    if (p->out > PID_OUTPUT_MAX) p->out = PID_OUTPUT_MAX;
-    if (p->out < -PID_OUTPUT_MAX) p->out = -PID_OUTPUT_MAX;
+    float kp = s_gain[MOTOR_GAIN_KP], ki = s_gain[MOTOR_GAIN_KI], kd = s_gain[MOTOR_GAIN_KD];
+    float ff = s_gain[MOTOR_GAIN_KF] * target;
+    if (ff > PID_OUTPUT_MAX) ff = PID_OUTPUT_MAX;
+    if (ff < -PID_OUTPUT_MAX) ff = -PID_OUTPUT_MAX;
+    p->out += kp * (error - p->e1) + ki * error + kd * (error - 2.0f * p->e1 + p->e2);
+    if (p->out > PID_OUTPUT_MAX - ff) p->out = PID_OUTPUT_MAX - ff;
+    if (p->out < -PID_OUTPUT_MAX - ff) p->out = -PID_OUTPUT_MAX - ff;
     p->e2 = p->e1;
     p->e1 = error;
-    return p->out;
+    return p->out + ff;
 }
 
 static int read_count(int i)
 {
     int c = 0;
     pcnt_unit_get_count(s_pcnt[i], &c);
-    return c;
+    return c * PINS[i].enc_sign;
 }
 
 static void motor_task(void *arg)
 {
     pid_state_t pid[RAINBOW_NUM_WHEELS] = {0};
+    int wrong_way[RAINBOW_NUM_WHEELS] = {0};
     int last[RAINBOW_NUM_WHEELS];
     for (int i = 0; i < RAINBOW_NUM_WHEELS; i++) last[i] = read_count(i);
 
@@ -162,6 +179,7 @@ static void motor_task(void *arg)
         if (now - s_last_command_us > (int64_t)CONFIG_RAINBOW_CMD_TIMEOUT_MS * 1000) {
             memset(s_target_counts, 0, sizeof(s_target_counts));
         }
+        if (s_fault) memset(s_target_counts, 0, sizeof(s_target_counts));
         memcpy(target, s_target_counts, sizeof(target));
         taskEXIT_CRITICAL(&s_lock);
 
@@ -171,10 +189,31 @@ static void motor_task(void *arg)
             last[i] = c;
             if (target[i] == 0.0f) {
                 memset(&pid[i], 0, sizeof(pid[i]));
+                wrong_way[i] = 0;
                 motor_drive(i, 0);
-            } else {
-                motor_drive(i, (int)pid_step(&pid[i], target[i] - measured));
+                continue;
             }
+            float out = pid_step(&pid[i], target[i], target[i] - measured);
+            bool saturated = fabsf(out) >= PID_OUTPUT_MAX;
+            if (saturated && measured * target[i] < 0.0f) {
+                wrong_way[i]++;
+            } else {
+                wrong_way[i] = 0;
+            }
+            if (wrong_way[i] >= RUNAWAY_PERIODS) {
+                beep_command(RUNAWAY_BEEP_MS);  // no console: the buzzer says it
+                taskENTER_CRITICAL(&s_lock);
+                s_fault = true;
+                memset(s_target_counts, 0, sizeof(s_target_counts));
+                taskEXIT_CRITICAL(&s_lock);
+                for (int j = 0; j < RAINBOW_NUM_WHEELS; j++) {
+                    memset(&pid[j], 0, sizeof(pid[j]));
+                    wrong_way[j] = 0;
+                    motor_drive(j, 0);
+                }
+                break;
+            }
+            motor_drive(i, (int)out);
         }
     }
 }
@@ -192,6 +231,7 @@ void motors_command(float v, float w)
     float right = clamp_speed(v + w * s_half_track);
     float per_period = s_m_per_count * (1000.0f / PID_PERIOD_MS);  // m/s per count/period
     taskENTER_CRITICAL(&s_lock);
+    if (left == 0.0f && right == 0.0f) s_fault = false;
     s_target_counts[0] = s_target_counts[1] = left / per_period;
     s_target_counts[2] = s_target_counts[3] = right / per_period;
     s_last_command_us = esp_timer_get_time();
@@ -212,9 +252,10 @@ void motors_get_counts(int64_t counts[RAINBOW_NUM_WHEELS])
 
 void motors_init(void)
 {
-    s_kp = CONFIG_RAINBOW_PID_KP_X100 / 100.0f;
-    s_ki = CONFIG_RAINBOW_PID_KI_X100 / 100.0f;
-    s_kd = CONFIG_RAINBOW_PID_KD_X100 / 100.0f;
+    s_gain[MOTOR_GAIN_KP] = CONFIG_RAINBOW_PID_KP_X100 / 100.0f;
+    s_gain[MOTOR_GAIN_KI] = CONFIG_RAINBOW_PID_KI_X100 / 100.0f;
+    s_gain[MOTOR_GAIN_KD] = CONFIG_RAINBOW_PID_KD_X100 / 100.0f;
+    s_gain[MOTOR_GAIN_KF] = CONFIG_RAINBOW_PID_KF_X100 / 100.0f;
     s_m_per_count = CONFIG_RAINBOW_WHEEL_CIRCUMFERENCE_UM / 1e6f / CONFIG_RAINBOW_ENCODER_COUNTS_PER_REV;
     s_half_track = CONFIG_RAINBOW_HALF_TRACK_MM / 1000.0f;
     s_max_speed = CONFIG_RAINBOW_MAX_WHEEL_SPEED_MM_S / 1000.0f;
