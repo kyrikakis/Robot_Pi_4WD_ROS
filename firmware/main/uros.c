@@ -1,5 +1,5 @@
 // micro-ROS node YB_Car_Node: the ROS contract of the stock Yahboom firmware,
-// plus lidar/enable, the lidar_speed_hz parameter, esp_firmware and servo_goal. See
+// plus lidar/enable, the lidar_speed_hz and pid_* parameters, esp_firmware and servo_goal. See
 // firmware/README.md and firmware/DELTAS.md.
 //
 // Connection state machine: wait for the agent (ping), create the entities, spin
@@ -154,9 +154,21 @@ static void on_beep(const void *msg) { beep_command(((const std_msgs__msg__UInt1
 
 // lidar_speed_hz: accepted when in range and the lidar is free; applied in the
 // background (standby, speed, run, check). The scan_time of /scan shows the result.
+// pid_kp, pid_ki, pid_kd, pid_kf: the motor gains, applied at once, kept until reset.
+static const char *const GAIN_PARAMS[MOTOR_NUM_GAINS] = {"pid_kp", "pid_ki", "pid_kd", "pid_kf"};
+#define GAIN_MAX 50.0
+
 static bool on_parameter(const Parameter *old_param, const Parameter *new_param, void *context)
 {
     if (!s_params_ready || new_param == NULL) return true;  // our own initial value / deletion
+    for (int g = 0; g < MOTOR_NUM_GAINS; g++) {
+        if (strcmp(new_param->name.data, GAIN_PARAMS[g]) != 0) continue;
+        if (new_param->value.type != RCLC_PARAMETER_DOUBLE) return false;
+        double v = new_param->value.double_value;
+        if (v < 0.0 || v > GAIN_MAX) return false;
+        motors_set_gain((motor_gain_t)g, (float)v);
+        return true;
+    }
     if (strcmp(new_param->name.data, "lidar_speed_hz") != 0) return false;
     if (new_param->value.type != RCLC_PARAMETER_INT) return false;
     return lidar_command_speed((int)new_param->value.integer_value) != 0;
@@ -317,7 +329,7 @@ static bool create_entities(void)
     s_exec = rclc_executor_get_zero_initialized_executor();
     rclc_parameter_options_t popts = {
         .notify_changed_over_dds = false,
-        .max_params = 1,
+        .max_params = 1 + MOTOR_NUM_GAINS,
         .allow_undeclared_parameters = false,
         .low_mem_mode = false,
     };
@@ -335,6 +347,11 @@ static bool create_entities(void)
     OK(rclc_add_parameter(&s_params, "lidar_speed_hz", RCLC_PARAMETER_INT));
     OK(rclc_parameter_set_int(&s_params, "lidar_speed_hz", 0));
     OK(rclc_add_parameter_constraint_integer(&s_params, "lidar_speed_hz", LIDAR_MIN_HZ, LIDAR_MAX_HZ, 1));
+    for (int g = 0; g < MOTOR_NUM_GAINS; g++) {  // current gains: kept across reconnects
+        OK(rclc_add_parameter(&s_params, GAIN_PARAMS[g], RCLC_PARAMETER_DOUBLE));
+        OK(rclc_parameter_set_double(&s_params, GAIN_PARAMS[g], motors_get_gain((motor_gain_t)g)));
+        OK(rclc_add_parameter_constraint_double(&s_params, GAIN_PARAMS[g], 0.0, GAIN_MAX, 0.0));
+    }
     s_params_ready = true;
     s_lidar_ticket = 0;
     OK(rclc_executor_add_timer(&s_exec, &s_tm_odom));

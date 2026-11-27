@@ -63,13 +63,15 @@ static float s_target_counts[RAINBOW_NUM_WHEELS];  // counts per PID period
 static int64_t s_last_command_us;
 static bool s_fault;  // runaway: all wheels stopped until a zero command
 
-static float s_kp, s_ki, s_kd;
+static volatile float s_gain[MOTOR_NUM_GAINS];  // kp, ki, kd, kf
 static float s_m_per_count;
 static float s_half_track;
 static float s_max_speed;
 
 float motors_metres_per_count(void) { return s_m_per_count; }
 float motors_half_track(void) { return s_half_track; }
+float motors_get_gain(motor_gain_t g) { return s_gain[g]; }
+void motors_set_gain(motor_gain_t g, float value) { s_gain[g] = value; }  // one aligned float: atomic
 
 static void pcnt_init_one(int i)
 {
@@ -137,14 +139,20 @@ static void motor_drive(int i, int output)
 }
 
 // Incremental PID, as Espressif's pid_ctrl (PID_CAL_TYPE_INCREMENTAL) used by the stock firmware.
-static float pid_step(pid_state_t *p, float error)
+// Plus feedforward kf * target; the PID's part is clamped so the sum stays within
+// the output range (no windup past it).
+static float pid_step(pid_state_t *p, float target, float error)
 {
-    p->out += s_kp * (error - p->e1) + s_ki * error + s_kd * (error - 2.0f * p->e1 + p->e2);
-    if (p->out > PID_OUTPUT_MAX) p->out = PID_OUTPUT_MAX;
-    if (p->out < -PID_OUTPUT_MAX) p->out = -PID_OUTPUT_MAX;
+    float kp = s_gain[MOTOR_GAIN_KP], ki = s_gain[MOTOR_GAIN_KI], kd = s_gain[MOTOR_GAIN_KD];
+    float ff = s_gain[MOTOR_GAIN_KF] * target;
+    if (ff > PID_OUTPUT_MAX) ff = PID_OUTPUT_MAX;
+    if (ff < -PID_OUTPUT_MAX) ff = -PID_OUTPUT_MAX;
+    p->out += kp * (error - p->e1) + ki * error + kd * (error - 2.0f * p->e1 + p->e2);
+    if (p->out > PID_OUTPUT_MAX - ff) p->out = PID_OUTPUT_MAX - ff;
+    if (p->out < -PID_OUTPUT_MAX - ff) p->out = -PID_OUTPUT_MAX - ff;
     p->e2 = p->e1;
     p->e1 = error;
-    return p->out;
+    return p->out + ff;
 }
 
 static int read_count(int i)
@@ -185,7 +193,7 @@ static void motor_task(void *arg)
                 motor_drive(i, 0);
                 continue;
             }
-            float out = pid_step(&pid[i], target[i] - measured);
+            float out = pid_step(&pid[i], target[i], target[i] - measured);
             bool saturated = fabsf(out) >= PID_OUTPUT_MAX;
             if (saturated && measured * target[i] < 0.0f) {
                 wrong_way[i]++;
@@ -244,9 +252,10 @@ void motors_get_counts(int64_t counts[RAINBOW_NUM_WHEELS])
 
 void motors_init(void)
 {
-    s_kp = CONFIG_RAINBOW_PID_KP_X100 / 100.0f;
-    s_ki = CONFIG_RAINBOW_PID_KI_X100 / 100.0f;
-    s_kd = CONFIG_RAINBOW_PID_KD_X100 / 100.0f;
+    s_gain[MOTOR_GAIN_KP] = CONFIG_RAINBOW_PID_KP_X100 / 100.0f;
+    s_gain[MOTOR_GAIN_KI] = CONFIG_RAINBOW_PID_KI_X100 / 100.0f;
+    s_gain[MOTOR_GAIN_KD] = CONFIG_RAINBOW_PID_KD_X100 / 100.0f;
+    s_gain[MOTOR_GAIN_KF] = CONFIG_RAINBOW_PID_KF_X100 / 100.0f;
     s_m_per_count = CONFIG_RAINBOW_WHEEL_CIRCUMFERENCE_UM / 1e6f / CONFIG_RAINBOW_ENCODER_COUNTS_PER_REV;
     s_half_track = CONFIG_RAINBOW_HALF_TRACK_MM / 1000.0f;
     s_max_speed = CONFIG_RAINBOW_MAX_WHEEL_SPEED_MM_S / 1000.0f;

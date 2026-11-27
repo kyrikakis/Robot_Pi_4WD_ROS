@@ -38,6 +38,13 @@ menu "Rainbow firmware"
     config RAINBOW_PID_KD_X100
         int "Motor PID Kd x100"
         default 20
+    config RAINBOW_PID_KF_X100
+        int "Motor feedforward x100 (PWM ticks per encoder count per 10 ms of target)"
+        default 0
+        help
+            0: none (the stock firmware had none). The gains are also the
+            parameters pid_kp, pid_ki, pid_kd, pid_kf of YB_Car_Node, live until
+            the next reset.
 
     config RAINBOW_CMD_TIMEOUT_MS
         int "Stop the motors when cmd_vel is silent this long, ms"
