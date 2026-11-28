@@ -53,7 +53,7 @@ input[type=range] { flex: 1; accent-color: var(--accent); }
 #main { inset: 0; }
 #pip, .view.in-pip, .view-note.in-pip {
   top: 52px; right: calc(10px + var(--safe-r)); left: auto; bottom: auto;
-  width: 27vw; height: 27vh; min-width: 150px; min-height: 90px;
+  width: var(--pip-w, 27vw); height: var(--pip-h, 27vh); min-width: 150px; min-height: 90px;
   border-radius: 12px; overflow: hidden;
 }
 #pip {
@@ -72,6 +72,12 @@ input[type=range] { flex: 1; accent-color: var(--accent); }
 .in-pip { z-index: 4 !important; }
 .view.off { visibility: hidden; }
 .in-pip.view-note { font-size: 11px; }
+#pip-handle {
+  position: fixed; width: 30px; height: 30px; z-index: 6; touch-action: none;
+  border-left: 3px solid var(--muted); border-bottom: 3px solid var(--muted);
+  border-bottom-left-radius: 10px; opacity: 0.8;
+}
+#north-arrow { display: inline-block; font-weight: 700; }
 
 /* ---- top bar ---- */
 #bar {

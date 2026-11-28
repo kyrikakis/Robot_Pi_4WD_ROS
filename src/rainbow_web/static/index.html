@@ -18,6 +18,7 @@
 <div id="stage">
   <div id="main" class="view-slot"></div>
   <div id="pip" class="view-slot" title="Tap to swap"></div>
+  <div id="pip-handle" title="Drag to resize the small view"></div>
   <canvas id="camera" class="view" width="640" height="360"></canvas>
   <div id="camera-empty" class="view-note">No camera picture</div>
   <canvas id="map" class="view"></canvas>
@@ -47,6 +48,7 @@
 <div id="maptools" class="hidden">
   <button data-tool="follow" class="tool on" title="Follow the robot">◎</button>
   <button data-tool="rotate" class="tool" title="Robot's heading up">⬆</button>
+  <button data-tool="north" class="tool" title="Twist two fingers to rotate the map; tap: back to unrotated"><span id="north-arrow">N</span></button>
   <button data-tool="goal" class="tool mode" title="Drive there: tap and drag the direction">🏁</button>
   <button data-tool="pose" class="tool mode" title="I am here: tap and drag the direction">📍</button>
   <button data-tool="place" class="tool mode" title="Save a place: tap and drag the direction">⭐</button>

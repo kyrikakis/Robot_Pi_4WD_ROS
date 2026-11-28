@@ -23,6 +23,7 @@ const state = {
   mainView: store.get('mainView', 'camera'),   // 'camera' | 'map'
   pip: store.get('pip', true),
   cameraOn: store.get('cameraOn', true),
+  pipSize: store.get('pipSize', null),   // [w, h] px of the small view, or the default
   quality: store.get('quality', 'low'),
   speed: store.get('speed', 60),
   layers: Object.assign({ scan: true, plan: true, places: true, global_costmap: false,
@@ -160,9 +161,50 @@ function toast(text, bad = false) {
 
 /* ---------------------------------------------------------------- views */
 
+function applyPipSize() {
+  const root = document.documentElement.style;
+  if (state.pipSize) {
+    root.setProperty('--pip-w', `${state.pipSize[0]}px`);
+    root.setProperty('--pip-h', `${state.pipSize[1]}px`);
+  }
+  // the handle sits on the small view's free corner (bottom left)
+  const handle = $('#pip-handle');
+  handle.classList.toggle('hidden', !state.pip);
+  const r = $('#pip').getBoundingClientRect();
+  handle.style.left = `${r.left - 6}px`;
+  handle.style.top = `${r.bottom - 24}px`;
+}
+
+(function pipResize() {
+  const handle = $('#pip-handle');
+  let start = null;
+  handle.addEventListener('pointerdown', (e) => {
+    handle.setPointerCapture(e.pointerId);
+    const r = $('#pip').getBoundingClientRect();
+    start = { right: r.right, top: r.top };
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (!start) return;
+    const w = Math.min(innerWidth * 0.8, Math.max(150, start.right - e.clientX));
+    const h = Math.min(innerHeight * 0.85, Math.max(90, e.clientY - start.top));
+    state.pipSize = [Math.round(w), Math.round(h)];
+    applyPipSize();
+  });
+  const end = () => {
+    if (!start) return;
+    start = null;
+    store.set('pipSize', state.pipSize);
+  };
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+})();
+
 function layoutViews() {
   // sizes come from the CSS (.in-pip is the small view); this only says which is which
   $('#pip').classList.toggle('hidden', !state.pip);
+  applyPipSize();
   const camMain = state.mainView === 'camera';
   const place = (el, note, inPip) => {
     const visible = !inPip || state.pip;
@@ -265,6 +307,7 @@ const mapView = {
   scale: 60,          // px per metre
   follow: true,
   headingUp: false,
+  userRot: store.get('mapRot', 0),   // the map's own rotation (rad), set by a two-finger twist
   fitted: true,       // zoom chosen automatically (until the user zooms)
   tool: null,         // 'goal' | 'pose' | 'place'
   draft: null,        // {x, y, yaw} while placing an arrow
@@ -329,7 +372,7 @@ const mapView = {
   },
   rotation() {
     if (this.headingUp && this.pose) return this.pose.yaw - Math.PI / 2;
-    return 0;
+    return this.userRot;
   },
   // world (x, y) -> canvas px
   toScreen(x, y) {
@@ -353,6 +396,13 @@ const mapView = {
     return { x: c.x + rx * cos - ry * sin, y: c.y + rx * sin + ry * cos };
   },
   screenAngle(yaw) { return -(yaw - this.rotation()); },
+  setRotation(r, snap) {
+    const q = Math.PI / 2;
+    if (snap && Math.abs(r - Math.round(r / q) * q) < 0.1) r = Math.round(r / q) * q;   // snaps to 90 deg
+    this.userRot = Math.atan2(Math.sin(r), Math.cos(r));
+    $('#north-arrow').style.transform = `rotate(${this.userRot}rad)`;
+    this.dirty();
+  },
   setTool(tool) {
     this.tool = tool;
     this.draft = null;
@@ -538,7 +588,8 @@ const mapView = {
     }
     if (pts.size === 2) {
       const [a, b] = Array.from(pts.values());
-      pinch = { dist: Math.hypot(a[0] - b[0], a[1] - b[1]), scale: mapView.scale };
+      pinch = { dist: Math.hypot(a[0] - b[0], a[1] - b[1]), scale: mapView.scale,
+        angle: Math.atan2(b[1] - a[1], b[0] - a[0]), rot: mapView.userRot, rotating: false };
       mapView.draft = null;
     }
   });
@@ -553,6 +604,13 @@ const mapView = {
       const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
       mapView.scale = Math.min(800, Math.max(4, pinch.scale * d / pinch.dist));
       mapView.fitted = false;
+      if (!mapView.headingUp) {
+        // twist to rotate, once the fingers turned ~9 deg (a pinch alone does not)
+        const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+        const da = Math.atan2(Math.sin(ang - pinch.angle), Math.cos(ang - pinch.angle));
+        if (!pinch.rotating && Math.abs(da) > 0.15) Object.assign(pinch, { rotating: true, angle: ang });
+        if (pinch.rotating) mapView.setRotation(pinch.rot + da, true);
+      }
       mapView.dirty();
       return;
     }
@@ -579,7 +637,10 @@ const mapView = {
     if (!pts.has(e.pointerId)) return;
     const p = local(e);
     pts.delete(e.pointerId);
-    if (pts.size < 2) pinch = null;
+    if (pts.size < 2) {
+      if (pinch && pinch.rotating) store.set('mapRot', mapView.userRot);
+      pinch = null;
+    }
     if (pts.size > 0) return;
     if (mapView.tool && mapView.draft) {
       finishTool(mapView.tool, mapView.draft);
@@ -1149,6 +1210,7 @@ function setup() {
       sendWant();
     });
   });
+  mapView.setRotation(mapView.userRot);   // the rotation saved last time
   $('#camera-on').checked = state.cameraOn;
   $('#camera-on').addEventListener('change', (e) => {
     state.cameraOn = e.target.checked;
@@ -1183,6 +1245,9 @@ function setup() {
     if (tool === 'follow') {
       setFollow(!mapView.follow);
       if (mapView.follow) { mapView.fitted = true; mapView.fit(); }
+    } else if (tool === 'north') {
+      mapView.setRotation(0);
+      store.set('mapRot', 0);
     } else if (tool === 'rotate') {
       mapView.headingUp = !mapView.headingUp;
       b.classList.toggle('on', mapView.headingUp);
