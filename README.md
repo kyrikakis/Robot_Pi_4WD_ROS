@@ -102,7 +102,7 @@ Supervisor starts these when the container starts (`supervisor/rainbow.conf`):
 | `rainbow_localization` | `localization.launch.py` | map_server + AMCL on the saved map in `maps/` |
 | `rainbow_slam` | `slam.launch.py` | slam_toolbox, for mapping (not started by default) |
 | `rainbow_navigation` | `navigation.launch.py` | Nav2 |
-| `rainbow_foxglove` | `foxglove.launch.py` | Foxglove bridge on port 8765 |
+| `rainbow_foxglove` | `foxglove.launch.py` | Foxglove bridge on port 8765 (not started by default) |
 | `rainbow_voice` | `voice.launch.py` | Text to speech, wake word and listening (ReSpeaker Lite) |
 | `rainbow_brain` | `brain.launch.py` | Local brain, places, link to the Mac agent (port 8766), head tracker |
 | `rainbow_web` | `web.launch.py` | Phone remote on port 80 (`http://rainbow.local/`) |
@@ -162,7 +162,8 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=cmd_
 
 ### Foxglove
 
-Connect the Foxglove app to `ws://<robot-ip>:8765` (Foxglove WebSocket; the IP is
+Not started by default (the phone remote replaces it): `supervisorctl start
+rainbow_foxglove` first. Connect the Foxglove app to `ws://<robot-ip>:8765` (Foxglove WebSocket; the IP is
 published on `/rpi5_ip`), then import the layout `foxglove/rainbow.json`. It has the
 3D view (click to send a Nav2 goal), a Places tab (its pose tool picks a pose
 for the Save place button, `/places/save` with `from_pick: true`; Delete place

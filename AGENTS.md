@@ -54,7 +54,9 @@ the Pi host with `firmware/esp.sh`. The stock firmware's whole-flash backup is i
   so a power-on is a clean deployment. This is deliberate; do not bind-mount
   the repo. The image is built from the **Pi host's** checkout, not from inside
   the container.
-- Supervisor runs ten of its eleven programs from `supervisor/rainbow.conf`, each a
+- Supervisor runs nine of its eleven programs from `supervisor/rainbow.conf` (not
+  `rainbow_slam`, nor `rainbow_foxglove`: off since 2026-11-28, the phone remote
+  replaces it; `supervisorctl start rainbow_foxglove` when needed), each a
   `rainbow_bringup` launch file via `scripts/rainbow_launch.sh`. The micro-ROS
   agent (`rainbow_microros`), the ToF (`rainbow_tof`) and the head
   (`rainbow_head`) are separate programs: restarting the base disconnects
