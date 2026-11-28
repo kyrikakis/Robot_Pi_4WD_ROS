@@ -139,3 +139,34 @@ def jpeg_from_cdr(buf):
         off += (-(off - 4)) % 4          # CDR aligns from the end of the header
     n = u32(buf, off)[0]
     return bytes(buf[off + 4:off + 4 + n])
+
+
+AUD = b'\x00\x00\x00\x01\x09'   # H.264 access unit delimiter (x264 aud=1)
+
+
+def split_access_units(buf):
+    """Split an H.264 byte stream at its delimiters: (complete access units, rest).
+
+    Each access unit (one frame) starts with AUD; the last one is complete only
+    once the next one starts, so it stays in the rest.
+    """
+    start = buf.find(AUD)
+    if start < 0:
+        return [], buf
+    units = []
+    while True:
+        nxt = buf.find(AUD, start + len(AUD))
+        if nxt < 0:
+            return units, buf[start:]
+        units.append(buf[start:nxt])
+        start = nxt
+
+
+def is_keyframe(unit):
+    """Whether an H.264 access unit holds an IDR slice (a page can start there)."""
+    i = unit.find(b'\x00\x00\x01')
+    while 0 <= i < len(unit) - 3:
+        if unit[i + 3] & 0x1f == 5:
+            return True
+        i = unit.find(b'\x00\x00\x01', i + 3)
+    return False

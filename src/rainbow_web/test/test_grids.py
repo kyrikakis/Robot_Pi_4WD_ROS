@@ -74,3 +74,14 @@ def test_drive_command_limits():
     lin, ang = drive_command(1, 1, 0.2, 0.3, 0.1, 1.0)
     assert math.isclose(lin, 0.06) and ang == 0.5   # turning keeps half speed
     assert clamp(2, 0, 1) == 1
+
+
+def test_split_access_units():
+    from rainbow_web.grids import AUD, is_keyframe, split_access_units
+    sps, idr, p = b'\x00\x00\x00\x01\x67ab', b'\x00\x00\x01\x65cd', b'\x00\x00\x01\x41ef'
+    stream = AUD + b'\x10' + sps + idr + AUD + b'\x30' + p + AUD + b'\x30'
+    units, rest = split_access_units(stream)
+    assert units == [AUD + b'\x10' + sps + idr, AUD + b'\x30' + p]
+    assert rest == AUD + b'\x30'                       # not complete until the next one
+    assert is_keyframe(units[0]) and not is_keyframe(units[1])
+    assert split_access_units(b'\x00\x00') == ([], b'\x00\x00')

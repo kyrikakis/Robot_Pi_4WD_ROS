@@ -388,7 +388,11 @@ when new work comes up, add it here.
   reviewed yet.
 - Phone remote (`rainbow_web`, branch `mobile-web`, built 2026-11-28): a web page
   on port 80, `http://rainbow.local/` (mDNS alias from `pi-files/rainbow-mdns.service`
-  on the host). Camera (the Hailo's `image_bbx`, re-encoded to 640 px for "Fast"),
+  on the host). Camera (the Hailo's `image_bbx`: "Fast" is H.264 at 640 px
+  from an ffmpeg that runs only while a page watches, ~0.4 Mbit/s and ~18% of a
+  core, decoded in the browser with WebCodecs; a 640 px JPEG without WebCodecs;
+  "Sharp" the 1280x720 JPEG, ~23 Mbit/s; benchmark 2026-11-28: the Pi is ~94%
+  busy while Nav2 drives, so the encoder competes with it),
   map with lidar/plan/places/costmaps, drive and head joysticks, places, goals,
   pose estimate, the brain's buttons. Teleop goes to `cmd_vel_stamped` like
   Foxglove's, past the collision monitor (limits `max_linear` 0.3, `max_reverse`

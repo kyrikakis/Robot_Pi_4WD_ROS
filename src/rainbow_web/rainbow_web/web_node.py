@@ -11,7 +11,12 @@ plan and TF only while the map is, costmaps only when switched on).
 
 Page -> robot (JSON):
   {"t": "want", "camera": bool, "map": bool, "global_costmap": bool,
-   "local_costmap": bool, "system": bool, "quality": "low" | "high"}
+   "local_costmap": bool, "system": bool, "quality": "h264" | "low" | "high"}
+      quality: h264 (the page's "Fast" where the browser has WebCodecs) is the
+      camera re-encoded by an ffmpeg process to H.264 at h264_width px (~0.4
+      Mbit/s, ~18% of a core); it runs only while some page shows the camera in
+      h264. low: JPEG at low_width px (~3 Mbit/s); high: the Hailo's JPEG as it is
+      (1280x720, ~23 Mbit/s).
       system: the System tab is open (Pi health, programs, BNO055, Wi-Fi every 2 s)
   {"t": "drive", "x": -1..1 (forward), "z": -1..1 (turn left), "speed": 0..1}
       sent at ~20 Hz while the stick is held. Published on cmd_vel_stamped (the
@@ -21,11 +26,14 @@ Page -> robot (JSON):
   {"t": "head", "x": -1..1 (right), "y": -1..1 (up)}   on /head/jog
   {"t": "call", "id": n, "op": "...", "args": {...}}    answered with a "result"
 Robot -> page: JSON messages (status, map, pose, scan, plan, places, log, result)
-and binary messages: camera JPEG frames.
+and binary messages: camera frames, JPEG (starts FF D8) or one H.264 access unit
+(Annex B, starts with an access unit delimiter 00 00 00 01 09; baseline, a
+keyframe every second).
 
 Parameters: port (80), camera_topic, max_linear (m/s), max_reverse (m/s),
 max_angular (rad/s), max_head_rate (rad/s), low_width (px, the "low" camera
-quality's width), camera_enabled (live: false sends no camera frames).
+quality's width), h264_width (px), camera_enabled (live: false sends no camera
+frames).
 """
 
 import asyncio
@@ -86,6 +94,7 @@ class Client:
                      'local_costmap': False, 'system': False}
         self.quality = 'low'
         self.camera_busy = False
+        self.need_key = True        # h264: wait for a keyframe before sending
         self.driving = False
         self.last_drive = 0.0
 
@@ -103,6 +112,7 @@ class WebNode(Node):
         self.max_angular = param('max_angular', 1.2).value
         self.max_head_rate = param('max_head_rate', 1.2).value
         self.low_width = param('low_width', 640).value
+        self.h264_width = param('h264_width', 640).value
         # Live switch: ros2 param set /web camera_enabled false stops the camera stream
         param('camera_enabled', True)
         self.static_dir = os.path.join(get_package_share_directory('rainbow_web'), 'static')
@@ -462,6 +472,9 @@ class Server:
         self.frame = None
         self.frame_low = None
         self.low_task = None
+        self.encoder = None         # task running ffmpeg (h264), while a page wants it
+        self.encoder_proc = None
+        self.encoder_retry = 0.0
         self.nav = None          # the running go-to-place goal, as {'place', 'remaining'}
 
     # ---- HTTP ------------------------------------------------------------------
@@ -524,6 +537,7 @@ class Server:
         for page in self.pages:
             groups.update(g for g, on in page.want.items() if on)
         self.node.set_wanted(groups)
+        self.update_encoder()
 
     async def on_message(self, page, raw):
         try:
@@ -540,11 +554,14 @@ class Server:
             self.node.jog(msg.get('x', 0.0), msg.get('y', 0.0))
         elif kind == 'want':
             had_map = page.want['map']
+            before = (page.want['camera'], page.quality)
             for key in page.want:
                 if key in msg:
                     page.want[key] = bool(msg[key])
-            if msg.get('quality') in ('low', 'high'):
+            if msg.get('quality') in ('h264', 'low', 'high'):
                 page.quality = msg['quality']
+            if (page.want['camera'], page.quality) != before:
+                page.need_key = True
             self.update_wanted()
             if page.want['map'] and not had_map and self.map_msg:
                 await page.ws.send(json.dumps(self.map_msg))
@@ -584,6 +601,8 @@ class Server:
         """Whether some page would take a frame now (from the ROS thread)."""
         if not self.node.get_parameter('camera_enabled').value:
             return False
+        if self.encoder_proc is not None:
+            return True             # the encoder takes every frame
         for page in list(self.pages):
             if page.want['camera'] and not page.camera_busy:
                 if page.quality == 'high' or self.low_task is None or self.low_task.done():
@@ -592,6 +611,12 @@ class Server:
 
     def on_frame(self, jpeg):
         self.frame = jpeg
+        if self.encoder is None:
+            self.update_encoder()       # after an ffmpeg failure, once retry_s passed
+        proc = self.encoder_proc
+        if proc is not None and not proc.stdin.is_closing():
+            if proc.stdin.transport.get_write_buffer_size() < 2 ** 20:
+                proc.stdin.write(jpeg)  # else ffmpeg is behind: drop the frame
         if any(p.want['camera'] and p.quality == 'high' for p in self.pages):
             for page in self.pages:
                 if page.want['camera'] and page.quality == 'high':
@@ -608,6 +633,68 @@ class Server:
         for page in list(self.pages):
             if page.want['camera'] and page.quality == 'low':
                 self.send_frame(page, low)
+
+    # ---- h264 (ffmpeg) ------------------------------------------------------------
+
+    def h264_wanted(self):
+        return any(p.want['camera'] and p.quality == 'h264' for p in self.pages)
+
+    def update_encoder(self):
+        wanted = self.h264_wanted()
+        if wanted and self.encoder is None and time.monotonic() >= self.encoder_retry:
+            self.encoder = asyncio.ensure_future(self.run_encoder())
+        elif not wanted and self.encoder is not None:
+            self.encoder.cancel()
+            self.encoder = None
+
+    async def run_encoder(self):
+        width = self.node.h264_width
+        cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'error',
+               '-fflags', 'nobuffer', '-probesize', '32', '-analyzeduration', '0',
+               '-f', 'mjpeg', '-framerate', '15', '-i', 'pipe:0',
+               '-vf', f'scale={width}:-2',
+               '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+               '-profile:v', 'baseline', '-g', '15', '-crf', '26',
+               '-maxrate', '1M', '-bufsize', '1M', '-x264-params', 'aud=1:repeat-headers=1',
+               '-f', 'h264', 'pipe:1']
+        log = self.node.get_logger()
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE)
+        except OSError as e:
+            log.error(f'cannot start ffmpeg for the h264 camera: {e}')
+            self.encoder, self.encoder_retry = None, time.monotonic() + 10.0
+            return
+        self.encoder_proc = proc
+        log.info(f'h264 camera: encoding ({width} px) while a page watches')
+        buf = b''
+        try:
+            while True:
+                data = await proc.stdout.read(65536)
+                if not data:
+                    break
+                units, buf = grids.split_access_units(buf + data)
+                for unit in units:
+                    self.on_unit(unit)
+            log.warn(f'ffmpeg (h264 camera) ended, code {await proc.wait()}')
+            self.encoder, self.encoder_retry = None, time.monotonic() + 5.0
+        finally:
+            self.encoder_proc = None
+            if proc.returncode is None:
+                proc.kill()
+                await proc.wait()
+                log.info('h264 camera: stopped (no page watching)')
+
+    def on_unit(self, unit):
+        key = grids.is_keyframe(unit)
+        for page in list(self.pages):
+            if not (page.want['camera'] and page.quality == 'h264'):
+                continue
+            if page.camera_busy or (page.need_key and not key):
+                page.need_key = True    # a dropped frame breaks the ones after it
+                continue
+            page.need_key = False
+            self.send_frame(page, unit)
 
     def send_frame(self, page, jpeg):
         if page.camera_busy:

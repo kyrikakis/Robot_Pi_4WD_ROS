@@ -156,6 +156,9 @@ RUN apt-get update && apt-get install -y \
 # Text to speech (rainbow_voice)
 RUN apt-get update && apt-get install -y espeak-ng mbrola-us2
 
+# The phone remote's H.264 camera (rainbow_web runs ffmpeg/libx264 while a page watches)
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg
+
 # Install foxglove bridge
 RUN apt-get update && apt install -y \
     ros-$ROS_DISTRO-foxglove-bridge

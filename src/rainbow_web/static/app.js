@@ -40,7 +40,7 @@ const state = {
 
 function connect() {
   const ws = new WebSocket(`ws://${location.host}/ws`);
-  ws.binaryType = 'blob';
+  ws.binaryType = 'arraybuffer';
   state.ws = ws;
   ws.onopen = () => {
     state.connected = true;
@@ -99,7 +99,7 @@ function sendWant(force = false) {
     global_costmap: mapShown && state.layers.global_costmap,
     local_costmap: mapShown && state.layers.local_costmap,
     system: visible && tabOpen('system'),
-    quality: state.quality,
+    quality: state.quality === 'low' && H264 ? 'h264' : state.quality,
   };
   const key = JSON.stringify(want);
   if (force || key !== lastWant) {
@@ -187,18 +187,54 @@ function swapViews() {
 
 /* ---------------------------------------------------------------- camera */
 
+// H.264 needs WebCodecs (Safari 16.4+, Chrome); without it "Fast" is a small JPEG
+const H264 = typeof VideoDecoder === 'function';
+
+function hasIdr(bytes) {
+  for (let i = 0; i + 3 < bytes.length; i++) {
+    if (bytes[i] === 0 && bytes[i + 1] === 0 && bytes[i + 2] === 1 && (bytes[i + 3] & 0x1f) === 5) return true;
+  }
+  return false;
+}
+
 const camera = {
   el: $('#camera'),
-  url: null,
   lastFrame: 0,
-  frame(blob) {
-    const url = URL.createObjectURL(blob);
-    const old = this.url;
-    this.url = url;
-    this.el.onload = () => { if (old) URL.revokeObjectURL(old); };
-    this.el.src = url;
+  decoder: null,
+  waitKey: true,
+  ts: 0,
+  frame(buf) {
+    const bytes = new Uint8Array(buf);
+    if (bytes[0] === 0) this.h264(buf, bytes);
+    else createImageBitmap(new Blob([buf], { type: 'image/jpeg' }))
+      .then((bm) => { this.draw(bm, bm.width, bm.height); bm.close(); })
+      .catch(() => {});
+  },
+  draw(src, w, h) {
+    if (this.el.width !== w || this.el.height !== h) {
+      this.el.width = w;
+      this.el.height = h;
+    }
+    this.el.getContext('2d').drawImage(src, 0, 0, w, h);
     this.lastFrame = performance.now();
     this.updateNote();
+  },
+  h264(buf, bytes) {
+    if (!H264) return;
+    if (!this.decoder || this.decoder.state === 'closed') {
+      this.decoder = new VideoDecoder({
+        output: (f) => { this.draw(f, f.displayWidth, f.displayHeight); f.close(); },
+        error: () => { this.decoder = null; },
+      });
+      this.decoder.configure({ codec: 'avc1.42E01F', optimizeForLatency: true });
+      this.waitKey = true;
+    }
+    const key = hasIdr(bytes);
+    if (this.decoder.decodeQueueSize > 3) this.waitKey = true;   // behind: skip to a keyframe
+    if (this.waitKey && !key) return;
+    this.waitKey = false;
+    this.ts += 66667;
+    this.decoder.decode(new EncodedVideoChunk({ type: key ? 'key' : 'delta', timestamp: this.ts, data: buf }));
   },
   updateNote() {
     const note = $('#camera-empty');
