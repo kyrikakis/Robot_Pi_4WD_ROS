@@ -128,7 +128,7 @@ def supervisorctl(socket=None):
 
 
 def other_supervisors(proc='/proc'):
-    """PIDs of the supervisords in other containers (the Hailo's) with a socket."""
+    """Return the PIDs of the supervisords in other containers (the Hailo's)."""
     try:
         own_root = os.stat('/').st_ino
     except OSError:
