@@ -122,7 +122,7 @@ class WebNode(Node):
         self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/initialpose', 10)
         self.pick_pub = self.create_publisher(PoseStamped, '/places/pick', 10)
 
-        self.clients = {
+        self.srv = {
             'stop': self.create_client(Trigger, '/brain/stop'),
             'relocalize': self.create_client(Empty, '/reinitialize_global_localization'),
             'head_center': self.create_client(Trigger, '/head/center'),
@@ -535,7 +535,7 @@ class Server:
     # ---- calls -----------------------------------------------------------------
 
     async def ros_call(self, name, request, timeout=10.0):
-        client = self.node.clients[name]
+        client = self.node.srv[name]
         if not client.service_is_ready():
             raise RuntimeError(f'{client.srv_name} is not available')
         return await self.ros_future(client.call_async(request), timeout)
