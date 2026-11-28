@@ -651,7 +651,8 @@ class Server:
         width = self.node.h264_width
         cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'error',
                '-fflags', 'nobuffer', '-probesize', '32', '-analyzeduration', '0',
-               '-f', 'mjpeg', '-framerate', '15', '-i', 'pipe:0',
+               # image2pipe: ffmpeg 6.1's mjpeg demuxer on a pipe passed on 2 frames in 60
+               '-f', 'image2pipe', '-c:v', 'mjpeg', '-framerate', '15', '-i', 'pipe:0',
                '-vf', f'scale={width}:-2',
                '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
                '-profile:v', 'baseline', '-g', '15', '-crf', '26',
