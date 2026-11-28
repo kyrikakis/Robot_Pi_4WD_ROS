@@ -51,6 +51,7 @@ function connect() {
   ws.onclose = () => {
     state.connected = false;
     $('#conn').classList.remove('ok');
+    $('#chip-rtt').classList.add('hidden');
     $('#offline').classList.remove('hidden');
     sticks.forEach((s) => s.release());
     lastWant = '';
@@ -125,6 +126,12 @@ function onMessage(m) {
     case 'nav': onNav(m); break;
     case 'log': addLog(m); break;
     case 'logs': m.entries.forEach(addLog); break;
+    case 'pong': {
+      const rtt = Math.round(performance.now() - m.time);
+      chip('#chip-rtt', `${rtt} ms`, rtt < 150 ? 'ok' : rtt < 400 ? 'warn' : 'bad');
+      $('#chip-rtt').classList.remove('hidden');
+      break;
+    }
     case 'result': {
       const cb = state.pending[m.id];
       delete state.pending[m.id];
@@ -198,6 +205,7 @@ const camera = {
   },
 };
 setInterval(() => camera.updateNote(), 1000);
+setInterval(() => send({ t: 'ping', time: performance.now() }), 2000);
 
 /* ---------------------------------------------------------------- map */
 
