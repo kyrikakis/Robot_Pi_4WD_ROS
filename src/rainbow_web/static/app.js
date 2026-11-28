@@ -98,6 +98,7 @@ function sendWant(force = false) {
     map: mapShown,
     global_costmap: mapShown && state.layers.global_costmap,
     local_costmap: mapShown && state.layers.local_costmap,
+    system: visible && tabOpen('system'),
     quality: state.quality,
   };
   const key = JSON.stringify(want);
@@ -110,6 +111,7 @@ function onMessage(m) {
   switch (m.t) {
     case 'status': state.status = m; renderStatus(); break;
     case 'flag': state.flags[m.name] = m.value; renderStatus(); break;
+    case 'system': state.system = m; renderSystemTab(); break;
     case 'tracker': state.tracker = m; renderStatus(); break;
     case 'map': mapView.setMap(m); break;
     case 'costmap': mapView.setCostmap(m); break;
@@ -128,6 +130,7 @@ function onMessage(m) {
     case 'logs': m.entries.forEach(addLog); break;
     case 'pong': {
       const rtt = Math.round(performance.now() - m.time);
+      state.rtt = rtt;
       chip('#chip-rtt', `${rtt} ms`, rtt < 150 ? 'ok' : rtt < 400 ? 'warn' : 'bad');
       $('#chip-rtt').classList.remove('hidden');
       break;
@@ -802,6 +805,9 @@ function renderStatus() {
     const t = f.temperature;
     chip('#chip-temp', `${Math.round(t)}°C`, t < 70 ? 'ok' : t < 80 ? 'warn' : 'bad');
   }
+  if (f.cpu !== undefined) {
+    chip('#chip-cpu', `CPU ${f.cpu}%`, f.cpu < 70 ? 'ok' : f.cpu < 90 ? 'warn' : 'bad');
+  }
   $('#chip-lifted').classList.toggle('hidden', !f.lifted);
   renderStatusTab();
 }
@@ -829,6 +835,7 @@ function renderStatusTab() {
     ['Head', f.head_moving ? 'moving' : 'still'],
     ['Tracker', t.active ? `${t.target}${t.seen ? ' (seen)' : t.lost ? ' (lost)' : ''}` : 'off'],
     ['Lifted', f.lifted ? 'yes' : 'no'],
+    ['Pi CPU load', f.cpu !== undefined ? `${f.cpu} % (all 4 cores)` : ''],
     ['Pi temperature', f.temperature !== undefined ? `${f.temperature} °C` : ''],
     ['ESP firmware', f.firmware],
     ['Last event', s.last_event],
@@ -848,6 +855,119 @@ function renderStatusTab() {
     dd.textContent = v;
     dl.append(dt, dd);
   }
+}
+
+/* ---------------------------------------------------------------- system tab */
+
+const level = (v, warn, bad) => (v < warn ? 'ok' : v < bad ? 'warn' : 'bad');
+
+function fillKv(dl, rows) {
+  dl.replaceChildren();
+  for (const [k, v, cls] of rows) {
+    if (v === undefined || v === null || v === '') continue;
+    const dt = document.createElement('dt');
+    dt.textContent = k;
+    const dd = document.createElement('dd');
+    dd.textContent = v;
+    if (cls) dd.className = cls;
+    dl.append(dt, dd);
+  }
+}
+
+function duration(s) {
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return d ? `${d} d ${h} h` : h ? `${h} h ${m} min` : `${m} min`;
+}
+
+function renderSystemTab() {
+  if (!tabOpen('system')) return;
+  const y = state.system;
+  const f = state.flags;
+  const s = state.status || {};
+  if (!y) {
+    fillKv($('#sys-pi'), [['', 'Waiting for the robot…']]);
+    return;
+  }
+  const cores = $('#sys-cores');
+  cores.replaceChildren();
+  (y.cores || []).forEach((c, i) => {
+    const el = document.createElement('div');
+    el.className = `core ${level(c ?? 0, 70, 90)}`;
+    const bar = document.createElement('i');
+    bar.style.width = `${c ?? 0}%`;
+    const label = document.createElement('span');
+    label.textContent = `core ${i} · ${c ?? '--'}%`;
+    el.append(bar, label);
+    cores.append(el);
+  });
+  const thrNow = y.throttled_now;
+  const thrPast = y.throttled_since_boot;
+  const list = (a) => (a ? (a.length ? a.join(', ') : 'none') : '');
+  fillKv($('#sys-pi'), [
+    ['CPU', y.cpu !== null ? `${y.cpu}% · load ${(y.load || []).join(' ')}` : '', level(y.cpu ?? 0, 70, 90)],
+    ['Clock', y.mhz ? `${y.mhz} MHz` : ''],
+    ['Temperature', f.temperature !== undefined ? `${f.temperature} °C` : '', level(f.temperature ?? 0, 70, 80)],
+    ['Throttling now', list(thrNow), thrNow && thrNow.length ? 'bad' : 'ok'],
+    ['Since boot', list(thrPast), thrPast && thrPast.length ? 'warn' : ''],
+    ['Memory', y.mem ? `${(y.mem[0] / 1024).toFixed(1)} of ${(y.mem[1] / 1024).toFixed(1)} GB` : '',
+      y.mem ? level(y.mem[0] / y.mem[1] * 100, 75, 90) : ''],
+    ['Disk', y.disk ? `${y.disk[0]} of ${y.disk[1]} GB` : '', y.disk ? level(y.disk[0] / y.disk[1] * 100, 80, 95) : ''],
+    ['Up', y.uptime ? duration(y.uptime) : ''],
+  ]);
+  const b = y.bno055 || {};
+  const cal = b.calibration;
+  fillKv($('#sys-robot'), [
+    ['Inside the robot', b.temperature !== undefined
+      ? `${b.temperature} °C (BNO055, near the Pi: the room is cooler)` : 'no reading'],
+    ['BNO055 calibration', cal ? `system ${cal.sys}, gyro ${cal.gyro}, accel ${cal.accel}, mag ${cal.mag} (of 3)` : '',
+      cal && cal.gyro === 3 && cal.accel === 3 ? 'ok' : 'warn'],
+    ['Battery', s.battery ? `${s.battery.toFixed(2)} V` : 'no reading', s.battery ? level(-s.battery, -7.4, -7.0) : 'bad'],
+    ['ESP firmware', f.firmware || ''],
+  ]);
+  drawBattery(y.battery_log || []);
+  const w = y.wifi;
+  fillKv($('#sys-net'), [
+    ['Wi-Fi signal', w ? `${w[1]} dBm (quality ${Math.round(w[0] / 70 * 100)}%)` : '', w ? level(-w[1], 67, 75) : ''],
+    ['Delay to the robot', state.rtt !== undefined ? `${state.rtt} ms` : '',
+      state.rtt !== undefined ? level(state.rtt, 150, 400) : ''],
+  ]);
+  const table = $('#sys-programs');
+  table.replaceChildren();
+  for (const [container, name, st, pct] of y.programs || []) {
+    const tr = document.createElement('tr');
+    const label = container === 'robot' ? name.replace(/^rainbow_/, '') : `${name} (Hailo)`;
+    for (const [text, cls] of [[label, ''], [st.toLowerCase(), st], [pct !== null ? `${pct}%` : '', '']]) {
+      const td = document.createElement('td');
+      td.textContent = text;
+      if (cls) td.className = cls;
+      tr.append(td);
+    }
+    table.append(tr);
+  }
+}
+
+function drawBattery(log) {
+  const c = $('#sys-battery');
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, c.width, c.height);
+  c.classList.toggle('hidden', log.length < 2);
+  if (log.length < 2) return;
+  const volts = log.map((p) => p[1]);
+  const lo = Math.min(BATTERY.empty, ...volts);
+  const hi = Math.max(BATTERY.full, ...volts);
+  const t0 = Math.min(-60, log[0][0]);
+  const px = (t) => (t - t0) / -t0 * (c.width - 8) + 4;
+  const py = (v) => c.height - 6 - (v - lo) / (hi - lo) * (c.height - 30);
+  g.strokeStyle = '#3ddc84';
+  g.lineWidth = 3;
+  g.beginPath();
+  log.forEach(([t, v], i) => (i ? g.lineTo(px(t), py(v)) : g.moveTo(px(t), py(v))));
+  g.stroke();
+  g.fillStyle = '#9aa0aa';
+  g.font = '22px system-ui';
+  g.fillText(`battery, last ${Math.round(-t0 / 60)} min: ${volts[0]} → ${volts[volts.length - 1]} V`, 6, 22);
 }
 
 /* ---------------------------------------------------------------- places tab */
@@ -901,8 +1021,25 @@ function addLog(m) {
 
 /* ---------------------------------------------------------------- drawer & controls */
 
-function openDrawer() { $('#drawer').classList.add('open'); renderStatusTab(); }
-function closeDrawer() { $('#drawer').classList.remove('open'); }
+function tabOpen(name) {
+  return $('#drawer').classList.contains('open') && $(`#tab-${name}`).classList.contains('on');
+}
+function showTab(name) {
+  $$('.tabs [data-tab]').forEach((x) => x.classList.toggle('on', x.dataset.tab === name));
+  $$('.tab').forEach((t) => t.classList.toggle('on', t.id === `tab-${name}`));
+  if (name === 'status') renderStatusTab();
+  if (name === 'system') renderSystemTab();
+  if (name === 'places') call('places', {}, true);
+  sendWant();
+}
+function openDrawer(tab) {
+  $('#drawer').classList.add('open');
+  if (typeof tab === 'string') showTab(tab);
+  renderStatusTab();
+  renderSystemTab();
+  sendWant();
+}
+function closeDrawer() { $('#drawer').classList.remove('open'); sendWant(); }
 
 function setSpeed(v) {
   state.speed = v;
@@ -923,17 +1060,14 @@ function setup() {
   // the view shown small sits on top of #pip: a tap on it swaps too
   $('#camera').addEventListener('click', () => { if (state.mainView !== 'camera') swapViews(); });
   mapView.canvas.addEventListener('click', () => { if (state.mainView !== 'map') swapViews(); });
-  $('#btn-menu').addEventListener('click', openDrawer);
+  $('#btn-menu').addEventListener('click', () => openDrawer());
+  $('#chip-cpu').addEventListener('click', () => openDrawer('system'));
+  $('#chip-temp').addEventListener('click', () => openDrawer('system'));
   $('#drawer-close').addEventListener('click', closeDrawer);
   $('#btn-full').addEventListener('click', toggleFullscreen);
   $('#nav-cancel').addEventListener('click', () => call('stop'));
 
-  $$('.tabs [data-tab]').forEach((b) => b.addEventListener('click', () => {
-    $$('.tabs [data-tab]').forEach((x) => x.classList.toggle('on', x === b));
-    $$('.tab').forEach((t) => t.classList.toggle('on', t.id === `tab-${b.dataset.tab}`));
-    if (b.dataset.tab === 'status') renderStatusTab();
-    if (b.dataset.tab === 'places') call('places', {}, true);
-  }));
+  $$('.tabs [data-tab]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
 
   $$('[data-call]').forEach((b) => b.addEventListener('click', () => {
     call(b.dataset.call, b.dataset.args ? JSON.parse(b.dataset.args) : {});

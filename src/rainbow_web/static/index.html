@@ -32,7 +32,8 @@
     <span id="chip-loc" class="chip" title="Localization">📍 --</span>
     <span id="chip-nav" class="chip" title="Nav2">Nav</span>
     <span id="chip-esp" class="chip" title="ESP board">ESP</span>
-    <span id="chip-temp" class="chip" title="Pi temperature">--°</span>
+    <span id="chip-cpu" class="chip tap" title="Pi CPU load (all cores)">CPU --</span>
+    <span id="chip-temp" class="chip tap" title="Pi temperature">--°</span>
     <span id="chip-lifted" class="chip warn hidden">Lifted</span>
   </div>
   <button id="stop" class="stop" aria-label="Stop">STOP</button>
@@ -71,6 +72,7 @@
   <nav class="tabs">
     <button data-tab="places" class="on">Places</button>
     <button data-tab="robot">Robot</button>
+    <button data-tab="system">System</button>
     <button data-tab="status">Status</button>
     <button data-tab="log">Log</button>
     <button id="drawer-close" class="close" aria-label="Close">✕</button>
@@ -122,6 +124,19 @@
       <button data-call="relocalize" class="warn">Relocalize</button>
     </div>
     <p class="muted">Relocalize: the robot forgets where it is and searches the whole map; drive or turn a little after. Or press 📍 on the map.</p>
+  </section>
+  <section id="tab-system" class="tab">
+    <h3>Raspberry Pi</h3>
+    <div id="sys-cores" class="cores"></div>
+    <dl id="sys-pi" class="kv"></dl>
+    <h3>Robot</h3>
+    <dl id="sys-robot" class="kv"></dl>
+    <canvas id="sys-battery" class="spark" width="600" height="90"></canvas>
+    <h3>Network</h3>
+    <dl id="sys-net" class="kv"></dl>
+    <h3>Programs</h3>
+    <table id="sys-programs" class="programs"></table>
+    <p class="muted">CPU % per program is of one core (the Pi has 4: 400 % in all). Updated every 2 s while this tab is open.</p>
   </section>
   <section id="tab-status" class="tab">
     <dl id="status" class="kv"></dl>

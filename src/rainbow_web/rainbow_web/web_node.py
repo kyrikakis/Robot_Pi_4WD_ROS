@@ -11,7 +11,8 @@ plan and TF only while the map is, costmaps only when switched on).
 
 Page -> robot (JSON):
   {"t": "want", "camera": bool, "map": bool, "global_costmap": bool,
-   "local_costmap": bool, "quality": "low" | "high"}
+   "local_costmap": bool, "system": bool, "quality": "low" | "high"}
+      system: the System tab is open (Pi health, programs, BNO055, Wi-Fi every 2 s)
   {"t": "drive", "x": -1..1 (forward), "z": -1..1 (turn left), "speed": 0..1}
       sent at ~20 Hz while the stick is held. Published on cmd_vel_stamped (the
       velocity watchdog's input, like Foxglove's Teleop panel; past Nav2's
@@ -29,6 +30,7 @@ quality's width).
 
 import asyncio
 import base64
+from collections import deque
 from functools import partial
 import http
 import json
@@ -45,7 +47,7 @@ from rainbow_interfaces.action import GoToPlace
 from rainbow_interfaces.msg import BrainStatus, TrackerStatus
 from rainbow_interfaces.srv import (DeletePlace, ListPlaces, SavePlace, Say,
                                     SetExpression, SetHeadPose, Track)
-from rainbow_web import grids
+from rainbow_web import grids, system
 from rcl_interfaces.msg import Log
 import rclpy
 from rclpy.action import ActionClient
@@ -81,7 +83,7 @@ class Client:
     def __init__(self, ws):
         self.ws = ws
         self.want = {'camera': False, 'map': False, 'global_costmap': False,
-                     'local_costmap': False}
+                     'local_costmap': False, 'system': False}
         self.quality = 'low'
         self.camera_busy = False
         self.driving = False
@@ -140,6 +142,12 @@ class WebNode(Node):
 
         self.create_timer(0.25, self.reconcile)
         self.create_timer(0.1, self.send_pose)
+        self.cpu_last = None
+        self.create_timer(2.0, self.send_cpu)
+        self.battery_log = deque(maxlen=60)   # (time, volts) every 30 s: the last 30 min
+        self.bno = {}                          # BNO055 temperature and calibration
+        self.sampler = system.Sampler()
+        threading.Thread(target=self.system_loop, daemon=True).start()
 
     # ---- from the ROS thread to the pages -------------------------------------
 
@@ -193,6 +201,12 @@ class WebNode(Node):
                 sub(LaserScan, '/scan', self.on_scan, qos_profile_sensor_data),
                 sub(Path, '/plan_viz', self.on_plan, RELIABLE_1),
             ]
+        if group == 'system':
+            self.bno = {}
+            return [
+                sub(Temperature, '/bno055/temp', self.on_bno_temp, qos_profile_sensor_data),
+                sub(String, '/bno055/calib_status', self.on_bno_calib, 10),
+            ]
         if group in ('global_costmap', 'local_costmap'):
             self.costmap_sent[group] = 0.0
             return [sub(OccupancyGrid, f'/{group}/costmap',
@@ -227,6 +241,9 @@ class WebNode(Node):
 
     def on_status(self, msg):
         a = msg.agent
+        now = time.monotonic()
+        if msg.battery_volts > 0 and (not self.battery_log or now - self.battery_log[-1][0] >= 30):
+            self.battery_log.append((now, round(msg.battery_volts, 2)))
         self.broadcast({
             't': 'status', 'mode': msg.mode, 'map': msg.map, 'activity': msg.activity,
             'localized': msg.localized, 'certainty': msg.certainty,
@@ -252,6 +269,46 @@ class WebNode(Node):
     def on_temperature(self, msg):
         self.broadcast({'t': 'flag', 'name': 'temperature',
                         'value': round(msg.temperature, 1)})
+
+    def send_cpu(self):
+        # The whole Pi's CPU load (/proc/stat is the host's in the container), only
+        # while a page is open
+        if 'base' not in self.subs:
+            self.cpu_last = None
+            return
+        cur = system.cpu_times(system.read('/proc/stat'))[:1]
+        last, self.cpu_last = self.cpu_last, cur
+        busy = system.cpu_percent(last, cur) if last else [None]
+        if busy and busy[0] is not None:
+            self.broadcast({'t': 'flag', 'name': 'cpu', 'value': busy[0]})
+
+    def system_loop(self):
+        # The System tab's numbers every 2 s while a page shows it; supervisorctl
+        # takes a few tenths of a second, so this runs off the ROS thread
+        while rclpy.ok():
+            if 'system' in self.subs:
+                try:
+                    msg = self.sampler.sample(time.monotonic())
+                except Exception as e:  # noqa: B902 - a bad read must not end the loop
+                    self.get_logger().warn(f'system sample failed: {e}')
+                else:
+                    msg['bno055'] = dict(self.bno)
+                    now = time.monotonic()
+                    msg['battery_log'] = [[round(t - now), v] for t, v in self.battery_log]
+                    self.broadcast(msg, 'system')
+            else:
+                self.sampler.cpu_before = None
+                self.sampler.before_time = None
+            time.sleep(2.0)
+
+    def on_bno_temp(self, msg):
+        self.bno['temperature'] = round(msg.temperature, 1)
+
+    def on_bno_calib(self, msg):
+        try:
+            self.bno['calibration'] = json.loads(msg.data)
+        except ValueError:
+            pass
 
     def on_firmware(self, msg):
         self.broadcast({'t': 'flag', 'name': 'firmware', 'value': msg.data})
