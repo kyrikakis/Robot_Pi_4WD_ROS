@@ -36,7 +36,8 @@ and the parameter `lidar_speed_hz` (5-15 Hz; keep the sensor's 10 Hz: at 15 Hz
 ~20 % of the 1-degree bins stay empty), both tested on the robot. The lidar is
 frugal: the ESP boots it in standby and `lidar_power` (rainbow_drivers, in
 `microros.launch.py`) turns it on only while mapping (`rainbow_slam`), while
-moving (non-zero `/cmd_vel`) and 30 s after, or while `/lidar/wanted` is true;
+moving (non-zero `/cmd_vel`) and 30 s after, for 30 s after a pose estimate
+(`/initialpose`) or goal (`/goal_pose`), or while `/lidar/wanted` is true;
 never while `/lifted`. Subscribers to `/scan` (Foxglove, the brain's status) do
 not count. No `/scan` at rest is normal.
 Build with `firmware/build.sh` (Docker, Mac or Pi), flash, back up or restore on
@@ -245,8 +246,8 @@ The code you edit is the code the robot runs. Lessons learned:
 
 ## Conventions
 
-- `main` is the finished robot. New work happens on a branch per feature (none
-  open; the brain, steps 1-7 of `docs/brain.md`, our own ESP32 firmware, the
+- `main` is the finished robot. New work happens on a branch per feature (`test-run`:
+  the lidar on pose estimates and goals, open; the brain, steps 1-7 of `docs/brain.md`, our own ESP32 firmware, the
   65 mm wheels' fixes and the head's pan sign are merged); do not merge to `main` or suggest merging until the owner says so.
 - Python nodes: ament_python, one node per module, `ament_flake8 --linelength 100`
   clean. New services go in `rainbow_interfaces`. Keep the old topics

@@ -9,9 +9,11 @@ rainbow_slam                     STARTING
 """
 
 
-def reasons(now=100.0, mapping=False, last_motion=None, wanted_at=None, lifted=False):
+def reasons(now=100.0, mapping=False, last_motion=None, wanted_at=None, lifted=False,
+            pose_at=None, goal_at=None):
     """lidar_reasons with the default delays (30 s rest, 3 s wanted)."""
-    return lidar_reasons(now, mapping, last_motion, 30.0, wanted_at, 3.0, lifted)
+    return lidar_reasons(now, mapping, last_motion, 30.0, wanted_at, 3.0, lifted,
+                         pose_at, goal_at)
 
 
 def test_running_programs():
@@ -33,8 +35,15 @@ def test_a_fresh_request_turns_it_on():
     assert reasons(wanted_at=96.0) == []
 
 
+def test_a_pose_estimate_or_goal_turns_it_on_for_the_rest_delay():
+    assert reasons(pose_at=75.0) == ['pose estimate']
+    assert reasons(goal_at=75.0) == ['goal']
+    assert reasons(pose_at=69.0, goal_at=69.0) == []
+
+
 def test_lifted_wins_over_motion_and_requests():
-    assert reasons(last_motion=99.0, wanted_at=99.0, lifted=True) == []
+    assert reasons(last_motion=99.0, wanted_at=99.0, pose_at=99.0, goal_at=99.0,
+                   lifted=True) == []
 
 
 def test_mapping_wins_over_everything():
