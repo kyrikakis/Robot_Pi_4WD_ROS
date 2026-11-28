@@ -153,7 +153,7 @@ again) and sees it in the state. Once >= 7.6 V has held for 1 min (a charged
 battery) the stopped programs start again, the map first, and it says thank
 you (`battery_ok`).
 
-**Picked up** also comes on top of either mode (`rainbow_brain/lift.py`, from
+**Picked up** (off since 2026-11-28, `lift_enabled`: motion was taken for pick-ups) also comes on top of either mode (`rainbow_brain/lift.py`, from
 the BNO055): the robot rising or dropping > 30 cm (10 cm, 12 cm while driving, until 2026-11-28) or
 tilting > 30 deg (20 until 2026-11-28) from its rest counts as lifted. Put down is the landing: it
 came down (> 0.2 m/s) and braked to a stop, then stays quiet for 0.25 s (a hand

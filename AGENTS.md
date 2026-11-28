@@ -342,11 +342,15 @@ when new work comes up, add it here.
   owner: the greeting by name through the agent, the head tilting up to a
   standing person's face (the 36 deg limit), and that driving takes the head back.
 - Pick-up detection (brain, `docs/brain.md` "Modes", `rainbow_brain/lift.py`):
-  built 2026-11-26, tested on the robot (two pick-ups and put-downs seen; the
-  recording's carpet-edge push is not a lift). Still to see: AMCL's global
-  relocalization after a put-down with localization running, and that bumps
-  while driving (30 cm rise threshold and 30 deg tilt since 2026-11-28) do not count, once the motors
-  are back. The brain's input thread (the IMU at 50 Hz for this, plus `/tf`,
+  **off since 2026-11-28** (`lift_enabled: false`, the owner): turning in place
+  and driving were taken for pick-ups many times a drive, stopping every goal and
+  the lidar. Raising the thresholds to 30 cm / 30 deg did not help: a full turn in
+  place read "rose 30 cm" (the double-integrated vertical acceleration drifts
+  while the robot moves; the ~12 Hz spin shake likely feeds it). A recording of
+  that turn (IMU + `/cmd_vel`, JSON lines) is on the Pi host in
+  `~/lift-recordings/`. To fix: replay it through `LiftDetector`, make motion not
+  count (e.g. no rise while commanded to move or for a moment after), then turn it
+  on again with the owner. Built 2026-11-26, two hand pick-ups seen then. The brain's input thread (the IMU at 50 Hz for this, plus `/tf`,
   `/cmd_vel` and `/odom_raw`) costs ~9% of a core, the whole brain ~11% at rest
   (2026-11-26, robot stripped); moving the detector onto the ESP (board IMU)
   would save part of it.

@@ -56,7 +56,7 @@ stopped with supervisorctl (no dock yet, so driving is pointless and Nav2's CPU
 is wasted), and every battery_repeat_s the robot says it is out of battery with
 sad eyes; a battery_low event goes to the agent. Once charged the stopped
 programs start again (battery_ok event).
-Picked up (rainbow_brain.lift, from /bno055/imu: the robot rises > lift_rise_m or
+Picked up (off unless lift_enabled; rainbow_brain.lift, from /bno055/imu: rises > lift_rise_m or
 tilts > lift_tilt_deg; put down when it lands, coming down and braking to a stop,
 then quiet for lift_land_quiet_s, or after lift_still_s still): every motion is
 cancelled and refused, /lifted (latched) is true, so the lidar goes to standby,
@@ -278,8 +278,14 @@ class BrainNode(Node):
         self.last_motion = None         # when /cmd_vel last asked for motion (monotonic s)
         self.lifted_pub = self.create_publisher(Bool, '/lifted', LATCHED)
         self.lifted_pub.publish(Bool(data=False))
-        self.inputs.create_subscription(Imu, param('imu_topic', '/bno055/imu').value,
-                                        self.on_imu, qos_profile_sensor_data)
+        # Off since 2026-11-28 (the owner): turning in place and driving were taken
+        # for pick-ups many times a drive (a full turn in place read "rose 30 cm": the
+        # rise estimate drifts while the robot moves). Fix the detector, then turn it
+        # on with lift_enabled. Off, /lifted stays false and the IMU is not read.
+        self.lift_enabled = param('lift_enabled', False).value
+        if self.lift_enabled:
+            self.inputs.create_subscription(Imu, param('imu_topic', '/bno055/imu').value,
+                                            self.on_imu, qos_profile_sensor_data)
         self.inputs.create_subscription(Twist, '/cmd_vel', self.on_cmd_vel, 10)
         self.global_localization_client = self.create_client(
             EmptySrv, '/reinitialize_global_localization')
