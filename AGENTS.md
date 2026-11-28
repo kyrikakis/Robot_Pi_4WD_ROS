@@ -130,6 +130,11 @@ The code you edit is the code the robot runs. Lessons learned:
   mm (2000 or 4000; we use 4000) and only accepted after `start()`. Nearly all
   of the node's CPU (~18%) is the SDK's own depth computation, which no setting
   reduces; the node's own processing is a percent or two.
+- **I2C bus 1** (header pins 3/5) is shared by the eyes (HT16K33, 0x71, on 3.3 V)
+  and the BNO055 (0x28, pins 17/25). The eyes dropping off the bus ("not answering
+  on I2C", display off when back) and BNO055 read errors at the same moments were
+  the eyes' ground on the wrong header pin (found 2026-11-28). The eyes node
+  survives the errors and turns the display on again every 2 s.
 - **ESP connection**: if `/scan`, `/odom_raw` and `/battery` stop, the ESP's CP2102
   USB serial chip may have locked up (`dmesg`: `cp210x ... failed set request`).
   It is powered by the Pi, so a battery reset does not clear it; re-enumerate it:
@@ -364,12 +369,6 @@ when new work comes up, add it here.
   against the real head) the owner preferred 60 deg/s to 90 and 200: 60 is the
   head's default for everything, the tracker uses it (was 200). Tilt alone not
   reviewed yet.
-- Eyes went dark (2026-11-25, around when the robot started moving): the HT16K33
-  at 0x71 gave Remote I/O errors (the node crashed and respawned), then answered
-  again but with its display off. Cause unknown (the Pi's 5 V input and its
-  undervoltage flag showed nothing then; power, wiring or an I2C bus problem are
-  all guesses). The eyes node now survives the errors and turns the display on
-  again every 2 s; its "not answering on I2C" warnings show when it happens.
 - Calibrate the Camera Module 3 (the files in `calibration/` are for the IMX296).
 - Whisper on the Hailo (speech to text without the Mac): later, after the brain.
 - Hailo face recognition (with object detection) was re-enabled on 2026-11-25
