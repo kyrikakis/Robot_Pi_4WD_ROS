@@ -39,7 +39,11 @@ frugal: the ESP boots it in standby and `lidar_power` (rainbow_drivers, in
 moving (non-zero `/cmd_vel`) and 30 s after, for 30 s after a pose estimate
 (`/initialpose`) or goal (`/goal_pose`), or while `/lidar/wanted` is true;
 never while `/lifted`. Subscribers to `/scan` (Foxglove, the brain's status) do
-not count. No `/scan` at rest is normal.
+not count. No `/scan` at rest is normal. AMCL publishes map -> odom only while it
+gets scans; without them the map frame expired and Nav2 aborted its bringup
+(every boot) and could not plan goals sent at rest. `map_tf_keeper`
+(rainbow_drivers, in `localization.launch.py`) holds AMCL's last transform while
+AMCL is silent, and asks for the lidar until AMCL's first one.
 Build with `firmware/build.sh` (Docker, Mac or Pi), flash, back up or restore on
 the Pi host with `firmware/esp.sh`. The stock firmware's whole-flash backup is in
 `~/esp-backup/` on the Pi host (not in git); restoring it was tested.

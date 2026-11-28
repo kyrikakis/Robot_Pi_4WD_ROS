@@ -19,7 +19,7 @@ amcl:
     scan_topic: scan
     map_topic: map
     tf_broadcast: true
-    transform_tolerance: 0.5
+    transform_tolerance: 0.5  # map_tf_keeper's transform_tolerance_s (launch) must match
 
     robot_model_type: "nav2_amcl::DifferentialMotionModel"
     # Odometry noise, set high for skid-steer: the wheels slip in turns and on

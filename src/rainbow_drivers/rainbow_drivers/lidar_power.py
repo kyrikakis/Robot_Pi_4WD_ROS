@@ -5,8 +5,9 @@ The lidar is on:
   - while the robot is commanded to move (non-zero /cmd_vel, what reaches the
     ESP), and for rest_delay_s after the last motion;
   - while /lidar/wanted (std_msgs/Bool) is true and fresh (wanted_timeout_s):
-    the brain asks for it before a Nav2 goal and while localizing, and repeats
-    it at least once a second;
+    the brain asks for it before a Nav2 goal and while localizing, and
+    map_tf_keeper until AMCL's first map -> odom; both repeat it at least once
+    a second;
   - for rest_delay_s after a pose estimate (/initialpose: AMCL needs scans to
     settle it) or a goal (/goal_pose, e.g. Foxglove's or RViz's goal tool:
     Nav2 needs the scan before the robot starts moving).
