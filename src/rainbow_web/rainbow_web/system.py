@@ -3,11 +3,18 @@
 The robot container shares the host's PID namespace and network, so /proc/stat,
 /proc/net/wireless and every process (the Hailo container's too) are the whole
 Pi's. Each function takes the text it parses, so the tests can feed it samples.
+
+The Hailo's NPU load comes from HailoRT's monitor: the Hailo app runs with
+HAILO_MONITOR=1 (set in its container's /etc/supervisor/conf.d/hailo.conf) and
+writes one protobuf file per process to its /tmp/hmon_files about once a second
+(no measurable cost to the Hailo: its networks stayed at 15 fps).
 """
 
 import http.client
 import os
 import socket
+import struct
+import time
 import xmlrpc.client
 
 # get_throttled bits: now (0-3) and since boot (16-19)
@@ -175,6 +182,86 @@ def ns_pid_map(table, root, proc='/proc'):
     return out
 
 
+def proto_fields(buf):
+    """Return [(field number, value)] of a protobuf message (varint, double, bytes)."""
+    out, i, n = [], 0, len(buf)
+
+    def varint():
+        nonlocal i
+        value = shift = 0
+        while True:
+            b = buf[i]
+            i += 1
+            value |= (b & 0x7f) << shift
+            shift += 7
+            if not b & 0x80:
+                return value
+    while i < n:
+        key = varint()
+        field, wire = key >> 3, key & 7
+        if wire == 0:
+            out.append((field, varint()))
+        elif wire == 1:
+            out.append((field, struct.unpack_from('<d', buf, i)[0]))
+            i += 8
+        elif wire == 2:
+            size = varint()
+            out.append((field, bytes(buf[i:i + size])))
+            i += size
+        elif wire == 5:
+            out.append((field, struct.unpack_from('<f', buf, i)[0]))
+            i += 4
+        else:
+            raise ValueError(f'protobuf wire type {wire}')
+    return out
+
+
+def hailo_monitor(buf):
+    """Parse one HailoRT monitor file (ProtoMon, HailoRT 4.20).
+
+    Returns {'load': chip utilization %, 'models': [[name, utilization %, fps]]}.
+    ProtoMon: 1 pid, 2 networks (1 name, 2 fps, 3 utilization %), 3 stream
+    queues, 4 devices (1 id, 2 utilization %, 3 architecture); fields that are
+    zero are left out of the file.
+    """
+    load, models = None, []
+    for field, value in proto_fields(buf):
+        if field == 2:
+            net = dict(proto_fields(value))
+            models.append([net.get(1, b'').decode(errors='replace'),
+                           round(net.get(3, 0.0), 1), round(net.get(2, 0.0), 1)])
+        elif field == 4:
+            dev = dict(proto_fields(value))
+            load = max(load or 0.0, round(dev.get(2, 0.0), 1))
+    return {'load': load, 'models': models}
+
+
+def hailo_stats(sups, proc='/proc', max_age_s=10.0):
+    """The Hailo's NPU load from the monitor files in its container, or None."""
+    load, models = None, []
+    for sup in sups:
+        folder = f'{proc}/{sup}/root/tmp/hmon_files'
+        try:
+            names = os.listdir(folder)
+        except OSError:
+            continue
+        for name in names:
+            path = os.path.join(folder, name)
+            try:
+                if time.time() - os.stat(path).st_mtime > max_age_s:
+                    continue      # a process that has ended leaves its file behind
+                with open(path, 'rb') as f:
+                    one = hailo_monitor(f.read())
+            except (OSError, ValueError, IndexError, struct.error):
+                continue          # caught mid-write: next time
+            if one['load'] is not None:
+                load = max(load or 0.0, one['load'])
+            models.extend(one['models'])
+    if load is None and not models:
+        return None
+    return {'load': load, 'models': models}
+
+
 class Sampler:
     """Takes the System tab's numbers every couple of seconds (called from a thread)."""
 
@@ -207,16 +294,18 @@ class Sampler:
             'wifi': wifi(read('/proc/net/wireless')),
         }
         if with_programs:
-            out['programs'] = self.programs(now)
+            sups = other_supervisors()
+            out['programs'] = self.programs(now, sups)
+            out['hailo'] = hailo_stats(sups)
         return out
 
-    def programs(self, now):
+    def programs(self, now, sups):
         """[(container, program, state, cpu % of one core or None)]."""
         table = process_table()
         rows = []
         for name, st, pid in supervisor_programs():
             rows.append(['robot', name, st, pid])
-        for sup in other_supervisors():
+        for sup in sups:
             nsmap = ns_pid_map(table, sup)
             for name, st, pid in supervisor_programs(f'/proc/{sup}/root/run/supervisor.sock'):
                 rows.append(['hailo', name, st, nsmap.get(pid)])

@@ -929,6 +929,11 @@ function renderSystemTab() {
     ['ESP firmware', f.firmware || ''],
   ]);
   drawBattery(y.battery_log || []);
+  const hailo = y.hailo;
+  fillKv($('#sys-hailo'), hailo ? [
+    ['NPU load', hailo.load !== null ? `${hailo.load}%` : '', level(hailo.load ?? 0, 80, 95)],
+    ...hailo.models.map(([name, load, fps]) => [name, fps ? `${load}% · ${fps} fps` : 'idle']),
+  ] : [['', 'No monitor data (face recognition stopped, or started without HAILO_MONITOR=1)']]);
   const w = y.wifi;
   fillKv($('#sys-net'), [
     ['Wi-Fi signal', w ? `${w[1]} dBm (quality ${Math.round(w[0] / 70 * 100)}%)` : '', w ? level(-w[1], 67, 75) : ''],
