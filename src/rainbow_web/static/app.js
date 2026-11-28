@@ -22,6 +22,7 @@ const state = {
   connected: false,
   mainView: store.get('mainView', 'camera'),   // 'camera' | 'map'
   pip: store.get('pip', true),
+  cameraOn: store.get('cameraOn', true),
   quality: store.get('quality', 'low'),
   speed: store.get('speed', 60),
   layers: Object.assign({ scan: true, plan: true, places: true, global_costmap: false,
@@ -94,7 +95,7 @@ function sendWant(force = false) {
   const mapShown = shown('map');
   const want = {
     t: 'want',
-    camera: shown('camera'),
+    camera: shown('camera') && state.cameraOn,
     map: mapShown,
     global_costmap: mapShown && state.layers.global_costmap,
     local_costmap: mapShown && state.layers.local_costmap,
@@ -240,7 +241,7 @@ const camera = {
     const note = $('#camera-empty');
     const fresh = performance.now() - this.lastFrame < 3000;
     note.classList.toggle('hidden', fresh || !note.dataset.slotVisible);
-    note.textContent = state.connected ? 'No camera picture' : '';
+    note.textContent = !state.connected ? '' : state.cameraOn ? 'No camera picture' : 'Camera off';
   },
 };
 setInterval(() => camera.updateNote(), 1000);
@@ -1147,6 +1148,18 @@ function setup() {
       $$('#quality button').forEach((x) => x.classList.toggle('on', x === b));
       sendWant();
     });
+  });
+  $('#camera-on').checked = state.cameraOn;
+  $('#camera-on').addEventListener('change', (e) => {
+    state.cameraOn = e.target.checked;
+    store.set('cameraOn', state.cameraOn);
+    sendWant();
+    if (!state.cameraOn) {
+      const c = camera.el;
+      c.getContext('2d').clearRect(0, 0, c.width, c.height);
+      camera.lastFrame = 0;
+    }
+    camera.updateNote();
   });
   $('#pip-on').checked = state.pip;
   $('#pip-on').addEventListener('change', (e) => {
