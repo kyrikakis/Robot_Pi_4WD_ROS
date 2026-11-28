@@ -5,8 +5,10 @@ The robot container shares the host's PID namespace and network, so /proc/stat,
 Pi's. Each function takes the text it parses, so the tests can feed it samples.
 """
 
+import http.client
 import os
-import subprocess
+import socket
+import xmlrpc.client
 
 # get_throttled bits: now (0-3) and since boot (16-19)
 THROTTLE_BITS = {0: 'under-voltage', 1: 'clock capped', 2: 'throttled', 3: 'soft temp limit'}
@@ -105,26 +107,36 @@ def tree_ticks(table, root):
     return total
 
 
-def supervisor_status(text):
-    """Parse `supervisorctl status`: [(name, state, pid or None)]."""
-    out = []
-    for line in text.splitlines():
-        f = line.split()
-        if len(f) < 2:
-            continue
-        pid = None
-        if len(f) > 3 and f[2] == 'pid':
-            pid = int(f[3].rstrip(','))
-        out.append((f[0], f[1], pid))
-    return out
+class _UnixConnection(http.client.HTTPConnection):
+
+    def __init__(self, path):
+        super().__init__('localhost', timeout=3)
+        self.path = path
+
+    def connect(self):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(3)
+        self.sock.connect(self.path)
 
 
-def supervisorctl(socket=None):
-    cmd = ['supervisorctl'] + (['-s', f'unix://{socket}'] if socket else []) + ['status']
+class _UnixTransport(xmlrpc.client.Transport):
+
+    def __init__(self, path):
+        super().__init__()
+        self.path = path
+
+    def make_connection(self, host):
+        return _UnixConnection(self.path)
+
+
+def supervisor_programs(sock='/var/run/supervisor.sock'):
+    """Ask a supervisord over its socket: [(name, state, pid or None)]."""
     try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=5).stdout
-    except (OSError, subprocess.SubprocessError):
-        return ''
+        proxy = xmlrpc.client.ServerProxy('http://localhost', transport=_UnixTransport(sock))
+        info = proxy.supervisor.getAllProcessInfo()
+    except (OSError, xmlrpc.client.Error):
+        return []
+    return [(p['name'], p['statename'], p['pid'] or None) for p in info]
 
 
 def other_supervisors(proc='/proc'):
@@ -202,12 +214,11 @@ class Sampler:
         """[(container, program, state, cpu % of one core or None)]."""
         table = process_table()
         rows = []
-        for name, st, pid in supervisor_status(supervisorctl()):
+        for name, st, pid in supervisor_programs():
             rows.append(['robot', name, st, pid])
         for sup in other_supervisors():
             nsmap = ns_pid_map(table, sup)
-            for name, st, pid in supervisor_status(
-                    supervisorctl(f'/proc/{sup}/root/run/supervisor.sock')):
+            for name, st, pid in supervisor_programs(f'/proc/{sup}/root/run/supervisor.sock'):
                 rows.append(['hailo', name, st, nsmap.get(pid)])
         dt = None if self.before_time is None else now - self.before_time
         ticks_now = {}

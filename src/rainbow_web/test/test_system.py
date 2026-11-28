@@ -1,5 +1,4 @@
-from rainbow_web.system import (cpu_percent, cpu_times, meminfo, supervisor_status, throttled,
-                                tree_ticks, wifi)
+from rainbow_web.system import cpu_percent, cpu_times, meminfo, throttled, tree_ticks, wifi
 
 STAT_1 = """cpu  100 0 100 800 0 0 0 0 0 0
 cpu0 25 0 25 200 0 0 0 0 0 0
@@ -40,14 +39,6 @@ def test_wifi():
 """
     assert wifi(text) == (48, -62)
     assert wifi(text, 'wlan1') is None
-
-
-def test_supervisor_status():
-    text = """rainbow_base                     RUNNING   pid 2596, uptime 2:31:23
-rainbow_slam                     STOPPED   Not started
-"""
-    assert supervisor_status(text) == [('rainbow_base', 'RUNNING', 2596),
-                                       ('rainbow_slam', 'STOPPED', None)]
 
 
 def test_tree_ticks():

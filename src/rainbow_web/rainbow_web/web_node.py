@@ -283,8 +283,8 @@ class WebNode(Node):
             self.broadcast({'t': 'flag', 'name': 'cpu', 'value': busy[0]})
 
     def system_loop(self):
-        # The System tab's numbers every 2 s while a page shows it; supervisorctl
-        # takes a few tenths of a second, so this runs off the ROS thread
+        # The System tab's numbers every 2 s while a page shows it; it walks /proc and
+        # asks two supervisords, so it runs off the ROS thread
         while rclpy.ok():
             if 'system' in self.subs:
                 try:
