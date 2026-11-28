@@ -146,6 +146,9 @@ class WebNode(Node):
         self.create_timer(2.0, self.send_cpu)
         self.battery_log = deque(maxlen=60)   # (time, volts) every 30 s: the last 30 min
         self.bno = {}                          # BNO055 temperature and calibration
+        self.bno_temp_sub = None               # made for one reading every 5 s (it is 50 Hz)
+        self.bno_temp_time = 0.0
+        self.bno_temp_asked = 0.0
         self.sampler = system.Sampler()
         threading.Thread(target=self.system_loop, daemon=True).start()
 
@@ -175,6 +178,20 @@ class WebNode(Node):
                     self.stop_tf()
         for group in wanted - set(self.subs):
             self.subs[group] = self.make_subs(group)
+        self.sample_bno_temp('system' in self.subs)
+
+    def sample_bno_temp(self, wanted):
+        now = time.monotonic()
+        if self.bno_temp_sub is not None and (
+                not wanted or self.bno_temp_time >= self.bno_temp_asked or
+                now - self.bno_temp_asked > 2.0):
+            self.destroy_subscription(self.bno_temp_sub)
+            self.bno_temp_sub = None
+        elif (self.bno_temp_sub is None and wanted and
+              now - max(self.bno_temp_time, self.bno_temp_asked) >= 5.0):
+            self.bno_temp_asked = now
+            self.bno_temp_sub = self.create_subscription(
+                Temperature, '/bno055/temp', self.on_bno_temp, qos_profile_sensor_data)
 
     def make_subs(self, group):
         sub = self.create_subscription
@@ -203,10 +220,7 @@ class WebNode(Node):
             ]
         if group == 'system':
             self.bno = {}
-            return [
-                sub(Temperature, '/bno055/temp', self.on_bno_temp, qos_profile_sensor_data),
-                sub(String, '/bno055/calib_status', self.on_bno_calib, 10),
-            ]
+            return [sub(String, '/bno055/calib_status', self.on_bno_calib, 10)]
         if group in ('global_costmap', 'local_costmap'):
             self.costmap_sent[group] = 0.0
             return [sub(OccupancyGrid, f'/{group}/costmap',
@@ -292,8 +306,10 @@ class WebNode(Node):
                 except Exception as e:  # noqa: B902 - a bad read must not end the loop
                     self.get_logger().warn(f'system sample failed: {e}')
                 else:
-                    msg['bno055'] = dict(self.bno)
                     now = time.monotonic()
+                    msg['bno055'] = dict(self.bno)
+                    if now - self.bno_temp_time > 15.0:
+                        msg['bno055'].pop('temperature', None)
                     msg['battery_log'] = [[round(t - now), v] for t, v in self.battery_log]
                     self.broadcast(msg, 'system')
             else:
@@ -303,6 +319,7 @@ class WebNode(Node):
 
     def on_bno_temp(self, msg):
         self.bno['temperature'] = round(msg.temperature, 1)
+        self.bno_temp_time = time.monotonic()
 
     def on_bno_calib(self, msg):
         try:
