@@ -237,7 +237,7 @@ def hailo_monitor(buf):
 
 
 def hailo_stats(sups, proc='/proc', max_age_s=10.0):
-    """The Hailo's NPU load from the monitor files in its container, or None."""
+    """Return the Hailo's NPU load from the monitor files in its container, or None."""
     load, models = None, []
     for sup in sups:
         folder = f'{proc}/{sup}/root/tmp/hmon_files'

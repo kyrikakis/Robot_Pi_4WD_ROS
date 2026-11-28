@@ -73,8 +73,8 @@ def test_hailo_monitor():
     msg = (_bytes(1, b'701')
            + _bytes(2, _bytes(1, b'auto_group_0'))             # idle: no fps, no load
            + _bytes(2, _bytes(1, b'yolov8m') + _double(2, 14.98) + _double(3, 52.4))
-           + _bytes(3, _bytes(1, b'yolov8m') + _bytes(2, _bytes(1, b'yolov8m/input')
-                                                         + _varint(3 << 3) + _varint(4)))
+           + _bytes(3, _bytes(1, b'yolov8m')
+                    + _bytes(2, _bytes(1, b'yolov8m/input') + _varint(3 << 3) + _varint(4)))
            + _bytes(4, _bytes(1, b'0000:01:00.0') + _double(2, 73.39) + _bytes(3, b'HAILO8')))
     assert hailo_monitor(msg) == {'load': 73.4, 'models': [['auto_group_0', 0.0, 0.0],
                                                            ['yolov8m', 52.4, 15.0]]}

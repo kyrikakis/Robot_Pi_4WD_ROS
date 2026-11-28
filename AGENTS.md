@@ -391,7 +391,11 @@ when new work comes up, add it here.
   frames) ~11%, on the map (TF in Python) ~7%, both ~20-30%. The camera topic is
   taken raw (`jpeg_from_cdr`) and frames no page can take are dropped first.
   The System tab (Pi CPU per core, clock, throttling, memory, disk, Wi-Fi, every
-  supervisor program's state and CPU incl. the Hailo's over its socket, BNO055
+  supervisor program's state and CPU incl. the Hailo's over its socket, the Hailo's
+  NPU load and fps per network (HailoRT's monitor files, `/tmp/hmon_files` in its
+  container; `HAILO_MONITOR=1` added to its `hailo.conf` on 2026-11-28: the networks
+  stayed at 15 fps, chip ~73% busy; no chip temperature: that needs HailoRT's
+  library, which the robot container does not have), BNO055
   temperature and calibration, battery trend) costs ~1.5% of a core while open;
   the BNO055's `/bno055/temp` is 50 Hz, so it is read once every 5 s (a steady
   subscription cost ~9%).
@@ -402,7 +406,9 @@ when new work comes up, add it here.
 - Whisper on the Hailo (speech to text without the Mac): later, after the brain.
 - Hailo face recognition (with object detection) was re-enabled on 2026-11-25
   in its container's `/etc/supervisor/conf.d/hailo.conf` (it costs ~45% of a
-  core; just after boot the Pi then had ~25% idle). Its boxes are normalized
+  core; just after boot the Pi then had ~25% idle); the same file has
+  `HAILO_MONITOR=1` since 2026-11-28 (backup `hailo.conf.bak-2026-11-28`; lost
+  if the container is recreated, like the re-enable). Its boxes are normalized
   (0-1) and stamped on publishing. The Pi host's `~/hailo_tappas_ros2` git has
   4 empty objects from April 2025 (an unpushed local commit, "Create a PR to bump
   the version"; GitHub is ahead at v1.0.3): reset it to `origin/main` some time.
