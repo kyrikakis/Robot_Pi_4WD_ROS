@@ -67,10 +67,12 @@ the Pi host with `firmware/esp.sh`. The stock firmware's whole-flash backup is i
   (`pose_keeper`, rainbow_drivers, in `localization.launch.py`: saved to
   `/data/rainbow/last_pose/<map>.yaml`, deleted on a pick-up); without one, with
   global localization, which settles once the robot drives or turns a little.
-- **Restarting `rainbow_base` restarts the EKF, which resets the odometry: AMCL
-  then needs a pose estimate, and a SLAM mapping session gets scrambled
-  (restart `rainbow_slam` right after). Ask the owner before restarting the
-  base.** Restarting Nav2, the ToF, the head or the brain is safe.
+- Restarting supervisor programs is fine: the owner restarts them all routinely,
+  with no issue so far (2026-11-28), so agents may restart any program a change
+  needs. Restarting `rainbow_base` restarts the EKF, which resets the odometry:
+  AMCL then needs a pose estimate (`pose_keeper` sends the saved one only when
+  localization restarts), and a SLAM mapping session gets scrambled (restart
+  `rainbow_slam` right after).
 - Nav2 runs composed in one process (`nav2_container`); as separate processes
   its 11 servers cost ~66% of a core idle, composed ~38%.
 - `ROS_DOMAIN_ID=20` for the robot.
@@ -343,7 +345,7 @@ when new work comes up, add it here.
   built 2026-11-26, tested on the robot (two pick-ups and put-downs seen; the
   recording's carpet-edge push is not a lift). Still to see: AMCL's global
   relocalization after a put-down with localization running, and that bumps
-  while driving (30 cm rise threshold since 2026-11-28, tilt 20 deg) do not count, once the motors
+  while driving (30 cm rise threshold and 30 deg tilt since 2026-11-28) do not count, once the motors
   are back. The brain's input thread (the IMU at 50 Hz for this, plus `/tf`,
   `/cmd_vel` and `/odom_raw`) costs ~9% of a core, the whole brain ~11% at rest
   (2026-11-26, robot stripped); moving the detector onto the ESP (board IMU)

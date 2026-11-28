@@ -61,9 +61,9 @@ def test_a_short_bump_does_not_count():
 
 def test_tilting_far_counts_a_small_tilt_does_not():
     """Tilting far counts a small tilt does not."""
-    small = [(tilted(9), (0.3, 0.0, 0.0), (0.2, 0.0, 0.0))] * 50
+    small = [(tilted(20), (0.3, 0.0, 0.0), (0.2, 0.0, 0.0))] * 50
     assert feed(LiftDetector(), still(2) + small) == []
-    big = [(tilted(30), (0.3, 0.0, 0.0), (0.2, 0.0, 0.0))] * 50
+    big = [(tilted(40), (0.3, 0.0, 0.0), (0.2, 0.0, 0.0))] * 50
     assert [c for _, c in feed(LiftDetector(), still(2) + big)] == ['lifted']
 
 

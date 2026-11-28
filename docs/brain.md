@@ -155,7 +155,7 @@ you (`battery_ok`).
 
 **Picked up** also comes on top of either mode (`rainbow_brain/lift.py`, from
 the BNO055): the robot rising or dropping > 30 cm (10 cm, 12 cm while driving, until 2026-11-28) or
-tilting > 20 deg from its rest counts as lifted. Put down is the landing: it
+tilting > 30 deg (20 until 2026-11-28) from its rest counts as lifted. Put down is the landing: it
 came down (> 0.2 m/s) and braked to a stop, then stays quiet for 0.25 s (a hand
 stopping in mid-air moves again within that); a put-down too slow to show a
 descent counts after 1 s still. On a recording (four put-downs, one stop in
