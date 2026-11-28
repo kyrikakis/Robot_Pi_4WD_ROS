@@ -144,26 +144,17 @@ function toast(text, bad = false) {
 /* ---------------------------------------------------------------- views */
 
 function layoutViews() {
-  const camEl = $('#camera');
-  const mapEl = $('#map');
-  const pip = $('#pip');
-  pip.classList.toggle('hidden', !state.pip);
-  const mainRect = $('#main').getBoundingClientRect();
-  const pipRect = pip.getBoundingClientRect();
-  const place = (el, note, rect, inPip, visible) => {
-    for (const e of [el, note]) {
-      e.style.left = rect.left + 'px';
-      e.style.top = rect.top + 'px';
-      e.style.width = rect.width + 'px';
-      e.style.height = rect.height + 'px';
-      e.classList.toggle('in-pip', inPip);
-    }
-    el.style.visibility = visible ? 'visible' : 'hidden';
+  // sizes come from the CSS (.in-pip is the small view); this only says which is which
+  $('#pip').classList.toggle('hidden', !state.pip);
+  const camMain = state.mainView === 'camera';
+  const place = (el, note, inPip) => {
+    const visible = !inPip || state.pip;
+    for (const e of [el, note]) e.classList.toggle('in-pip', inPip);
+    el.classList.toggle('off', !visible);
     note.dataset.slotVisible = visible ? '1' : '';
   };
-  const camMain = state.mainView === 'camera';
-  place(camEl, $('#camera-empty'), camMain ? mainRect : pipRect, !camMain, camMain || state.pip);
-  place(mapEl, $('#map-empty'), camMain ? pipRect : mainRect, camMain, !camMain || state.pip);
+  place($('#camera'), $('#camera-empty'), !camMain);
+  place($('#map'), $('#map-empty'), camMain);
   $('#maptools').classList.toggle('hidden', camMain);
   if (camMain) mapView.setTool(null);
   mapView.resize();
@@ -978,6 +969,7 @@ function setup() {
   }));
 
   window.addEventListener('resize', () => setTimeout(layoutViews, 50));
+  if (window.ResizeObserver) new ResizeObserver(() => mapView.resize()).observe(mapView.canvas);
   window.addEventListener('orientationchange', () => setTimeout(layoutViews, 200));
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') sticks.forEach((s) => s.release());

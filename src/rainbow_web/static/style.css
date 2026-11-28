@@ -51,13 +51,16 @@ input[type=range] { flex: 1; accent-color: var(--accent); }
 #stage { position: fixed; inset: 0; }
 .view-slot { position: absolute; }
 #main { inset: 0; }
-#pip {
-  top: 52px; right: calc(10px + var(--safe-r));
+#pip, .in-pip {
+  top: 52px; right: calc(10px + var(--safe-r)); left: auto; bottom: auto;
   width: 27vw; height: 27vh; min-width: 150px; min-height: 90px;
-  border-radius: 12px; border: 1px solid var(--line); overflow: hidden;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5); z-index: 3;
+  border-radius: 12px; overflow: hidden;
+}
+#pip {
+  border: 1px solid var(--line); box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5); z-index: 3;
   background: #0b0c10;
 }
+.view, .view-note { left: 0; top: 0; width: 100%; height: 100%; }
 .view { position: absolute; display: block; }
 #camera { object-fit: contain; background: #000; }
 #map { background: #20232b; }
@@ -66,7 +69,8 @@ input[type=range] { flex: 1; accent-color: var(--accent); }
   color: var(--muted); pointer-events: none; text-align: center;
 }
 .view, .view-note { z-index: 1; }
-.in-pip { z-index: 4 !important; border-radius: 12px; }
+.in-pip { z-index: 4 !important; }
+.view.off { visibility: hidden; }
 .in-pip.view-note { font-size: 11px; }
 
 /* ---- top bar ---- */
