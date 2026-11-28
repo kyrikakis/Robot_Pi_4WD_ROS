@@ -250,10 +250,11 @@ The code you edit is the code the robot runs. Lessons learned:
 
 ## Conventions
 
-- `main` is the finished robot. New work happens on a branch per feature (`test-run`:
-  the lidar on pose estimates and goals, open; `mobile-web` (from `test-run`): the
-  phone remote, open; the brain, steps 1-7 of `docs/brain.md`, our own ESP32 firmware, the
-  65 mm wheels' fixes and the head's pan sign are merged); do not merge to `main` or suggest merging until the owner says so.
+- `main` is the finished robot. New work happens on a branch per feature (the brain,
+  steps 1-7 of `docs/brain.md`, our own ESP32 firmware, the 65 mm wheels' fixes, the
+  head's pan sign, the lidar on pose estimates and goals (`test-run`) and the phone
+  remote (`mobile-web`) are merged; `test-run` is the working branch, at `main` since
+  2026-11-28); do not merge to `main` or suggest merging until the owner says so.
 - Python nodes: ament_python, one node per module, `ament_flake8 --linelength 100`
   clean. New services go in `rainbow_interfaces`. Keep the old topics
   (`/head/*_rotation`, `/eyes`, `/speech/*`) working.
@@ -270,7 +271,9 @@ The code you edit is the code the robot runs. Lessons learned:
   (2026-11-27) the 65 mm wheels: right encoders fixed, motor PID retuned (live
   gains), `angular_gain` 1.1, URDF ride height; its image does not build
   (colcon picked up `firmware/`), `v1.0.0-rc.4` (2026-11-27) is rc.3 with
-  `firmware/COLCON_IGNORE`. Tag releases
+  `firmware/COLCON_IGNORE`; `v1.0.0-rc.5` (2026-11-28) adds the phone remote
+  (`rainbow_web`), the lidar on pose estimates and goals, `map_tf_keeper` and the
+  Pi at stock 2.4 GHz. Tag releases
   `vX.Y.Z` (`-rc.N` before production); the firmware's version is `git describe
   --tags` (`firmware/build.sh`), shown on `/esp_firmware`.
 
