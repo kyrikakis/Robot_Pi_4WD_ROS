@@ -408,10 +408,10 @@ class Server:
         return http.HTTPStatus.OK, headers, body
 
     async def run(self):
-        async with websockets.serve(self.serve, '0.0.0.0', self.node.port,
+        async with websockets.serve(self.serve, None, self.node.port,  # IPv4 and IPv6
                                     process_request=self.http, max_size=2 ** 16,
                                     ping_interval=5, ping_timeout=10):
-            self.node.get_logger().info(f'web UI on http://0.0.0.0:{self.node.port}/')
+            self.node.get_logger().info(f'web UI on port {self.node.port} (http://rainbow.local/)')
             await asyncio.Future()
 
     # ---- pages -----------------------------------------------------------------
