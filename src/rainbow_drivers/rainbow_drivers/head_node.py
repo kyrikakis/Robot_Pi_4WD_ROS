@@ -73,9 +73,11 @@ class HeadNode(Node):
         # Limits are in degrees of head motion; servo_* map head degrees to the
         # servo command the ESP expects: servo = sign * head + offset
         param = self.declare_parameter
-        pan_limits = (param('pan_min_deg', -40.0).value, param('pan_max_deg', 38.0).value)
+        # Pan: positive turns left (URDF). With sign -1 it turned the wrong way (seen
+        # with the owner, 2026-11-28); the limits swapped with it to keep the same range
+        pan_limits = (param('pan_min_deg', -38.0).value, param('pan_max_deg', 40.0).value)
         tilt_limits = (param('tilt_min_deg', -36.0).value, param('tilt_max_deg', 19.0).value)
-        self.pan_sign = param('pan_servo_sign', -1).value
+        self.pan_sign = param('pan_servo_sign', 1).value
         self.pan_offset = param('pan_servo_offset_deg', 0).value
         self.tilt_sign = param('tilt_servo_sign', -1).value
         self.tilt_offset = param('tilt_servo_offset_deg', -56).value

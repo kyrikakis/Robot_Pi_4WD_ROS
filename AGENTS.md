@@ -240,8 +240,9 @@ The code you edit is the code the robot runs. Lessons learned:
 
 ## Conventions
 
-- `main` is the finished robot. New work happens on a branch per feature (none
-  open; the brain, steps 1-7 of `docs/brain.md`, our own ESP32 firmware and the
+- `main` is the finished robot. New work happens on a branch per feature (open:
+  `head-pan-sign`, the pan turned the wrong way, fixed with `pan_servo_sign` +1 and
+  checked with the owner on 2026-11-28, tilt was right; the robot runs it; the brain, steps 1-7 of `docs/brain.md`, our own ESP32 firmware and the
   65 mm wheels' fixes are merged); do not merge to `main` or suggest merging until the owner says so.
 - Python nodes: ament_python, one node per module, `ament_flake8 --linelength 100`
   clean. New services go in `rainbow_interfaces`. Keep the old topics
