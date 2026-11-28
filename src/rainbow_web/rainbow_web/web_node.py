@@ -34,6 +34,7 @@ import http
 import json
 import mimetypes
 import os
+import signal
 import threading
 import time
 
@@ -694,10 +695,12 @@ def main():
     threading.Thread(target=spin, daemon=True).start()
 
     async def serve():
-        # rclpy handles SIGINT and SIGTERM by shutting its context down; the
-        # server stops with it (on its own it would keep the process alive)
+        # Stop on SIGINT / SIGTERM (supervisor). rclpy's own SIGTERM handler
+        # does not end the process while the asyncio loop runs.
         loop = asyncio.get_running_loop()
         stopped = asyncio.Event()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, stopped.set)
         node.context.on_shutdown(lambda: loop.call_soon_threadsafe(stopped.set))
         server = asyncio.ensure_future(Server(node).run())
         waiter = asyncio.ensure_future(stopped.wait())
