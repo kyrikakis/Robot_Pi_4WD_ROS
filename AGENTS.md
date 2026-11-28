@@ -385,6 +385,11 @@ when new work comes up, add it here.
   page is open: ~1% of a core idle; a page on the camera ("Fast", ~15 fps, ~25 KB
   frames) ~11%, on the map (TF in Python) ~7%, both ~20-30%. The camera topic is
   taken raw (`jpeg_from_cdr`) and frames no page can take are dropped first.
+  The System tab (Pi CPU per core, clock, throttling, memory, disk, Wi-Fi, every
+  supervisor program's state and CPU incl. the Hailo's over its socket, BNO055
+  temperature and calibration, battery trend) costs ~1.5% of a core while open;
+  the BNO055's `/bno055/temp` is 50 Hz, so it is read once every 5 s (a steady
+  subscription cost ~9%).
   Sticks checked on domain 77 with synthetic touches (20 Hz, zeros on release).
   The ESP was unplugged then (no `/dev/ttyUSB*`), so no drive yet. Still to do with
   the owner: a drive on the phone, the head stick's feel, the page on an iPhone.
