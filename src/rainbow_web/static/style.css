@@ -83,6 +83,7 @@ input[type=range] { flex: 1; accent-color: var(--accent); }
 }
 #bar > * { pointer-events: auto; }
 .chips, .actions { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.chips { overflow: hidden; }
 .actions { justify-content: flex-end; }
 .chip {
   padding: 3px 8px; border-radius: 999px; font-size: 12px; white-space: nowrap;

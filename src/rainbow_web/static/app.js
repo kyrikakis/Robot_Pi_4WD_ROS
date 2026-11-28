@@ -793,7 +793,7 @@ function renderStatus() {
       chip('#chip-battery', `🔋 ${pct}% ${v.toFixed(1)}V`, pct > 40 ? 'ok' : pct > 15 ? 'warn' : 'bad');
     } else chip('#chip-battery', '🔋 --', 'bad');
     const loc = { sure: 'ok', roughly: 'warn' }[s.certainty] || 'bad';
-    chip('#chip-loc', `📍 ${s.certainty || '?'}`, loc);
+    chip('#chip-loc', `📍 ${{ sure: 'sure', roughly: 'rough' }[s.certainty] || '?'}`, loc);
     chip('#chip-nav', 'Nav', s.nav2 ? 'ok' : 'bad');
     const espOk = s.battery_age >= 0 && s.battery_age < 3;
     chip('#chip-esp', 'ESP', espOk ? 'ok' : 'bad');
@@ -801,12 +801,14 @@ function renderStatus() {
     if (state.tracker && state.tracker.active) act = (act ? act + ' · ' : '') + `following ${state.tracker.target}`;
     $('#activity').textContent = act;
   }
-  if (f.temperature !== undefined) {
-    const t = f.temperature;
-    chip('#chip-temp', `${Math.round(t)}°C`, t < 70 ? 'ok' : t < 80 ? 'warn' : 'bad');
-  }
-  if (f.cpu !== undefined) {
-    chip('#chip-cpu', `CPU ${f.cpu}%`, f.cpu < 70 ? 'ok' : f.cpu < 90 ? 'warn' : 'bad');
+  if (f.temperature !== undefined || f.cpu !== undefined) {
+    // one chip for the Pi: CPU load and temperature, coloured by the worse of the two
+    const rank = { ok: 0, warn: 1, bad: 2 };
+    const c = f.cpu !== undefined ? (f.cpu < 70 ? 'ok' : f.cpu < 90 ? 'warn' : 'bad') : 'ok';
+    const t = f.temperature !== undefined ? (f.temperature < 70 ? 'ok' : f.temperature < 80 ? 'warn' : 'bad') : 'ok';
+    const text = [f.cpu !== undefined ? `${f.cpu}%` : '', f.temperature !== undefined ? `${Math.round(f.temperature)}°` : '']
+      .filter(Boolean).join(' ');
+    chip('#chip-pi', `Pi ${text}`, rank[c] >= rank[t] ? c : t);
   }
   $('#chip-lifted').classList.toggle('hidden', !f.lifted);
   renderStatusTab();
@@ -1061,8 +1063,7 @@ function setup() {
   $('#camera').addEventListener('click', () => { if (state.mainView !== 'camera') swapViews(); });
   mapView.canvas.addEventListener('click', () => { if (state.mainView !== 'map') swapViews(); });
   $('#btn-menu').addEventListener('click', () => openDrawer());
-  $('#chip-cpu').addEventListener('click', () => openDrawer('system'));
-  $('#chip-temp').addEventListener('click', () => openDrawer('system'));
+  $('#chip-pi').addEventListener('click', () => openDrawer('system'));
   $('#drawer-close').addEventListener('click', closeDrawer);
   $('#btn-full').addEventListener('click', toggleFullscreen);
   $('#nav-cancel').addEventListener('click', () => call('stop'));
