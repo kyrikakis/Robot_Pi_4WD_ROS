@@ -701,7 +701,6 @@ def main():
         stopped = asyncio.Event()
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, stopped.set)
-        node.context.on_shutdown(lambda: loop.call_soon_threadsafe(stopped.set))
         server = asyncio.ensure_future(Server(node).run())
         waiter = asyncio.ensure_future(stopped.wait())
         await asyncio.wait({server, waiter}, return_when=asyncio.FIRST_COMPLETED)
