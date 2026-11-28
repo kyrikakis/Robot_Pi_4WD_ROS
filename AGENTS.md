@@ -384,10 +384,11 @@ when new work comes up, add it here.
   the version"; GitHub is ahead at v1.0.3): reset it to `origin/main` some time.
 - Host runs hot: ~75 C with the Pi only ~16% busy (2026-11-26, robot
   stripped), and it has hit the soft temperature limit, capped clocks and
-  under-voltage since boot (`vcgencmd get_throttled` 0xf0000). `config.txt`
-  overclocks to `arm_freq=3000` (stock 2.4 GHz) and the kernel shows no fan
-  (no `cooling_fan` hwmon). Check the fan with the owner and drop the
-  overclock (needs a reboot; ask first).
+  under-voltage since boot (`vcgencmd get_throttled` 0xf0000). The 3 GHz
+  overclock (`arm_freq=3000`) was dropped on 2026-11-28 (commented out in
+  `/boot/firmware/config.txt`, backup `config.txt.bak-2026-11-28`); stock
+  2.4 GHz since. The kernel shows no fan (no `cooling_fan` hwmon): check the
+  fan with the owner, and the temperature and throttling under load at 2.4 GHz.
 - Host: Hailo, kernel (6.6, contains the Hailo driver) and camera packages are
   held with apt-mark. Update them together later, with the Hailo container
   and a rebuild of the ALFA Wi-Fi driver (rtl8812au) for the new kernel.
