@@ -4,9 +4,14 @@ The lidar is on:
   - while rainbow_slam runs (mapping needs every scan);
   - while the robot is commanded to move (non-zero /cmd_vel, what reaches the
     ESP), and for rest_delay_s after the last motion;
-  - while /lidar/wanted (std_msgs/Bool) is true and fresh (wanted_timeout_s):
-    the brain asks for it before a Nav2 goal and while localizing, and repeats
-    it at least once a second.
+  - while /lidar/wanted (std_msgs/Bool) is true and fresh (wanted_timeout_s;
+    false is ignored, a request expires):
+    the brain asks for it before a Nav2 goal and while localizing, and
+    map_tf_keeper until AMCL's first map -> odom; both repeat it at least once
+    a second;
+  - for rest_delay_s after a pose estimate (/initialpose: AMCL needs scans to
+    settle it) or a goal (/goal_pose, e.g. Foxglove's or RViz's goal tool:
+    Nav2 needs the scan before the robot starts moving).
 Never while /lifted (std_msgs/Bool) is true: a robot in the hand has no use for
 it (its location is lost anyway), unless it is mapping. Subscribers to /scan do
 not count: Foxglove or a status check never turn it on.
@@ -28,7 +33,7 @@ Parameters:
 import subprocess
 import time
 
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
@@ -54,7 +59,8 @@ def is_motion(twist):
     return abs(twist.linear.x) > MOTION_EPS or abs(twist.angular.z) > MOTION_EPS
 
 
-def lidar_reasons(now, mapping, last_motion, rest_delay, wanted_at, wanted_timeout, lifted):
+def lidar_reasons(now, mapping, last_motion, rest_delay, wanted_at, wanted_timeout, lifted,
+                  pose_at=None, goal_at=None):
     """Why the lidar should be on now; empty when it should be in standby."""
     if mapping:
         return ['mapping']
@@ -65,6 +71,10 @@ def lidar_reasons(now, mapping, last_motion, rest_delay, wanted_at, wanted_timeo
         reasons.append('moving')
     if wanted_at is not None and now - wanted_at < wanted_timeout:
         reasons.append('asked')
+    if pose_at is not None and now - pose_at < rest_delay:
+        reasons.append('pose estimate')
+    if goal_at is not None and now - goal_at < rest_delay:
+        reasons.append('goal')
     return reasons
 
 
@@ -86,9 +96,13 @@ class LidarPower(Node):
         self.create_subscription(Twist, 'cmd_vel', self.on_cmd_vel, 10)
         self.create_subscription(Bool, 'lidar/wanted', self.on_wanted, 10)
         self.create_subscription(Bool, 'lifted', self.on_lifted, latched)
+        self.create_subscription(PoseWithCovarianceStamped, 'initialpose', self.on_pose, 10)
+        self.create_subscription(PoseStamped, 'goal_pose', self.on_goal, 10)
 
         self.last_motion = None
         self.wanted_at = None
+        self.pose_at = None
+        self.goal_at = None
         self.lifted = False
         self.mapping = False
         self.programs_checked = -1e9
@@ -110,8 +124,23 @@ class LidarPower(Node):
             self.last_motion = time.monotonic()
 
     def on_wanted(self, msg):
-        """Remember the last request for the lidar."""
-        self.wanted_at = time.monotonic() if msg.data else None
+        """Remember the last request for the lidar.
+
+        False is ignored: several nodes ask on this topic (the brain sends false
+        every second while it does not need the lidar, which cancelled
+        map_tf_keeper's requests); a request simply expires after
+        wanted_timeout_s.
+        """
+        if msg.data:
+            self.wanted_at = time.monotonic()
+
+    def on_pose(self, _msg):
+        """Remember a pose estimate: AMCL needs scans to settle it."""
+        self.pose_at = time.monotonic()
+
+    def on_goal(self, _msg):
+        """Remember a goal: Nav2 needs the scan to drive there."""
+        self.goal_at = time.monotonic()
 
     def on_lifted(self, msg):
         """Follow the lifted state."""
@@ -135,7 +164,8 @@ class LidarPower(Node):
         now = time.monotonic()
         self.check_mapping(now)
         reasons = lidar_reasons(now, self.mapping, self.last_motion, self.rest_delay,
-                                self.wanted_at, self.wanted_timeout, self.lifted)
+                                self.wanted_at, self.wanted_timeout, self.lifted,
+                                self.pose_at, self.goal_at)
         if reasons != self.reasons:
             why = ', '.join(reasons) if reasons else ('lifted' if self.lifted else 'not needed')
             self.get_logger().info(f'lidar {"wanted" if reasons else "standby"}: {why}')

@@ -10,6 +10,11 @@ localization spreads its guesses over the whole map. They settle when the
 robot drives or turns a little; until then the pose is meaningless, so do not
 send Nav2 goals right after a start. In rooms that look alike it can settle
 in the wrong one: then give a pose estimate (/initialpose).
+
+AMCL publishes map -> odom only while it gets scans, and the lidar idles at
+rest (lidar_power): map_tf_keeper (rainbow_drivers) holds AMCL's last
+transform meanwhile, so the map frame (Nav2's bringup, goals sent at rest)
+stays available.
 """
 
 from launch import LaunchDescription
@@ -27,6 +32,9 @@ def generate_launch_description():
              parameters=[params_file], output='screen'),
         Node(package='nav2_amcl', executable='amcl', name='amcl',
              parameters=[params_file], output='screen'),
+        # Holds AMCL's last map -> odom while the lidar idles (AMCL's tolerance)
+        Node(package='rainbow_drivers', executable='map_tf_keeper', name='map_tf_keeper',
+             parameters=[{'transform_tolerance_s': 0.5}], output='screen'),
         Node(package='nav2_lifecycle_manager', executable='lifecycle_manager',
              name='lifecycle_manager_localization',
              parameters=[params_file], output='screen'),

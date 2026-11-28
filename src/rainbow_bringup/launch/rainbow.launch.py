@@ -4,7 +4,7 @@ On the robot, supervisor runs the parts separately (supervisor/rainbow.conf)
 so each can be stopped and started on its own.
 
 Arguments (default true): localization, navigation, foxglove, voice, tof,
-head, microros, brain; slam (default false, for mapping: use it with localization:=false)
+head, microros, brain, web; slam (default false, for mapping: use it with localization:=false)
 """
 
 from launch import LaunchDescription
@@ -26,7 +26,7 @@ def part(name, condition=None, arguments=None):
 
 def generate_launch_description():
     args = ['localization', 'navigation', 'foxglove', 'voice', 'tof', 'head', 'microros',
-            'brain']
+            'brain', 'web']
     return LaunchDescription(
         [DeclareLaunchArgument(a, default_value='true') for a in args] + [
             DeclareLaunchArgument('slam', default_value='false'),
@@ -40,4 +40,5 @@ def generate_launch_description():
             part('foxglove', 'foxglove'),
             part('voice', 'voice'),
             part('brain', 'brain'),
+            part('web', 'web'),
         ])

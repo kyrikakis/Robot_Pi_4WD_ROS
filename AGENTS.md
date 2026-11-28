@@ -36,9 +36,14 @@ and the parameter `lidar_speed_hz` (5-15 Hz; keep the sensor's 10 Hz: at 15 Hz
 ~20 % of the 1-degree bins stay empty), both tested on the robot. The lidar is
 frugal: the ESP boots it in standby and `lidar_power` (rainbow_drivers, in
 `microros.launch.py`) turns it on only while mapping (`rainbow_slam`), while
-moving (non-zero `/cmd_vel`) and 30 s after, or while `/lidar/wanted` is true;
+moving (non-zero `/cmd_vel`) and 30 s after, for 30 s after a pose estimate
+(`/initialpose`) or goal (`/goal_pose`), or while `/lidar/wanted` is true;
 never while `/lifted`. Subscribers to `/scan` (Foxglove, the brain's status) do
-not count. No `/scan` at rest is normal.
+not count. No `/scan` at rest is normal. AMCL publishes map -> odom only while it
+gets scans; without them the map frame expired and Nav2 aborted its bringup
+(every boot) and could not plan goals sent at rest. `map_tf_keeper`
+(rainbow_drivers, in `localization.launch.py`) holds AMCL's last transform while
+AMCL is silent, and asks for the lidar until AMCL's first one.
 Build with `firmware/build.sh` (Docker, Mac or Pi), flash, back up or restore on
 the Pi host with `firmware/esp.sh`. The stock firmware's whole-flash backup is in
 `~/esp-backup/` on the Pi host (not in git); restoring it was tested.
@@ -49,7 +54,7 @@ the Pi host with `firmware/esp.sh`. The stock firmware's whole-flash backup is i
   so a power-on is a clean deployment. This is deliberate; do not bind-mount
   the repo. The image is built from the **Pi host's** checkout, not from inside
   the container.
-- Supervisor runs nine of its ten programs from `supervisor/rainbow.conf`, each a
+- Supervisor runs ten of its eleven programs from `supervisor/rainbow.conf`, each a
   `rainbow_bringup` launch file via `scripts/rainbow_launch.sh`. The micro-ROS
   agent (`rainbow_microros`), the ToF (`rainbow_tof`) and the head
   (`rainbow_head`) are separate programs: restarting the base disconnects
@@ -245,9 +250,11 @@ The code you edit is the code the robot runs. Lessons learned:
 
 ## Conventions
 
-- `main` is the finished robot. New work happens on a branch per feature (none
-  open; the brain, steps 1-7 of `docs/brain.md`, our own ESP32 firmware, the
-  65 mm wheels' fixes and the head's pan sign are merged); do not merge to `main` or suggest merging until the owner says so.
+- `main` is the finished robot. New work happens on a branch per feature (the brain,
+  steps 1-7 of `docs/brain.md`, our own ESP32 firmware, the 65 mm wheels' fixes, the
+  head's pan sign, the lidar on pose estimates and goals (`test-run`) and the phone
+  remote (`mobile-web`) are merged; `test-run` is the working branch, at `main` since
+  2026-11-28); do not merge to `main` or suggest merging until the owner says so.
 - Python nodes: ament_python, one node per module, `ament_flake8 --linelength 100`
   clean. New services go in `rainbow_interfaces`. Keep the old topics
   (`/head/*_rotation`, `/eyes`, `/speech/*`) working.
@@ -264,7 +271,9 @@ The code you edit is the code the robot runs. Lessons learned:
   (2026-11-27) the 65 mm wheels: right encoders fixed, motor PID retuned (live
   gains), `angular_gain` 1.1, URDF ride height; its image does not build
   (colcon picked up `firmware/`), `v1.0.0-rc.4` (2026-11-27) is rc.3 with
-  `firmware/COLCON_IGNORE`. Tag releases
+  `firmware/COLCON_IGNORE`; `v1.0.0-rc.5` (2026-11-28) adds the phone remote
+  (`rainbow_web`), the lidar on pose estimates and goals, `map_tf_keeper` and the
+  Pi at stock 2.4 GHz. Tag releases
   `vX.Y.Z` (`-rc.N` before production); the firmware's version is `git describe
   --tags` (`firmware/build.sh`), shown on `/esp_firmware`.
 
@@ -369,6 +378,24 @@ when new work comes up, add it here.
   against the real head) the owner preferred 60 deg/s to 90 and 200: 60 is the
   head's default for everything, the tracker uses it (was 200). Tilt alone not
   reviewed yet.
+- Phone remote (`rainbow_web`, branch `mobile-web`, built 2026-11-28): a web page
+  on port 80, `http://rainbow.local/` (mDNS alias from `pi-files/rainbow-mdns.service`
+  on the host). Camera (the Hailo's `image_bbx`, re-encoded to 640 px for "Fast"),
+  map with lidar/plan/places/costmaps, drive and head joysticks, places, goals,
+  pose estimate, the brain's buttons. Teleop goes to `cmd_vel_stamped` like
+  Foxglove's, past the collision monitor (limits `max_linear` 0.3, `max_reverse`
+  0.1, `max_angular` 1.2, times the page's speed setting). Subscribes only while a
+  page is open: ~1% of a core idle; a page on the camera ("Fast", ~15 fps, ~25 KB
+  frames) ~11%, on the map (TF in Python) ~7%, both ~20-30%. The camera topic is
+  taken raw (`jpeg_from_cdr`) and frames no page can take are dropped first.
+  The System tab (Pi CPU per core, clock, throttling, memory, disk, Wi-Fi, every
+  supervisor program's state and CPU incl. the Hailo's over its socket, BNO055
+  temperature and calibration, battery trend) costs ~1.5% of a core while open;
+  the BNO055's `/bno055/temp` is 50 Hz, so it is read once every 5 s (a steady
+  subscription cost ~9%).
+  Sticks checked on domain 77 with synthetic touches (20 Hz, zeros on release).
+  The ESP was unplugged then (no `/dev/ttyUSB*`), so no drive yet. Still to do with
+  the owner: a drive on the phone, the head stick's feel, the page on an iPhone.
 - Calibrate the Camera Module 3 (the files in `calibration/` are for the IMX296).
 - Whisper on the Hailo (speech to text without the Mac): later, after the brain.
 - Hailo face recognition (with object detection) was re-enabled on 2026-11-25
@@ -379,10 +406,11 @@ when new work comes up, add it here.
   the version"; GitHub is ahead at v1.0.3): reset it to `origin/main` some time.
 - Host runs hot: ~75 C with the Pi only ~16% busy (2026-11-26, robot
   stripped), and it has hit the soft temperature limit, capped clocks and
-  under-voltage since boot (`vcgencmd get_throttled` 0xf0000). `config.txt`
-  overclocks to `arm_freq=3000` (stock 2.4 GHz) and the kernel shows no fan
-  (no `cooling_fan` hwmon). Check the fan with the owner and drop the
-  overclock (needs a reboot; ask first).
+  under-voltage since boot (`vcgencmd get_throttled` 0xf0000). The 3 GHz
+  overclock (`arm_freq=3000`) was dropped on 2026-11-28 (commented out in
+  `/boot/firmware/config.txt`, backup `config.txt.bak-2026-11-28`); stock
+  2.4 GHz since. The kernel shows no fan (no `cooling_fan` hwmon): check the
+  fan with the owner, and the temperature and throttling under load at 2.4 GHz.
 - Host: Hailo, kernel (6.6, contains the Hailo driver) and camera packages are
   held with apt-mark. Update them together later, with the Hailo container
   and a rebuild of the ALFA Wi-Fi driver (rtl8812au) for the new kernel.

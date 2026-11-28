@@ -1,0 +1,17 @@
+# Announces the Pi as rainbow.local (pi-files/rainbow-mdns.sh). Install on the host:
+#   sudo cp pi-files/rainbow-mdns.sh /usr/local/bin/
+#   sudo cp pi-files/rainbow-mdns.service /etc/systemd/system/
+#   sudo systemctl enable --now rainbow-mdns
+[Unit]
+Description=Announce the Pi as rainbow.local
+After=avahi-daemon.service network-online.target
+Wants=network-online.target
+Requires=avahi-daemon.service
+
+[Service]
+ExecStart=/usr/local/bin/rainbow-mdns.sh rainbow.local
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -71,6 +71,7 @@ Rainbow's ROS 2 packages live in `src/`:
 | `rainbow_drivers` | Head, eyes, ToF depth camera, velocity watchdog, lidar power, IP publisher, Nav2 plan for Foxglove (`/plan_viz`) |
 | `rainbow_voice` | Text to speech; the ears: wake word, utterances, local commands on the ReSpeaker Lite |
 | `rainbow_brain` | Local brain ([design](docs/brain.md)): skills (go to a place, turn, drive, stop), named places on the map, memory, photos and faces, greeting people, head tracking, pick-up and low-battery modes, the link to the Mac agent |
+| `rainbow_web` | Phone remote: a web page served from the robot (camera, map, places, joysticks) |
 | `rainbow_interfaces` | Service, action and message definitions |
 | `rainbow_esp_msgs` | Messages of the ESP firmware's own topics (also built into micro-ROS) |
 
@@ -104,6 +105,7 @@ Supervisor starts these when the container starts (`supervisor/rainbow.conf`):
 | `rainbow_foxglove` | `foxglove.launch.py` | Foxglove bridge on port 8765 |
 | `rainbow_voice` | `voice.launch.py` | Text to speech, wake word and listening (ReSpeaker Lite) |
 | `rainbow_brain` | `brain.launch.py` | Local brain, places, link to the Mac agent (port 8766), head tracker |
+| `rainbow_web` | `web.launch.py` | Phone remote on port 80 (`http://rainbow.local/`) |
 
 ```
 supervisorctl status
@@ -118,7 +120,7 @@ map_saver_cli -f maps/<name>`, set `yaml_filename` in
 
 To run everything by hand instead: `scripts/rainbow_launch.sh rainbow.launch.py`
 (arguments `localization`, `navigation`, `foxglove`, `voice`, `tof`, `head`,
-`microros`, `brain`, default `true`; `slam` default `false`).
+`microros`, `brain`, `web`, default `true`; `slam` default `false`).
 
 ### Talking to the robot
 
@@ -172,6 +174,28 @@ and a Head tab (hold the Head teleop's arrows to turn or tilt it, `/head/jog`;
 point and centre the head, whether it is moving, its angles over time, and the
 eyes' expression). The ToF cloud is heavy
 over Wi-Fi; hide `/point_cloud` in the 3D view if it lags.
+
+### Phone remote
+
+Open `http://rainbow.local/` on a phone on the same Wi-Fi and hold it sideways
+(Add to Home Screen for full screen on an iPhone; on Android the ⛶ button). The
+camera (or the map, ⇄ or tap the small view to swap) fills the screen; the right
+stick drives, the left one moves the head (double-tap it to centre). The map
+shows the lidar, the planned path and the places; its tools follow the robot,
+turn the map heading-up, send a goal (🏁), set the pose estimate (📍) or save a
+place (⭐): tap, then drag the direction. The ☰ menu has the places (go, delete,
+save here), the top speed, camera quality, costmap layers, head and eyes,
+speech, relocalize, the full status and the log. STOP cancels everything.
+Anyone on the Wi-Fi can open it, as with Foxglove.
+
+`rainbow.local` is an extra mDNS name for the Pi (its hostname stays
+`raspberrypi`), announced by `pi-files/rainbow-mdns.service` on the host:
+
+```
+sudo cp pi-files/rainbow-mdns.sh /usr/local/bin/
+sudo cp pi-files/rainbow-mdns.service /etc/systemd/system/
+sudo systemctl enable --now rainbow-mdns
+```
 
 ### Useful commands
 
