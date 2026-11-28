@@ -341,7 +341,7 @@ when new work comes up, add it here.
   built 2026-11-26, tested on the robot (two pick-ups and put-downs seen; the
   recording's carpet-edge push is not a lift). Still to see: AMCL's global
   relocalization after a put-down with localization running, and that bumps
-  while driving (12 cm rise threshold, tilt 20 deg) do not count, once the motors
+  while driving (30 cm rise threshold since 2026-11-28, tilt 20 deg) do not count, once the motors
   are back. The brain's input thread (the IMU at 50 Hz for this, plus `/tf`,
   `/cmd_vel` and `/odom_raw`) costs ~9% of a core, the whole brain ~11% at rest
   (2026-11-26, robot stripped); moving the detector onto the ESP (board IMU)

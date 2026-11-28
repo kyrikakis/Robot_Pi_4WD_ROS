@@ -104,7 +104,7 @@ def test_pick_phrase_single_and_empty():
 
 
 def test_small_lifts_do_not_count_by_default():
-    """A ~6.5 cm rise is under the default 10 cm."""
+    """A ~6.5 cm rise is under the default 30 cm."""
     samples = still(2) + lift(up_ms2=1.2, accel_s=0.2, coast_s=0.1)
     assert feed(LiftDetector(), samples) == []
 
