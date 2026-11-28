@@ -382,8 +382,12 @@ when new work comes up, add it here.
   pose estimate, the brain's buttons. Teleop goes to `cmd_vel_stamped` like
   Foxglove's, past the collision monitor (limits `max_linear` 0.3, `max_reverse`
   0.1, `max_angular` 1.2, times the page's speed setting). Subscribes only while a
-  page is open. Still to do with the owner: a drive on the phone, the head stick's
-  feel, and the page on an iPhone.
+  page is open: ~1% of a core idle; a page on the camera ("Fast", ~15 fps, ~25 KB
+  frames) ~11%, on the map (TF in Python) ~7%, both ~20-30%. The camera topic is
+  taken raw (`jpeg_from_cdr`) and frames no page can take are dropped first.
+  Sticks checked on domain 77 with synthetic touches (20 Hz, zeros on release).
+  The ESP was unplugged then (no `/dev/ttyUSB*`), so no drive yet. Still to do with
+  the owner: a drive on the phone, the head stick's feel, the page on an iPhone.
 - Calibrate the Camera Module 3 (the files in `calibration/` are for the IMX296).
 - Whisper on the Hailo (speech to text without the Mac): later, after the brain.
 - Hailo face recognition (with object detection) was re-enabled on 2026-11-25
