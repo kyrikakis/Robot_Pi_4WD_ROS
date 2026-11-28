@@ -27,6 +27,7 @@ setup(
             'plan_viz = rainbow_drivers.plan_viz:main',
             'lidar_power = rainbow_drivers.lidar_power:main',
             'map_tf_keeper = rainbow_drivers.map_tf_keeper:main',
+            'pose_keeper = rainbow_drivers.pose_keeper:main',
         ],
     },
 )

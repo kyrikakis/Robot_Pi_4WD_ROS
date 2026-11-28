@@ -536,8 +536,9 @@ no subscription left behind, one face event per person, the pose estimate.
 
 ## Startup localization from a photo
 
-AMCL starts with global localization and usually settles once the robot drives
-a little. A photo only gives it a hint; it is never treated as a precise pose.
+AMCL starts from the last pose it was sure of (`pose_keeper`, unless the robot
+was picked up since), otherwise with global localization, which usually settles
+once the robot drives a little. A photo only gives it a hint; it is never treated as a precise pose.
 
 1. **Place photos**: whenever a place is saved through the agent, the robot
    also takes a photo there, kept on the Mac

@@ -61,9 +61,10 @@ amcl:
     z_rand: 0.5
     do_beamskip: false
 
-    # No start pose: localization.launch.py calls global localization at start
-    # (guesses spread over the whole map), which settle once the robot drives
-    # or turns a little. A pose estimate (/initialpose) settles it at once.
+    # No start pose here: pose_keeper (localization.launch.py) sends the last
+    # saved pose at start, or calls global localization (guesses spread over the
+    # whole map, settle once the robot drives or turns a little). A pose
+    # estimate (/initialpose) settles it at once.
     set_initial_pose: false
     always_reset_initial_pose: false
     first_map_only: false

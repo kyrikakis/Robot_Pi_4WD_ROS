@@ -63,8 +63,10 @@ the Pi host with `firmware/esp.sh`. The stock firmware's whole-flash backup is i
   `maps/`, read-only. slam_toolbox (`rainbow_slam`, autostart off) is only for
   mapping a new place; never run both (both publish map -> odom). Its
   localization mode was dropped: it adds its scans to the map and damaged it
-  whenever it lost track. AMCL starts with global localization (no start
-  pose); the pose settles once the robot drives or turns a little.
+  whenever it lost track. AMCL starts from the last pose it was sure of
+  (`pose_keeper`, rainbow_drivers, in `localization.launch.py`: saved to
+  `/data/rainbow/last_pose/<map>.yaml`, deleted on a pick-up); without one, with
+  global localization, which settles once the robot drives or turns a little.
 - **Restarting `rainbow_base` restarts the EKF, which resets the odometry: AMCL
   then needs a pose estimate, and a SLAM mapping session gets scrambled
   (restart `rainbow_slam` right after). Ask the owner before restarting the
