@@ -4,7 +4,8 @@ The lidar is on:
   - while rainbow_slam runs (mapping needs every scan);
   - while the robot is commanded to move (non-zero /cmd_vel, what reaches the
     ESP), and for rest_delay_s after the last motion;
-  - while /lidar/wanted (std_msgs/Bool) is true and fresh (wanted_timeout_s):
+  - while /lidar/wanted (std_msgs/Bool) is true and fresh (wanted_timeout_s;
+    false is ignored, a request expires):
     the brain asks for it before a Nav2 goal and while localizing, and
     map_tf_keeper until AMCL's first map -> odom; both repeat it at least once
     a second;
@@ -123,8 +124,15 @@ class LidarPower(Node):
             self.last_motion = time.monotonic()
 
     def on_wanted(self, msg):
-        """Remember the last request for the lidar."""
-        self.wanted_at = time.monotonic() if msg.data else None
+        """Remember the last request for the lidar.
+
+        False is ignored: several nodes ask on this topic (the brain sends false
+        every second while it does not need the lidar, which cancelled
+        map_tf_keeper's requests); a request simply expires after
+        wanted_timeout_s.
+        """
+        if msg.data:
+            self.wanted_at = time.monotonic()
 
     def on_pose(self, _msg):
         """Remember a pose estimate: AMCL needs scans to settle it."""
