@@ -391,8 +391,10 @@ class Server:
         if path.split('?')[0] == '/ws':
             return None          # go on with the WebSocket handshake
         name = path.split('?')[0].lstrip('/') or 'index.html'
-        full = os.path.realpath(os.path.join(self.node.static_dir, name))
-        root = os.path.realpath(self.node.static_dir)
+        # normpath, not realpath: with colcon's --symlink-install the files are
+        # symlinks into build/
+        root = os.path.normpath(self.node.static_dir)
+        full = os.path.normpath(os.path.join(root, name))
         if not full.startswith(root + os.sep) or not os.path.isfile(full):
             return http.HTTPStatus.NOT_FOUND, [('Content-Type', 'text/plain')], b'not found\n'
         with open(full, 'rb') as f:
