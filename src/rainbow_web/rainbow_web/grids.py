@@ -31,7 +31,7 @@ def compose(a, b):
 
 
 def map_rgba(data, width, height):
-    """An OccupancyGrid as an RGBA image, row 0 at the top (the grid's last row).
+    """Turn an OccupancyGrid into an RGBA image, row 0 at the top (the grid's last row).
 
     Unknown cells are transparent, free cells light, occupied ones dark.
     """
@@ -49,7 +49,7 @@ def map_rgba(data, width, height):
 
 
 def costmap_rgba(data, width, height):
-    """A costmap OccupancyGrid (0-100, -1 unknown) as a translucent RGBA image.
+    """Turn a costmap OccupancyGrid (0-100, -1 unknown) into a translucent RGBA image.
 
     Free space is transparent; cost grows from faint blue to purple; the inscribed
     (99) and lethal (100) cells are bright red and magenta.
@@ -98,7 +98,7 @@ def thin_path(points, spacing=0.05):
         return []
     out = [points[0]]
     for p in points[1:-1]:
-        if math.hypot(p[0] - out[-1][0], p[1] - out[-1][1]) >= spacing:
+        if math.hypot(p[0] - out[-1][0], p[1] - out[-1][1]) >= spacing - 1e-9:
             out.append(p)
     if len(points) > 1:
         out.append(points[-1])

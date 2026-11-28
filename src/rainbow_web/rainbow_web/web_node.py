@@ -51,8 +51,8 @@ from rclpy.action import ActionClient
 from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException, SingleThreadedExecutor
 from rclpy.node import Node
-from rclpy.qos import (DurabilityPolicy, QoSProfile, ReliabilityPolicy,
-                       qos_profile_sensor_data)
+from rclpy.qos import (DurabilityPolicy, qos_profile_sensor_data, QoSProfile,
+                       ReliabilityPolicy)
 from rclpy.time import Time
 from sensor_msgs.msg import CompressedImage, LaserScan, Temperature
 from std_msgs.msg import Bool, String
@@ -210,7 +210,7 @@ class WebNode(Node):
             self.scan = None
 
     def lookup(self, frame):
-        """The latest pose of frame in the map, (x, y, yaw), or None."""
+        """Return the latest pose of frame in the map, (x, y, yaw), or None."""
         if self.tf_buffer is None or not frame:
             return None
         try:
@@ -400,8 +400,9 @@ class Server:
         kind = mimetypes.guess_type(full)[0] or 'application/octet-stream'
         if full.endswith('.webmanifest'):
             kind = 'application/manifest+json'
-        return http.HTTPStatus.OK, [('Content-Type', kind), ('Content-Length', str(len(body))),
-                     ('Cache-Control', 'no-cache'), ('Connection', 'close')], body
+        headers = [('Content-Type', kind), ('Content-Length', str(len(body))),
+                   ('Cache-Control', 'no-cache'), ('Connection', 'close')]
+        return http.HTTPStatus.OK, headers, body
 
     async def run(self):
         async with websockets.serve(self.serve, '0.0.0.0', self.node.port,
@@ -664,7 +665,7 @@ class Server:
 
 
 def shrink(jpeg, width):
-    """A JPEG at half its size or less (width px at most), quality 70."""
+    """Return the JPEG at half its size or less (width px at most), quality 70."""
     buf = np.frombuffer(jpeg, dtype=np.uint8)
     img = cv2.imdecode(buf, cv2.IMREAD_REDUCED_COLOR_2)
     if img is None:
