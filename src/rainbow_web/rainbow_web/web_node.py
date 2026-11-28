@@ -184,7 +184,8 @@ class WebNode(Node):
             ]
         if group == 'camera':
             return [sub(CompressedImage, self.camera_topic, self.on_image,
-                        QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT))]
+                        QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT),
+                        raw=True)]
         if group == 'map':
             self.start_tf()
             return [
@@ -267,8 +268,9 @@ class WebNode(Node):
                  'time': msg.stamp.sec + msg.stamp.nanosec * 1e-9}
         self.push(self.server.add_log, entry)
 
-    def on_image(self, msg):
-        self.push(self.server.on_frame, bytes(msg.data))
+    def on_image(self, raw):
+        if self.server.camera_ready():
+            self.push(self.server.on_frame, grids.jpeg_from_cdr(raw))
 
     def on_map(self, msg):
         info = msg.info
@@ -501,6 +503,14 @@ class Server:
         self.broadcast(message, 'map')
 
     # ---- camera ----------------------------------------------------------------
+
+    def camera_ready(self):
+        """Whether some page would take a frame now (from the ROS thread)."""
+        for page in list(self.pages):
+            if page.want['camera'] and not page.camera_busy:
+                if page.quality == 'high' or self.low_task is None or self.low_task.done():
+                    return True
+        return False
 
     def on_frame(self, jpeg):
         self.frame = jpeg

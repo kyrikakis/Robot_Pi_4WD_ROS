@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 from rainbow_web.grids import (clamp, compact_scan, compose, costmap_rgba, drive_command,
-                               map_rgba, quaternion_from_yaw, thin_path,
+                               jpeg_from_cdr, map_rgba, quaternion_from_yaw, thin_path,
                                yaw_from_quaternion)
 
 
@@ -51,6 +51,20 @@ def test_thin_path_keeps_ends():
     assert out[0] == (0.0, 0.0)
     assert out[-1] == (1.0, 0.0)
     assert len(out) == 21
+
+
+def test_jpeg_from_cdr():
+    try:
+        from rclpy.serialization import serialize_message
+        from sensor_msgs.msg import CompressedImage
+    except ImportError:
+        return
+    for frame_id, fmt in (('', 'jpeg'), ('camera_link', 'rgb8; jpeg compressed bgr8'),
+                          ('abc', 'x')):
+        msg = CompressedImage(format=fmt, data=bytes(range(256)) * 3)
+        msg.header.frame_id = frame_id
+        msg.header.stamp.sec = 12
+        assert jpeg_from_cdr(serialize_message(msg)) == bytes(range(256)) * 3
 
 
 def test_drive_command_limits():

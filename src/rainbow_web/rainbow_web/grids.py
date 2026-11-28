@@ -4,6 +4,7 @@ No ROS imports here, so the tests run without a ROS install.
 """
 
 import math
+import struct
 
 import numpy as np
 
@@ -121,3 +122,20 @@ def drive_command(x, z, scale, max_linear, max_reverse, max_angular):
     linear = x * (max_linear if x >= 0.0 else max_reverse) * scale
     angular = z * max_angular * max(scale, 0.5)
     return linear, angular
+
+
+def jpeg_from_cdr(buf):
+    """Return the data field of a serialized sensor_msgs/CompressedImage (CDR).
+
+    Taking the topic raw skips rclpy's conversion of every frame (~200 KB at
+    15 fps) into Python objects.
+    """
+    little = buf[1] == 1
+    u32 = struct.Struct('<I' if little else '>I').unpack_from
+    off = 4 + 8                          # encapsulation header, stamp
+    for _ in range(2):                   # frame_id, format: strings
+        n = u32(buf, off)[0]
+        off += 4 + n
+        off += (-(off - 4)) % 4          # CDR aligns from the end of the header
+    n = u32(buf, off)[0]
+    return bytes(buf[off + 4:off + 4 + n])
