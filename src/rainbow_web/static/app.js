@@ -872,6 +872,64 @@ const headStick = new Stick($('#zone-head'), HEAD_HZ, (x, y) => {
 });
 const sticks = [driveStick, headStick];
 
+/* Keyboard driving: arrows or W A S D (Up+Right arcs right, like the stick's top
+   right); hold Shift for half speed. Sent at DRIVE_HZ while a key is down, zeros
+   on release, so the watchdog stops the robot if the page goes away. */
+(function keyboardDrive() {
+  const KEYS = { ArrowUp: 'f', w: 'f', W: 'f', ArrowDown: 'b', s: 'b', S: 'b',
+    ArrowLeft: 'l', a: 'l', A: 'l', ArrowRight: 'r', d: 'r', D: 'r' };
+  const down = new Set();
+  let timer = null;
+  let slow = false;
+  const typing = (e) => e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+  const command = () => {
+    const fwd = (down.has('f') ? 1 : 0) - (down.has('b') ? 1 : 0);
+    const turn = (down.has('l') ? 1 : 0) - (down.has('r') ? 1 : 0);
+    // the stick's values at full deflection: straight 1, in place 0.7, diagonal 0.55 each
+    let x = fwd;
+    let z = turn * 0.7;
+    if (fwd && turn) { x = fwd * 0.55; z = turn * 0.55; }
+    const k = slow ? 0.5 : 1;
+    return [x * k, z * k];
+  };
+  const tick = () => {
+    const [x, z] = command();
+    send({ t: 'drive', x, z, speed: state.speed / 100 });
+  };
+  const stop = () => {
+    if (!timer) return;
+    clearInterval(timer);
+    timer = null;
+    down.clear();
+    send({ t: 'drive', x: 0, z: 0, speed: 0 });
+    setTimeout(() => send({ t: 'drive', x: 0, z: 0, speed: 0 }), 60);
+    setTimeout(() => send({ t: 'drive', x: 0, z: 0, speed: 0 }), 150);
+  };
+  document.addEventListener('keydown', (e) => {
+    slow = e.shiftKey;
+    const k = KEYS[e.key];
+    if (!k || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+    e.preventDefault();
+    if (!timer) {
+      // taking control cancels what the robot is doing on its own, as the stick does
+      const st = state.status;
+      if (state.nav || (st && st.activity && st.activity !== 'idle')) call('stop', {}, true);
+      timer = setInterval(tick, 1000 / DRIVE_HZ);
+    }
+    down.add(k);
+    tick();
+  });
+  document.addEventListener('keyup', (e) => {
+    slow = e.shiftKey;
+    const k = KEYS[e.key];
+    if (!k) return;
+    down.delete(k);
+    if (!down.size) stop();
+  });
+  window.addEventListener('blur', stop);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) stop(); });
+})();
+
 /* ---------------------------------------------------------------- status */
 
 function chip(id, text, cls) {
