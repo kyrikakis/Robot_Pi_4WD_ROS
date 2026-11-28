@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Rainbow">
+<title>Rainbow</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="stage">
+  <div id="main" class="view-slot"></div>
+  <div id="pip" class="view-slot" title="Tap to swap"></div>
+  <img id="camera" class="view" alt="">
+  <div id="camera-empty" class="view-note">No camera picture</div>
+  <canvas id="map" class="view"></canvas>
+  <div id="map-empty" class="view-note">Waiting for the map…</div>
+</div>
+
+<header id="bar">
+  <div class="chips">
+    <span id="conn" class="dot" title="Connection"></span>
+    <span id="chip-battery" class="chip" title="Battery">🔋 --</span>
+    <span id="chip-loc" class="chip" title="Localization">📍 --</span>
+    <span id="chip-nav" class="chip" title="Nav2">Nav</span>
+    <span id="chip-esp" class="chip" title="ESP board">ESP</span>
+    <span id="chip-temp" class="chip" title="Pi temperature">--°</span>
+    <span id="chip-lifted" class="chip warn hidden">Lifted</span>
+  </div>
+  <button id="stop" class="stop" aria-label="Stop">STOP</button>
+  <div class="actions">
+    <span id="activity" class="activity"></span>
+    <button id="btn-swap" class="icon" aria-label="Camera or map" title="Camera / map">⇄</button>
+    <button id="btn-full" class="icon" aria-label="Full screen" title="Full screen">⛶</button>
+    <button id="btn-menu" class="icon" aria-label="Menu" title="Menu">☰</button>
+  </div>
+</header>
+
+<div id="maptools" class="hidden">
+  <button data-tool="follow" class="tool on" title="Follow the robot">◎</button>
+  <button data-tool="rotate" class="tool" title="Robot's heading up">⬆</button>
+  <button data-tool="goal" class="tool mode" title="Drive there: tap and drag the direction">🏁</button>
+  <button data-tool="pose" class="tool mode" title="I am here: tap and drag the direction">📍</button>
+  <button data-tool="place" class="tool mode" title="Save a place: tap and drag the direction">⭐</button>
+</div>
+<div id="hint" class="hint hidden"></div>
+
+<div class="stick-zone left" id="zone-head">
+  <div class="stick"><div class="knob"></div></div>
+  <div class="stick-label">HEAD <small>double-tap: centre</small></div>
+</div>
+<div class="stick-zone right" id="zone-drive">
+  <div class="stick"><div class="knob"></div></div>
+  <div class="stick-label">DRIVE <button id="speed" class="speed">60%</button></div>
+</div>
+
+<div id="nav-banner" class="nav-banner hidden">
+  <span id="nav-text"></span>
+  <button id="nav-cancel">Cancel</button>
+</div>
+
+<aside id="drawer" class="drawer">
+  <nav class="tabs">
+    <button data-tab="places" class="on">Places</button>
+    <button data-tab="robot">Robot</button>
+    <button data-tab="status">Status</button>
+    <button data-tab="log">Log</button>
+    <button id="drawer-close" class="close" aria-label="Close">✕</button>
+  </nav>
+  <section id="tab-places" class="tab on">
+    <div id="places-map" class="muted"></div>
+    <ul id="places" class="list"></ul>
+    <form id="save-here" class="row">
+      <input id="save-name" placeholder="Name this spot" autocomplete="off" required>
+      <button type="submit">Save here</button>
+    </form>
+    <p class="muted">Or press ⭐ on the map and drag to place one anywhere.</p>
+  </section>
+  <section id="tab-robot" class="tab">
+    <h3>Driving</h3>
+    <label class="row">Top speed <input id="speed-range" type="range" min="20" max="100" step="10" value="60"><span id="speed-val">60%</span></label>
+    <h3>Camera</h3>
+    <div class="seg" id="quality">
+      <button data-q="low" class="on">Fast</button><button data-q="high">Sharp</button>
+    </div>
+    <label class="row"><input type="checkbox" id="pip-on" checked> Small second view</label>
+    <h3>Map layers</h3>
+    <label class="row"><input type="checkbox" data-layer="scan" checked> Lidar</label>
+    <label class="row"><input type="checkbox" data-layer="plan" checked> Planned path</label>
+    <label class="row"><input type="checkbox" data-layer="places" checked> Places</label>
+    <label class="row"><input type="checkbox" data-layer="global_costmap"> Global costmap</label>
+    <label class="row"><input type="checkbox" data-layer="local_costmap"> Local costmap</label>
+    <h3>Head</h3>
+    <div class="buttons">
+      <button data-call="head_center">Centre</button>
+      <button data-call="track" data-args='{"target":"face"}'>Follow faces</button>
+      <button data-call="track_stop">Stop following</button>
+    </div>
+    <h3>Eyes</h3>
+    <div class="buttons">
+      <button data-call="eyes" data-args='{"expression":"happy"}'>Happy</button>
+      <button data-call="eyes" data-args='{"expression":"sad"}'>Sad</button>
+      <button data-call="eyes" data-args='{"expression":"open"}'>Open</button>
+      <button data-call="eyes" data-args='{"expression":"closed"}'>Closed</button>
+      <button data-call="eyes" data-args='{"expression":"off"}'>Off</button>
+    </div>
+    <h3>Say</h3>
+    <form id="say" class="row">
+      <input id="say-text" placeholder="Something for Rainbow to say" autocomplete="off" required>
+      <button type="submit">Say</button>
+    </form>
+    <h3>Localization</h3>
+    <div class="buttons">
+      <button data-call="relocalize" class="warn">Relocalize</button>
+    </div>
+    <p class="muted">Relocalize: the robot forgets where it is and searches the whole map; drive or turn a little after. Or press 📍 on the map.</p>
+  </section>
+  <section id="tab-status" class="tab">
+    <dl id="status" class="kv"></dl>
+  </section>
+  <section id="tab-log" class="tab">
+    <ul id="log" class="log"></ul>
+  </section>
+</aside>
+
+<div id="sheet" class="sheet hidden">
+  <div class="sheet-title" id="sheet-title"></div>
+  <div class="sheet-sub muted" id="sheet-sub"></div>
+  <div class="buttons" id="sheet-buttons"></div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+<div id="offline" class="overlay hidden"><div>Connecting to Rainbow…</div></div>
+<div id="portrait" class="overlay portrait"><div>↻<br>Turn your phone sideways</div></div>
+
+<script src="app.js"></script>
+</body>
+</html>

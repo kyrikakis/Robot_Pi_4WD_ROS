@@ -13,6 +13,7 @@
   <exec_depend>rainbow_drivers</exec_depend>
   <exec_depend>rainbow_voice</exec_depend>
   <exec_depend>rainbow_brain</exec_depend>
+  <exec_depend>rainbow_web</exec_depend>
   <exec_depend>robot_localization</exec_depend>
   <exec_depend>bno055</exec_depend>
   <exec_depend>slam_toolbox</exec_depend>

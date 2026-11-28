@@ -54,7 +54,7 @@ the Pi host with `firmware/esp.sh`. The stock firmware's whole-flash backup is i
   so a power-on is a clean deployment. This is deliberate; do not bind-mount
   the repo. The image is built from the **Pi host's** checkout, not from inside
   the container.
-- Supervisor runs nine of its ten programs from `supervisor/rainbow.conf`, each a
+- Supervisor runs ten of its eleven programs from `supervisor/rainbow.conf`, each a
   `rainbow_bringup` launch file via `scripts/rainbow_launch.sh`. The micro-ROS
   agent (`rainbow_microros`), the ToF (`rainbow_tof`) and the head
   (`rainbow_head`) are separate programs: restarting the base disconnects
@@ -251,7 +251,8 @@ The code you edit is the code the robot runs. Lessons learned:
 ## Conventions
 
 - `main` is the finished robot. New work happens on a branch per feature (`test-run`:
-  the lidar on pose estimates and goals, open; the brain, steps 1-7 of `docs/brain.md`, our own ESP32 firmware, the
+  the lidar on pose estimates and goals, open; `mobile-web` (from `test-run`): the
+  phone remote, open; the brain, steps 1-7 of `docs/brain.md`, our own ESP32 firmware, the
   65 mm wheels' fixes and the head's pan sign are merged); do not merge to `main` or suggest merging until the owner says so.
 - Python nodes: ament_python, one node per module, `ament_flake8 --linelength 100`
   clean. New services go in `rainbow_interfaces`. Keep the old topics
@@ -374,6 +375,15 @@ when new work comes up, add it here.
   against the real head) the owner preferred 60 deg/s to 90 and 200: 60 is the
   head's default for everything, the tracker uses it (was 200). Tilt alone not
   reviewed yet.
+- Phone remote (`rainbow_web`, branch `mobile-web`, built 2026-11-28): a web page
+  on port 80, `http://rainbow.local/` (mDNS alias from `pi-files/rainbow-mdns.service`
+  on the host). Camera (the Hailo's `image_bbx`, re-encoded to 640 px for "Fast"),
+  map with lidar/plan/places/costmaps, drive and head joysticks, places, goals,
+  pose estimate, the brain's buttons. Teleop goes to `cmd_vel_stamped` like
+  Foxglove's, past the collision monitor (limits `max_linear` 0.3, `max_reverse`
+  0.1, `max_angular` 1.2, times the page's speed setting). Subscribes only while a
+  page is open. Still to do with the owner: a drive on the phone, the head stick's
+  feel, and the page on an iPhone.
 - Calibrate the Camera Module 3 (the files in `calibration/` are for the IMX296).
 - Whisper on the Hailo (speech to text without the Mac): later, after the brain.
 - Hailo face recognition (with object detection) was re-enabled on 2026-11-25
