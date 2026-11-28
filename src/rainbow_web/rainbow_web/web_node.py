@@ -556,12 +556,13 @@ class Server:
         try:
             res = await self.ros_call('places', ListPlaces.Request(), 5.0)
         except (RuntimeError, asyncio.TimeoutError):
-            return
+            return False
         self.places_msg = {'t': 'places', 'map': res.map, 'places': [
             {'name': p.name, 'x': p.x, 'y': p.y, 'yaw': p.yaw, 'room': p.room,
              'description': p.description, 'source': p.source, 'confirmed': p.confirmed}
             for p in res.places]}
         self.broadcast(self.places_msg)
+        return True
 
     async def call(self, page, msg):
         op, args, cid = msg.get('op'), msg.get('args') or {}, msg.get('id')
@@ -631,8 +632,8 @@ class Server:
         if op == 'place_go':
             return await self.go_to_place(str(args.get('place', '')))
         if op == 'places':
-            await self._refresh_places()
-            return True, ''
+            ok = await self._refresh_places()
+            return ok, '' if ok else 'the brain is not answering'
         return False, f'unknown command {op}'
 
     async def go_to_place(self, place):
@@ -682,17 +683,34 @@ def main():
     node = WebNode()
     executor = SingleThreadedExecutor()
     executor.add_node(node)
-    spin = threading.Thread(target=executor.spin, daemon=True)
-    spin.start()
+
+    def spin():
+        try:
+            executor.spin()
+        except ExternalShutdownException:
+            pass
+    threading.Thread(target=spin, daemon=True).start()
 
     async def serve():
-        await Server(node).run()
+        # rclpy handles SIGINT and SIGTERM by shutting its context down; the
+        # server stops with it (on its own it would keep the process alive)
+        loop = asyncio.get_running_loop()
+        stopped = asyncio.Event()
+        node.context.on_shutdown(lambda: loop.call_soon_threadsafe(stopped.set))
+        server = asyncio.ensure_future(Server(node).run())
+        waiter = asyncio.ensure_future(stopped.wait())
+        await asyncio.wait({server, waiter}, return_when=asyncio.FIRST_COMPLETED)
+        for task in (server, waiter):
+            task.cancel()
+        if server.done() and not server.cancelled() and server.exception():
+            raise server.exception()
     try:
         asyncio.run(serve())
-    except (KeyboardInterrupt, ExternalShutdownException):
+    except KeyboardInterrupt:
         pass
     finally:
-        node.drive(0.0, 0.0, 0.0)
+        if rclpy.ok():
+            node.drive(0.0, 0.0, 0.0)
         executor.shutdown()
         node.destroy_node()
         if rclpy.ok():
