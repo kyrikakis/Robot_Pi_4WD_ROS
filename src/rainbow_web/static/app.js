@@ -112,7 +112,13 @@ function onMessage(m) {
     case 'tracker': state.tracker = m; renderStatus(); break;
     case 'map': mapView.setMap(m); break;
     case 'costmap': mapView.setCostmap(m); break;
-    case 'pose': mapView.pose = m; mapView.dirty(); break;
+    case 'pose': {
+      const first = !mapView.pose;
+      mapView.pose = m;
+      if (first) mapView.fit();
+      mapView.dirty();
+      break;
+    }
     case 'scan': mapView.scan = m; mapView.scanAt = performance.now(); mapView.dirty(); break;
     case 'plan': mapView.plan = m.points; mapView.dirty(); break;
     case 'places': state.places = m.places; state.placesMap = m.map; renderPlaces(); mapView.dirty(); break;
@@ -211,6 +217,7 @@ const mapView = {
   scale: 60,          // px per metre
   follow: true,
   headingUp: false,
+  fitted: true,       // zoom chosen automatically (until the user zooms)
   tool: null,         // 'goal' | 'pose' | 'place'
   draft: null,        // {x, y, yaw} while placing an arrow
   goal: null,
@@ -219,16 +226,9 @@ const mapView = {
   setMap(m) {
     const img = new Image();
     img.onload = () => {
-      const first = !this.map;
       this.map = Object.assign({}, m, { img });
       delete this.map.png;
-      if (first && !this.center) {
-        this.center = { x: m.origin[0] + m.width * m.resolution / 2,
-          y: m.origin[1] + m.height * m.resolution / 2 };
-        this.scale = Math.min(this.w / (m.width * m.resolution),
-          this.h / (m.height * m.resolution)) * 0.9 || 60;
-        if (this.pose) this.scale = Math.max(this.scale, 80);
-      }
+      this.fit();
       this.updateNote();
       this.dirty();
     };
@@ -243,6 +243,22 @@ const mapView = {
     };
     img.src = 'data:image/png;base64,' + m.png;
   },
+  // whole map in view, or with a pose ~3 m around the robot
+  fit() {
+    if (!this.fitted || !this.w || !this.h) return;
+    const m = this.map;
+    if (this.pose && this.follow) {
+      this.scale = Math.min(this.w, this.h) / 3;
+    } else if (m) {
+      if (!this.follow || !this.pose) {
+        this.center = { x: m.origin[0] + m.width * m.resolution / 2,
+          y: m.origin[1] + m.height * m.resolution / 2 };
+      }
+      this.scale = Math.min(this.w / (m.width * m.resolution),
+        this.h / (m.height * m.resolution)) * 0.92;
+    }
+    this.dirty();
+  },
   updateNote() {
     const note = $('#map-empty');
     note.classList.toggle('hidden', !!this.map || !note.dataset.slotVisible);
@@ -254,6 +270,7 @@ const mapView = {
     this.h = r.height;
     this.canvas.width = Math.round(r.width * this.dpr);
     this.canvas.height = Math.round(r.height * this.dpr);
+    this.fit();
     this.dirty();
   },
   dirty() {
@@ -386,10 +403,15 @@ const mapView = {
     if (state.layers.places) {
       ctx.font = '600 12px system-ui, sans-serif';
       ctx.textAlign = 'center';
+      const boxes = [];
       for (const p of state.places) {
         const [sx, sy] = this.toScreen(p.x, p.y);
         if (sx < -50 || sy < -50 || sx > this.w + 50 || sy > this.h + 50) continue;
         this.arrow(sx, sy, this.screenAngle(p.yaw), p.confirmed ? '#f5b942' : '#b39ddb', 9);
+        const tw = ctx.measureText(p.name).width + 6;
+        const box = [sx - tw / 2, sy - 28, sx + tw / 2, sy - 12];
+        if (boxes.some((b) => box[0] < b[2] && b[0] < box[2] && box[1] < b[3] && b[1] < box[3])) continue;
+        boxes.push(box);
         ctx.lineWidth = 3;
         ctx.strokeStyle = 'rgba(0,0,0,0.8)';
         ctx.strokeText(p.name, sx, sy - 14);
@@ -408,11 +430,14 @@ const mapView = {
     }
     // scale bar
     const metres = [0.1, 0.2, 0.5, 1, 2, 5].find((m) => m * this.scale > 50) || 5;
+    const small = this.w < 400;
+    const bx = small ? 8 : 14;
+    const by = small ? this.h - 8 : 72;
     ctx.fillStyle = 'rgba(255,255,255,0.8)';
-    ctx.fillRect(12, this.h - 14, metres * this.scale, 3);
+    ctx.fillRect(bx, by, metres * this.scale, 3);
     ctx.font = '11px system-ui, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(metres >= 1 ? `${metres} m` : `${metres * 100} cm`, 12, this.h - 20);
+    ctx.fillText(metres >= 1 ? `${metres} m` : `${metres * 100} cm`, bx, by - 5);
   },
   arrow(x, y, angle, colour, size, long = false) {
     const ctx = this.ctx;
@@ -478,7 +503,8 @@ const mapView = {
     if (pts.size === 2 && pinch) {
       const [a, b] = Array.from(pts.values());
       const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
-      mapView.scale = Math.min(800, Math.max(8, pinch.scale * d / pinch.dist));
+      mapView.scale = Math.min(800, Math.max(4, pinch.scale * d / pinch.dist));
+      mapView.fitted = false;
       mapView.dirty();
       return;
     }
@@ -497,6 +523,7 @@ const mapView = {
       if (!mapView.center) return;
       mapView.center = { x: mapView.center.x - (b.x - a.x), y: mapView.center.y - (b.y - a.y) };
       setFollow(false);
+      mapView.fitted = false;
       mapView.dirty();
     }
   });
@@ -515,7 +542,8 @@ const mapView = {
   el.addEventListener('pointerup', end);
   el.addEventListener('pointercancel', (e) => { pts.delete(e.pointerId); pinch = null; mapView.draft = null; mapView.dirty(); });
   el.addEventListener('wheel', (e) => {
-    mapView.scale = Math.min(800, Math.max(8, mapView.scale * (e.deltaY < 0 ? 1.15 : 0.87)));
+    mapView.scale = Math.min(800, Math.max(4, mapView.scale * (e.deltaY < 0 ? 1.15 : 0.87)));
+    mapView.fitted = false;
     mapView.dirty();
     e.preventDefault();
   }, { passive: false });
@@ -957,6 +985,7 @@ function setup() {
     const tool = b.dataset.tool;
     if (tool === 'follow') {
       setFollow(!mapView.follow);
+      if (mapView.follow) { mapView.fitted = true; mapView.fit(); }
     } else if (tool === 'rotate') {
       mapView.headingUp = !mapView.headingUp;
       b.classList.toggle('on', mapView.headingUp);
