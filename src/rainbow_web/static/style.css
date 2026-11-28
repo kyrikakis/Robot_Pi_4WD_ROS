@@ -51,7 +51,7 @@ input[type=range] { flex: 1; accent-color: var(--accent); }
 #stage { position: fixed; inset: 0; }
 .view-slot { position: absolute; }
 #main { inset: 0; }
-#pip, .in-pip {
+#pip, .view.in-pip, .view-note.in-pip {
   top: 52px; right: calc(10px + var(--safe-r)); left: auto; bottom: auto;
   width: 27vw; height: 27vh; min-width: 150px; min-height: 90px;
   border-radius: 12px; overflow: hidden;
