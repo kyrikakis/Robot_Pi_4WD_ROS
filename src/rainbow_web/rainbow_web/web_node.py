@@ -25,7 +25,7 @@ and binary messages: camera JPEG frames.
 
 Parameters: port (80), camera_topic, max_linear (m/s), max_reverse (m/s),
 max_angular (rad/s), max_head_rate (rad/s), low_width (px, the "low" camera
-quality's width).
+quality's width), camera_enabled (live: false sends no camera frames).
 """
 
 import asyncio
@@ -103,6 +103,8 @@ class WebNode(Node):
         self.max_angular = param('max_angular', 1.2).value
         self.max_head_rate = param('max_head_rate', 1.2).value
         self.low_width = param('low_width', 640).value
+        # Live switch: ros2 param set /web camera_enabled false stops the camera stream
+        param('camera_enabled', True)
         self.static_dir = os.path.join(get_package_share_directory('rainbow_web'), 'static')
 
         self.loop = None          # the asyncio loop, set by Server
@@ -580,6 +582,8 @@ class Server:
 
     def camera_ready(self):
         """Whether some page would take a frame now (from the ROS thread)."""
+        if not self.node.get_parameter('camera_enabled').value:
+            return False
         for page in list(self.pages):
             if page.want['camera'] and not page.camera_busy:
                 if page.quality == 'high' or self.low_task is None or self.low_task.done():
